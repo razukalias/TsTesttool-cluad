@@ -111,7 +111,29 @@
           <Button Content="Duplicate" Command="{Binding DuplicateRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding SelectedRow, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
           <Button Content="Remove" Classes="danger" Command="{Binding RemoveRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding SelectedRow, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
           <Button Content="Run row" Command="{Binding RunRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding CanRun}" ToolTip.Tip="Run only the selected data row (save first)" MinHeight="36" />
-          <Button Content="▶ Run testcase" Classes="primary" Command="{Binding RunTestcaseCommand}" IsEnabled="{Binding CanRun}" ToolTip.Tip="Run every row of this testcase (save first)" MinHeight="36" />
+          <Button Content="▶ Run…" Classes="primary" IsEnabled="{Binding CanRun}" ToolTip.Tip="Run this testcase, several testcases or the whole instance (save first)" MinHeight="36">
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedLeft">
+                <StackPanel Width="340" Spacing="10" x:DataType="vm:DataEditorViewModel">
+                  <TextBlock Classes="caption" Text="RUN" />
+                  <ComboBox ItemsSource="{x:Static vm:DataEditorViewModel.ScopeOptions}" SelectedItem="{Binding RunScope, Mode=TwoWay}" HorizontalAlignment="Stretch" />
+                  <ItemsControl ItemsSource="{Binding Testcases}" IsVisible="{Binding ChoosingTestcases}" MaxHeight="180">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:TestcaseItem">
+                        <CheckBox IsChecked="{Binding IsChosen, Mode=TwoWay}" Content="{Binding Title}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBlock Text="Testcases" FontSize="12" Foreground="#8EA4BC" IsVisible="{Binding CanChooseOrder}" />
+                  <ComboBox ItemsSource="{x:Static vm:DataEditorViewModel.TestcaseOrderOptions}" SelectedItem="{Binding TestcaseOrder, Mode=TwoWay}" IsVisible="{Binding CanChooseOrder}" HorizontalAlignment="Stretch" />
+                  <TextBlock Text="Rows" FontSize="12" Foreground="#8EA4BC" />
+                  <ComboBox ItemsSource="{x:Static vm:DataEditorViewModel.RowsModeOptions}" SelectedItem="{Binding RowsMode, Mode=TwoWay}" HorizontalAlignment="Stretch" />
+                  <TextBlock Text="{Binding RunSummary}" TextWrapping="Wrap" FontSize="12" Foreground="#C9D8EA" />
+                  <Button Content="▶ Run" Classes="primary" Command="{Binding RunCommand}" HorizontalAlignment="Right" MinWidth="90" />
+                </StackPanel>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
           <ToggleButton Content="Preview request" IsChecked="{Binding PreviewVisible, Mode=TwoWay}" ToolTip.Tip="Show what a step sends for the selected row" MinHeight="36" />
           <Border Width="1" Background="#22364D" Margin="4,6" />
           <Button Content="Add step" Command="{Binding AddStepCommand}" IsVisible="{Binding ShowSteps}" MinHeight="36" />

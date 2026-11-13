@@ -109,7 +109,7 @@ public sealed partial class DataEditorViewModel
             var existing = Testcases.FirstOrDefault(t => t.Index == info.Index);
             if (existing is null)
             {
-                Testcases.Insert(Math.Min(position, Testcases.Count), new TestcaseItem(info, count));
+                Testcases.Insert(Math.Min(position, Testcases.Count), Track(new TestcaseItem(info, count)));
                 continue;
             }
             existing.UpdateSteps(info.Steps);

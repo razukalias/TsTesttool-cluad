@@ -48,6 +48,12 @@ public sealed partial class TestcaseItem : ObservableObject
 
     public bool HasResults => ResultText.Length > 0;
 
+    /// <summary>Ticked for "Chosen testcases" in the run options.</summary>
+    [ObservableProperty] private bool _isChosen;
+
+    partial void OnIsChosenChanged(bool value) => ChosenChanged?.Invoke(this, EventArgs.Empty);
+    internal event EventHandler? ChosenChanged;
+
     public void SetResults(int passed, int failed)
     {
         if (passed + failed == 0) { ResultText = string.Empty; return; }

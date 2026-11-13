@@ -60,15 +60,51 @@ public class PreviewAndRunTests
     {
         using var dir = new TempDir();
         var vm = Open(dir);
-        var calls = new List<(int Testcase, string Ids)>();
-        vm.RunHandler = (testcase, ids) => { calls.Add((testcase, string.Join(",", ids))); return Task.FromResult<string?>(null); };
+        var calls = new List<string>();
+        vm.RunHandler = r => { calls.Add($"{string.Join("+", r.Testcases)}|{string.Join(",", r.DataIds)}"); return Task.FromResult<string?>(null); };
 
         await vm.RunTestcaseCommand.ExecuteAsync(null);
         vm.SelectedRow = vm.VisibleRows[2];
         await vm.RunRowCommand.ExecuteAsync(null);
 
-        Assert.Equal([(1, ""), (1, "CUST003")], calls);
+        Assert.Equal(["1|", "1|CUST003"], calls);
         Assert.False(vm.StatusIsError);
+    }
+
+    [Fact]
+    public async Task Run_options_cover_chosen_testcases_and_the_whole_instance_with_their_modes()
+    {
+        using var dir = new TempDir();
+        var path = Samples.Copy(dir, Samples.IntegrationScenarios);
+        var vm = new DataEditorViewModel(path);
+        var requests = new List<RunRequest>();
+        vm.RunHandler = r => { requests.Add(r); return Task.FromResult<string?>(null); };
+
+        vm.RunScope = DataEditorViewModel.ScopeInstance;
+        vm.TestcaseOrder = DataEditorViewModel.TestcaseOrderOptions[1];
+        vm.RowsMode = "Sequential";
+        await vm.RunCommand.ExecuteAsync(null);
+
+        vm.RunScope = DataEditorViewModel.ScopeChosen;
+        await vm.RunCommand.ExecuteAsync(null);
+        Assert.Contains("Tick at least one", vm.StatusMessage);
+        vm.Testcases[1].IsChosen = true;
+        vm.Testcases[3].IsChosen = true;
+        Assert.Contains("2 chosen testcases, at the same time", vm.RunSummary);
+        await vm.RunCommand.ExecuteAsync(null);
+
+        vm.RunScope = DataEditorViewModel.ScopeTestcase;
+        vm.RowsMode = "Instance setting";
+        await vm.RunCommand.ExecuteAsync(null);
+
+        Assert.Equal(3, requests.Count);
+        Assert.Empty(requests[0].Testcases);
+        Assert.Equal("sequential", requests[0].RowsMode);
+        Assert.True(requests[0].TestcasesParallel);
+        Assert.Equal([2, 4], requests[1].Testcases);
+        Assert.Equal([1], requests[2].Testcases);
+        Assert.Null(requests[2].RowsMode);
+        Assert.Null(requests[2].TestcasesParallel);
     }
 
     [Fact]
@@ -77,7 +113,7 @@ public class PreviewAndRunTests
         using var dir = new TempDir();
         var vm = Open(dir);
         var started = 0;
-        vm.RunHandler = (_, _) => { started++; return Task.FromResult<string?>("Customers is already running; stop it first."); };
+        vm.RunHandler = _ => { started++; return Task.FromResult<string?>("Customers is already running; stop it first."); };
 
         vm.VisibleRows[0].Cells[vm.Columns.First(c => c.Title == "CreateCustomer.name").CellIndex] = "Edited";
         await vm.RunTestcaseCommand.ExecuteAsync(null);
@@ -102,7 +138,7 @@ public class PreviewWindowTests
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dir.Combine("Templates/create.json"))!);
         File.WriteAllText(dir.Combine("Templates/create.json"), "{\n  \"name\": \"_name_\",\n  \"email\": \"_email_\",\n  \"country\": \"_country_\"\n}");
         var window = DataEditorWindow.Open(path, "Customers");
-        window.Shell.RunHandler = (_, _, _) => Task.FromResult<string?>(null);
+        window.Shell.RunHandler = (_, _) => Task.FromResult<string?>(null);
         window.Width = 1440; window.Height = 860;
         window.Show();
         window.ViewModel.PreviewVisible = true;

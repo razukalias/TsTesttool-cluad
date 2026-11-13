@@ -1048,18 +1048,20 @@ public sealed partial class MainWindow : Window
 
 
     /// <summary>Runs one testcase (optionally only some data rows) of an instance on behalf of the data editor. Returns why it could not start, or null.</summary>
-    internal async Task<string?> RunFromEditorAsync(string instanceName, int testcaseIndex, IReadOnlyList<string> dataIds)
+    internal async Task<string?> RunFromEditorAsync(string instanceName, DataEditor.RunRequest request)
     {
         var item = _instances.FirstOrDefault(x => x.Name == instanceName);
         if (item is null) return $"Instance '{instanceName}' is no longer in the dashboard.";
         if (item.Process is { HasExited: false }) return $"{item.Name} is already running; stop it first.";
-        // The selection is passed on the command line for this run only, so the dashboard's own saved selection is untouched.
+        // The choices are passed on the command line for this run only, so the dashboard's own saved selection is untouched.
         var (testcases, steps, dataIdSelection) = (item.TestcaseSelection, item.StepSelectionJson, item.DataIdSelection);
-        var ids = dataIds.Count == 0 ? "" : $"{testcaseIndex}:{string.Join(',', dataIds)}";
-        List<(string, string)> overrides = [("--testcases", testcaseIndex.ToString(System.Globalization.CultureInfo.InvariantCulture)), ("--steps", "")];
-        if (ids.Length > 0) overrides.Add(("--dataids", ids));
-        else overrides.Add(("--dataids", "0"));
-        item.TestcaseSelection = testcaseIndex.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var selection = request.Testcases.Count == 0 ? "0" : string.Join(',', request.Testcases.Select(i => i.ToString(inv)));
+        var ids = request.DataIds.Count == 0 || request.Testcases.Count != 1 ? "" : $"{request.Testcases[0]}:{string.Join(',', request.DataIds)}";
+        List<(string, string)> overrides = [("--testcases", selection), ("--steps", ""), ("--dataids", ids.Length > 0 ? ids : "0")];
+        if (request.RowsMode is { } mode) overrides.Add(("--rows-execution-mode", mode));
+        if (request.TestcasesParallel is { } parallel) overrides.Add(("--scenarios-parallel", parallel ? "true" : "false"));
+        item.TestcaseSelection = selection;
         item.StepSelectionJson = "";
         item.DataIdSelection = ids;
         try { await LaunchAsync(item, promptForMissingSelection: false, overrides); }

@@ -100,7 +100,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         {
             Testcases.Clear();
             foreach (var info in _document.GetTestcases())
-                Testcases.Add(new TestcaseItem(info, _document.GetDataIds(info.Index).Count));
+                Testcases.Add(Track(new TestcaseItem(info, _document.GetDataIds(info.Index).Count)));
             SelectedTestcase = Testcases.FirstOrDefault(t => t.Index == keepIndex) ?? Testcases.FirstOrDefault();
         }
         finally { _loading = false; }

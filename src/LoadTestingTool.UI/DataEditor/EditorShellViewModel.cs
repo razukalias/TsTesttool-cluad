@@ -163,13 +163,13 @@ public sealed partial class EditorShellViewModel : ObservableObject
         return true;
     }
 
-    /// <summary>Starts a run of one instance: its name, the testcase index and the data IDs (empty = every row).</summary>
-    public Func<string, int, IReadOnlyList<string>, Task<string?>>? RunHandler { get; set; }
+    /// <summary>Starts a run of one instance: its name and what to run.</summary>
+    public Func<string, RunRequest, Task<string?>>? RunHandler { get; set; }
 
     private void Wire(InstanceNode node)
     {
         node.Editor!.CloseRequested += (_, _) => OnEditorClosed();
-        node.Editor.RunHandler = (testcase, ids) => RunHandler is { } run ? run(node.Name, testcase, ids) : Task.FromResult<string?>("Running is not available here.");
+        node.Editor.RunHandler = request => RunHandler is { } run ? run(node.Name, request) : Task.FromResult<string?>("Running is not available here.");
     }
 
     /// <summary>Reads one instance's workbook and its latest results off the UI thread. Does nothing if it is already loaded or failed.</summary>
