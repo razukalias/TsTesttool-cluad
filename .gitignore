@@ -18,8 +18,10 @@ Logs/
 !/Instances/*/*.xlsx
 !/samples/**/*.xlsx
 
-# Excel lock/temp files stay ignored everywhere
+# Excel lock/temp files and the editor's automatic backups stay ignored everywhere
 ~$*
+*.backup.*.xlsx
+*.xlsx.tmp-*
 
 # Local IDE/user files
 .vs/
