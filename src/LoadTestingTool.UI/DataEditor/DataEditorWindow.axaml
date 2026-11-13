@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:LoadTestingTool.UI.DataEditor"
         x:Class="LoadTestingTool.UI.DataEditor.DataEditorWindow"
-        x:DataType="vm:DataEditorViewModel"
+        x:DataType="vm:EditorShellViewModel"
         Title="Data editor"
         Width="1360" Height="860" MinWidth="1000" MinHeight="600"
         WindowStartupLocation="CenterOwner"
@@ -22,6 +22,10 @@
     <Style Selector="DataGridCell">
       <Setter Property="FontSize" Value="13" />
     </Style>
+    <Style Selector="TreeViewItem">
+      <Setter Property="IsExpanded" Value="True" />
+      <Setter Property="Padding" Value="4,2" />
+    </Style>
     <Style Selector="ListBoxItem">
       <Setter Property="Padding" Value="12,8" />
       <Setter Property="CornerRadius" Value="8" />
@@ -40,14 +44,42 @@
     </Style>
   </Window.Styles>
 
-  <Grid RowDefinitions="Auto,Auto,*,Auto">
+  <Grid ColumnDefinitions="300,*">
+
+    <!-- Instances as parents, their testcases as children -->
+    <Border Grid.Column="0" Background="#0C1828" BorderBrush="#22364D" BorderThickness="0,0,1,0" Padding="12,16">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Classes="caption" Text="INSTANCES" Margin="6,0,0,10" />
+        <TreeView ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
+          <TreeView.DataTemplates>
+            <TreeDataTemplate DataType="vm:InstanceNode" ItemsSource="{Binding Testcases}">
+              <Grid ColumnDefinitions="Auto,*" Margin="0,4">
+                <Ellipse Grid.Column="0" Width="8" Height="8" Margin="0,0,8,0" Fill="{Binding DirtyColor}" IsVisible="{Binding IsDirty}" />
+                <StackPanel Grid.Column="1" Spacing="1">
+                  <TextBlock Text="{Binding Name}" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Subtitle}" FontSize="11" Foreground="#8EA4BC" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+              </Grid>
+            </TreeDataTemplate>
+            <DataTemplate DataType="vm:TestcaseItem">
+              <StackPanel Spacing="1" Margin="0,3">
+                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding Summary}" FontSize="11" Foreground="#8EA4BC" />
+              </StackPanel>
+            </DataTemplate>
+          </TreeView.DataTemplates>
+        </TreeView>
+      </DockPanel>
+    </Border>
+
+  <Grid Grid.Column="1" DataContext="{Binding Current}" x:DataType="vm:DataEditorViewModel" RowDefinitions="Auto,Auto,*,Auto">
 
     <!-- Title bar: what is open, whether it is saved, and the main actions -->
     <Border Grid.Row="0" Background="#0F1C2E" BorderBrush="#22364D" BorderThickness="0,0,0,1" Padding="20,14">
       <Grid ColumnDefinitions="*,Auto,Auto">
         <StackPanel Spacing="2" VerticalAlignment="Center">
           <TextBlock Text="{Binding InstanceName}" FontSize="12" Foreground="#8EA4BC" />
-          <TextBlock Text="Data editor" FontSize="20" FontWeight="Bold" />
+          <TextBlock Text="{Binding SelectedTestcase.Title, FallbackValue=Data editor}" FontSize="20" FontWeight="Bold" />
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,24,0">
           <Ellipse Width="9" Height="9" Fill="{Binding SaveStatusColor}" VerticalAlignment="Center" />
@@ -95,25 +127,9 @@
     </StackPanel>
 
     <!-- Testcases | data grid | problems -->
-    <Grid Grid.Row="2" ColumnDefinitions="260,*,330" Margin="16,16,16,8">
+    <Grid Grid.Row="2" ColumnDefinitions="*,330" Margin="16,16,16,8">
 
-      <Border Classes="panel" Grid.Column="0" Padding="12">
-        <DockPanel>
-          <TextBlock DockPanel.Dock="Top" Classes="caption" Text="TESTCASES" Margin="4,0,0,8" />
-          <ListBox ItemsSource="{Binding Testcases}" SelectedItem="{Binding SelectedTestcase, Mode=TwoWay}" Background="Transparent">
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="vm:TestcaseItem">
-                <StackPanel Spacing="2">
-                  <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                  <TextBlock Text="{Binding Summary}" FontSize="11.5" Foreground="#8EA4BC" />
-                </StackPanel>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-        </DockPanel>
-      </Border>
-
-      <Grid Grid.Column="1" RowDefinitions="Auto,*" Margin="12,0">
+      <Grid Grid.Column="0" RowDefinitions="Auto,*" Margin="0,0,12,0">
         <Grid Grid.Row="0" ColumnDefinitions="260,Auto,*,Auto" Margin="0,0,0,10">
           <TextBox Grid.Column="0" Text="{Binding FilterText, Mode=TwoWay}" Watermark="Filter rows" MinHeight="36" />
           <CheckBox Grid.Column="1" Content="Show every column" IsChecked="{Binding ShowAllColumns, Mode=TwoWay}" Margin="16,0,0,0" VerticalAlignment="Center" />
@@ -139,7 +155,7 @@
         </Border>
       </Grid>
 
-      <Border Classes="panel" Grid.Column="2" Padding="14">
+      <Border Classes="panel" Grid.Column="1" Padding="14">
         <DockPanel>
           <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,10">
             <TextBlock Classes="caption" Text="PROBLEMS" />
@@ -179,5 +195,6 @@
         <TextBlock Grid.Column="1" Text="{Binding FileName}" Foreground="#8EA4BC" FontSize="12" Margin="16,0,0,0" />
       </Grid>
     </Border>
+  </Grid>
   </Grid>
 </Window>

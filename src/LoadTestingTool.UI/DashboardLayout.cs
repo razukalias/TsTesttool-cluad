@@ -969,12 +969,12 @@ public sealed partial class MainWindow
         if (_selectedInstance is null) { _details.Text = "Select an instance first."; return; }
         try
         {
-            var editor = DataEditor.DataEditorWindow.Open(_selectedInstance.WorkbookPath, _selectedInstance.Name);
+            var editor = DataEditor.DataEditorWindow.Open(_instances.Select(x => (x.Name, x.WorkbookPath)), _selectedInstance.WorkbookPath);
             editor.Closed += (_, _) =>
             {
-                if (string.IsNullOrWhiteSpace(editor.ViewModel.LastBackupPath)) return;
+                if (string.IsNullOrWhiteSpace(editor.Shell.LastBackupPath)) return;
                 RefreshInstances();
-                _details.Text = $"Workbook saved. Backup created: {Path.GetFileName(editor.ViewModel.LastBackupPath)}";
+                _details.Text = $"Workbook saved. Backup created: {Path.GetFileName(editor.Shell.LastBackupPath)}";
             };
             editor.Show(this);
         }

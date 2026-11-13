@@ -3,42 +3,66 @@ using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Threading;
 
 namespace LoadTestingTool.UI.DataEditor;
 
 public partial class DataEditorWindow : Window
 {
-    private DataEditorViewModel _viewModel = null!;
+    private EditorShellViewModel _shell = null!;
+    private DataEditorViewModel? _subscribed;
     private bool _forceClose;
 
     /// <summary>Needed by the XAML loader and designer; the editor is always opened with a view-model.</summary>
     public DataEditorWindow() => InitializeComponent();
 
-    public DataEditorWindow(DataEditorViewModel viewModel) : this()
+    public DataEditorWindow(EditorShellViewModel shell) : this()
     {
-        _viewModel = viewModel;
-        DataContext = viewModel;
-        Title = $"Data editor — {viewModel.FileName}";
-        viewModel.ColumnsChanged += (_, _) => RebuildColumns();
-        viewModel.CloseRequested += (_, _) =>
+        _shell = shell;
+        DataContext = shell;
+        shell.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(EditorShellViewModel.Current)) AttachCurrent();
+        };
+        shell.CloseRequested += (_, _) =>
         {
             _forceClose = true;
             Close();
         };
+        AttachCurrent();
+    }
+
+    public EditorShellViewModel Shell => _shell;
+
+    /// <summary>The editor of the instance currently shown.</summary>
+    public DataEditorViewModel ViewModel => _shell.Current ?? throw new InvalidOperationException("No instance is open.");
+
+    /// <summary>Opens a single workbook.</summary>
+    public static DataEditorWindow Open(string workbookPath, string? instanceName = null)
+        => Open([(instanceName ?? System.IO.Path.GetFileNameWithoutExtension(workbookPath), workbookPath)], workbookPath);
+
+    /// <summary>Opens every instance as a parent node with its testcases beneath it, starting on <paramref name="selectedPath"/>.</summary>
+    public static DataEditorWindow Open(IEnumerable<(string Name, string Path)> instances, string? selectedPath = null)
+        => new(new EditorShellViewModel(instances, selectedPath));
+
+    private void AttachCurrent()
+    {
+        if (_subscribed is not null) _subscribed.ColumnsChanged -= OnColumnsChanged;
+        _subscribed = _shell.Current;
+        if (_subscribed is null) return;
+        Title = $"Data editor — {_subscribed.InstanceName}";
+        _subscribed.ColumnsChanged += OnColumnsChanged;
         RebuildColumns();
     }
 
-    public DataEditorViewModel ViewModel => _viewModel;
-
-    public static DataEditorWindow Open(string workbookPath, string? instanceName = null)
-        => new(new DataEditorViewModel(workbookPath, instanceName));
+    private void OnColumnsChanged(object? sender, EventArgs e) => RebuildColumns();
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         base.OnClosing(e);
         if (_forceClose) return;
         CommitPendingEdit();
-        if (!_viewModel.RequestClose()) e.Cancel = true;
+        if (!_shell.RequestClose()) e.Cancel = true;
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -56,7 +80,7 @@ public partial class DataEditorWindow : Window
     private void Save()
     {
         CommitPendingEdit();
-        _viewModel.SaveCommand.Execute(null);
+        _shell.Current?.SaveCommand.Execute(null);
     }
 
     /// <summary>A cell still being typed in has not reached the workbook yet; finish it first.</summary>
@@ -65,10 +89,17 @@ public partial class DataEditorWindow : Window
     private void RebuildColumns()
     {
         var grid = this.FindControl<DataGrid>("Grid");
-        if (grid is null) return;
+        var editor = _shell?.Current;
+        if (grid is null || editor is null) return;
         grid.Columns.Clear();
         grid.Columns.Add(CreateColumn(new GridColumn("Data ID", ColumnGroup.Id, 0, -1)));
-        foreach (var column in _viewModel.Columns) grid.Columns.Add(CreateColumn(column));
+        foreach (var column in editor.Columns) grid.Columns.Add(CreateColumn(column));
+        // The grid drops its selection while columns are rebuilt; keep the first row selected so Duplicate/Remove work.
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (editor.SelectedRow is null && editor.VisibleRows.Count > 0) editor.SelectedRow = editor.VisibleRows[0];
+            if (editor.SelectedRow is not null && !ReferenceEquals(grid.SelectedItem, editor.SelectedRow)) grid.SelectedItem = editor.SelectedRow;
+        });
     }
 
     private static DataGridTextColumn CreateColumn(GridColumn column) => new()
