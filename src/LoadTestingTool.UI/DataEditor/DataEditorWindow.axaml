@@ -106,10 +106,12 @@
           <Ellipse Width="9" Height="9" Fill="{Binding SaveStatusColor}" VerticalAlignment="Center" />
           <TextBlock Text="{Binding SaveStatusText}" Foreground="{Binding SaveStatusColor}" FontWeight="SemiBold" VerticalAlignment="Center" />
         </StackPanel>
-        <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+        <WrapPanel Grid.Row="1" Grid.ColumnSpan="3" Classes="form" Margin="0,12,0,0">
           <Button Content="New testcase…" Command="{Binding NewTestcaseCommand}" IsEnabled="{Binding CanCreateTestcase}" ToolTip.Tip="Create a testcase with a first step (save first)" MinHeight="36" />
           <Border Width="1" Background="#22364D" Margin="4,6" />
           <Button Content="Add row" Command="{Binding AddRowCommand}" IsVisible="{Binding ShowData}" MinHeight="36" />
+          <Button Content="Insert above" Command="{Binding InsertRowAboveCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding SelectedRow, Converter={x:Static ObjectConverters.IsNotNull}}" ToolTip.Tip="Insert a real row above the selected one in the request and response sheets; &lt;From_…_N&gt; references are renumbered on save" MinHeight="36" />
+          <Button Content="Insert below" Command="{Binding InsertRowBelowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding SelectedRow, Converter={x:Static ObjectConverters.IsNotNull}}" ToolTip.Tip="Insert a real row below the selected one in the request and response sheets" MinHeight="36" />
           <Button Content="Duplicate" Command="{Binding DuplicateRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding SelectedRow, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
           <Button Content="Remove" Classes="danger" Command="{Binding RemoveRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding SelectedRow, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
           <Button Content="Run row" Command="{Binding RunRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding CanRun}" ToolTip.Tip="Run only the selected data row (save first)" MinHeight="36" />
@@ -146,7 +148,7 @@
           <Border Width="1" Background="#22364D" Margin="4,6" />
           <Button Content="Reload" Command="{Binding ReloadCommand}" MinHeight="36" />
           <Button Content="Save" Classes="primary" Click="OnSaveClick" MinHeight="36" MinWidth="76" />
-        </StackPanel>
+        </WrapPanel>
       </Grid>
     </Border>
 

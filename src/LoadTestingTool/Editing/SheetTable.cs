@@ -67,6 +67,47 @@ public sealed class SheetTable
         return row;
     }
 
+    /// <summary>
+    /// Adds an empty row immediately above <paramref name="neighbor"/>. On save the sheet row is really inserted there
+    /// (rows below move down and references to them are renumbered); above a row that is itself new, it just joins the appended rows in order.
+    /// </summary>
+    public TableRow InsertRowBefore(TableRow neighbor)
+    {
+        var index = _rows.IndexOf(neighbor);
+        if (index < 0) throw new ArgumentException("That row is not in this sheet.", nameof(neighbor));
+        var row = new TableRow(this, null, new string[_columns.Count], isNew: true) { InsertBeforeRow = neighbor.SourceRow ?? neighbor.InsertBeforeRow };
+        _rows.Insert(index, row);
+        return row;
+    }
+
+    /// <summary>Moves a row (new or inserted) to sit immediately above another row; positions are decided at save time.</summary>
+    internal void MoveRowBefore(TableRow row, TableRow neighbor)
+    {
+        _rows.Remove(row);
+        var index = _rows.IndexOf(neighbor);
+        _rows.Insert(index, row);
+        row.InsertBeforeRow = neighbor.SourceRow ?? neighbor.InsertBeforeRow;
+    }
+
+    internal List<(int Before, TableRow Row)> PendingInserts()
+        => _rows.Where(r => r.SourceRow is null && r.InsertBeforeRow is not null && !r.IsBlank).Select(r => (r.InsertBeforeRow!.Value, r)).OrderBy(x => x.Item1).ToList();
+
+    /// <summary>Writes rows that were inserted (see <see cref="PendingInserts"/>) into the freshly opened gaps of the sheet.</summary>
+    internal void WriteInsertedRows(IXLWorksheet sheet, List<(int Before, TableRow Row)> inserts, Func<string, string> renumber)
+    {
+        for (var k = 0; k < inserts.Count; k++)
+        {
+            var (before, row) = inserts[k];
+            var target = before + k; // the k earlier inserts at or above this position pushed it down
+            row.PendingSourceRow = target;
+            for (var i = 0; i < _columns.Count; i++)
+            {
+                var value = row.GetAt(i);
+                if (value.Length > 0) WriteCell(sheet.Cell(target, _columns[i].PendingSourceColumn!.Value), renumber(value), _columns[i].Header);
+            }
+        }
+    }
+
     /// <summary>Removes a row. On save its sheet row is cleared, not deleted, so rows below keep their numbers.</summary>
     public bool RemoveRow(TableRow row)
     {
@@ -135,6 +176,7 @@ public sealed class SheetTable
         foreach (var row in _rows)
         {
             row.PendingSourceRow = null;
+            if (row.SourceRow is null && row.InsertBeforeRow is not null && !row.IsBlank) continue; // written by RowInsertion
             int target;
             if (row.SourceRow is int existing)
             {
@@ -250,6 +292,9 @@ public sealed class TableRow
     public int? SourceRow { get; private set; }
 
     internal int? PendingSourceRow { get; set; }
+
+    /// <summary>For a row inserted above an existing sheet row: that row's number when the table was loaded or last saved.</summary>
+    internal int? InsertBeforeRow { get; set; }
 
     /// <summary>Gets a cell by header; setting it adds the column when the sheet does not have it yet.</summary>
     public string this[string header]

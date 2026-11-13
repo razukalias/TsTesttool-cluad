@@ -86,6 +86,42 @@ public sealed class WorkbookDocument
         return (request, response);
     }
 
+    /// <summary>
+    /// Like <see cref="AddDataRow(int, string)"/>, but the new rows go directly above the rows of <paramref name="beforeDataId"/>
+    /// in both sheets instead of at the end. Saving then inserts real sheet rows and renumbers every <c>&lt;From_…_N&gt;</c> reference.
+    /// </summary>
+    public (TableRow Request, TableRow Response) InsertDataRowBefore(int testcaseIndex, string dataId, string beforeDataId)
+    {
+        EnsureRowsCanMove();
+        var requestNeighbor = FindRow(Request, testcaseIndex, beforeDataId) ?? throw new InvalidOperationException($"Testcase {testcaseIndex} has no request row '{beforeDataId}'.");
+        var responseNeighbor = FindRow(Response, testcaseIndex, beforeDataId);
+        var (request, response) = AddDataRow(testcaseIndex, dataId);
+        // AddDataRow appended both; move them next to their neighbours.
+        Request.MoveRowBefore(request, requestNeighbor);
+        if (responseNeighbor is not null) Response.MoveRowBefore(response, responseNeighbor);
+        return (request, response);
+    }
+
+    /// <summary>Every cell in the workbook that refers to a sheet row by number (&lt;From_sheet_header_N&gt;), read from the last saved file.</summary>
+    public IReadOnlyList<RowReference> FindRowReferences()
+    {
+        using var stream = new MemoryStream(_baselineBytes, writable: false);
+        using var workbook = new XLWorkbook(stream);
+        return RowInsertion.Scan(workbook);
+    }
+
+    /// <summary>
+    /// Rows can only move safely when a row's testcase index comes from its cell: the runner falls back to the sheet row
+    /// number for a blank or non-numeric one, which an insert would silently change.
+    /// </summary>
+    private void EnsureRowsCanMove()
+    {
+        foreach (var table in new[] { Request, Response })
+            foreach (var row in table.Rows.Where(r => !r.IsBlank))
+                if (RowIndex(row) is null)
+                    throw new InvalidOperationException($"Cannot insert rows: {table.SheetName} row {row.SourceRow?.ToString() ?? "(new)"} has no numeric testcaseindex, so the runner would use its row number as the index. Give it one first.");
+    }
+
     /// <summary>Removes a data row from both the request and response sheets. Returns false when neither had it.</summary>
     public bool RemoveDataRow(int testcaseIndex, string dataId)
     {
@@ -146,6 +182,13 @@ public sealed class WorkbookDocument
         Config.ApplyTo(workbook.Worksheet(Config.SheetName));
         Request.ApplyTo(workbook.Worksheet(Request.SheetName));
         Response.ApplyTo(workbook.Worksheet(Response.SheetName));
+        var inserted = Request.PendingInserts().Count + Response.PendingInserts().Count;
+        var renumbered = 0;
+        if (inserted > 0)
+        {
+            EnsureRowsCanMove();
+            renumbered = RowInsertion.Apply(workbook, [Request, Response]);
+        }
 
         var directory = Path.GetDirectoryName(FilePath)!;
         var temp = Path.Combine(directory, $"{Path.GetFileName(FilePath)}.tmp-{Guid.NewGuid():N}");
@@ -173,7 +216,7 @@ public sealed class WorkbookDocument
         Config.AcceptChanges();
         Request.AcceptChanges();
         Response.AcceptChanges();
-        return new SaveResult(true, backup);
+        return new SaveResult(true, backup, inserted, renumbered);
     }
 
     /// <summary>The testcase index the runner uses for a row: its cell value, or its sheet row number when that is not a number.</summary>

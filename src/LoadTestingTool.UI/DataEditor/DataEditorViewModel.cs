@@ -393,14 +393,18 @@ public sealed partial class DataEditorViewModel : ObservableObject
     {
         try
         {
+            var keepRow = SelectedRow?.Cells[0];
             var result = _document.Save(options);
-            if (result.Saved) ClearUndoHistory();
+            if (result.Saved) { ClearUndoHistory(); _referenceScan = null; }
+            if (result.RowsInserted > 0) ReloadAfterRowsMoved(keepRow);
             ConflictVisible = false;
             IsDirty = _document.IsDirty;
             if (result.BackupPath is not null) LastBackupPath = result.BackupPath;
             Revalidate();
+            var moved = result.RowsInserted == 0 ? string.Empty
+                : $" Inserted {result.RowsInserted / 2} {(result.RowsInserted / 2 == 1 ? "row" : "rows")} in the request and response sheets and renumbered {result.ReferencesRenumbered} {(result.ReferencesRenumbered == 1 ? "reference" : "references")}.";
             ShowStatus(result.Saved
-                ? $"Saved {FileName}.{(result.BackupPath is null ? string.Empty : $" Backup: {Path.GetFileName(result.BackupPath)}")}"
+                ? $"Saved {FileName}.{moved}{(result.BackupPath is null ? string.Empty : $" Backup: {Path.GetFileName(result.BackupPath)}")}"
                 : "Nothing to save.", isError: false);
             return true;
         }
@@ -408,6 +412,10 @@ public sealed partial class DataEditorViewModel : ObservableObject
         {
             ConflictVisible = true;
             ShowStatus($"{FileName} changed on disk (for example in Excel) after you opened it.", isError: true);
+        }
+        catch (InvalidOperationException ex)
+        {
+            ShowStatus($"Not saved: {ex.Message}", isError: true);
         }
         catch (IOException ex)
         {
@@ -421,6 +429,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
     {
         var keep = SelectedTestcase?.Index;
         _document = WorkbookDocument.Load(WorkbookPath);
+        _referenceScan = null;
         ClearUndoHistory();
         ConflictVisible = false;
         ClosePromptVisible = false;
