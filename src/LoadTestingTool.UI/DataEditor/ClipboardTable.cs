@@ -5,7 +5,7 @@ namespace LoadTestingTool.UI.DataEditor;
 /// <summary>Reads and writes the tab-separated text Excel puts on the clipboard (quoted cells may contain tabs, quotes and line breaks).</summary>
 public static class ClipboardTable
 {
-    public static string[][] Parse(string text)
+    public static string[][] Parse(string text, char delimiter = '\t')
     {
         var rows = new List<string[]>();
         var row = new List<string>();
@@ -29,7 +29,7 @@ public static class ClipboardTable
             switch (c)
             {
                 case '"' when atCellStart: inQuotes = true; atCellStart = false; break;
-                case '\t': EndCell(); break;
+                case var d when d == delimiter: EndCell(); break;
                 case '\r': if (i + 1 < text.Length && text[i + 1] == '\n') i++; EndRow(); break;
                 case '\n': EndRow(); break;
                 default: cell.Append(c); atCellStart = false; break;
@@ -39,9 +39,9 @@ public static class ClipboardTable
         return [.. rows];
     }
 
-    public static string Format(IEnumerable<IEnumerable<string>> rows)
-        => string.Join("\r\n", rows.Select(r => string.Join('\t', r.Select(Quote))));
+    public static string Format(IEnumerable<IEnumerable<string>> rows, char delimiter = '\t')
+        => string.Join("\r\n", rows.Select(r => string.Join(delimiter, r.Select(v => Quote(v, delimiter)))));
 
-    private static string Quote(string value)
-        => value.IndexOfAny(['\t', '\n', '\r', '"']) >= 0 ? "\"" + value.Replace("\"", "\"\"") + "\"" : value;
+    private static string Quote(string value, char delimiter)
+        => value.IndexOfAny([delimiter, '\n', '\r', '"']) >= 0 ? "\"" + value.Replace("\"", "\"\"") + "\"" : value;
 }

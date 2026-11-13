@@ -73,6 +73,7 @@ public partial class DataEditorWindow : Window
             _subscribed.StepColumnsChanged -= OnStepColumnsChanged;
             _subscribed.PropertyChanged -= OnEditorPropertyChanged;
             _subscribed.RevealColumnRequested -= OnRevealColumn;
+            _subscribed.CsvFileRequested -= OnCsvFileRequested;
         }
         _subscribed = _shell.Current;
         if (_subscribed is null) return;
@@ -81,11 +82,50 @@ public partial class DataEditorWindow : Window
         _subscribed.StepColumnsChanged += OnStepColumnsChanged;
         _subscribed.PropertyChanged += OnEditorPropertyChanged;
         _subscribed.RevealColumnRequested += OnRevealColumn;
+        _subscribed.CsvFileRequested += OnCsvFileRequested;
         RebuildColumns();
         RebuildStepColumns();
     }
 
     private void OnColumnsChanged(object? sender, EventArgs e) => RebuildColumns();
+
+    private async void OnCsvFileRequested(object? sender, bool import)
+    {
+        if (sender is not DataEditorViewModel editor || StorageProvider is null) return;
+        try
+        {
+            var csv = new Avalonia.Platform.Storage.FilePickerFileType("CSV files") { Patterns = ["*.csv", "*.txt"] };
+            if (import)
+            {
+                var files = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions { Title = "Import CSV into " + editor.SelectedTestcase?.Name, FileTypeFilter = [csv], AllowMultiple = false });
+                if (files.Count == 0) return;
+                await using var stream = await files[0].OpenReadAsync();
+                using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true);
+                CommitPendingEdit();
+                editor.ImportCsv(await reader.ReadToEndAsync());
+            }
+            else
+            {
+                var file = await StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
+                {
+                    Title = "Export rows to CSV",
+                    SuggestedFileName = DataEditorViewModel.CsvFileName(editor.InstanceName, editor.SelectedTestcase?.Name ?? "testcase"),
+                    DefaultExtension = "csv",
+                    FileTypeChoices = [csv],
+                });
+                if (file is null) return;
+                CommitPendingEdit();
+                await using var stream = await file.OpenWriteAsync();
+                await using var writer = new StreamWriter(stream, DataEditorViewModel.CsvEncoding);
+                await writer.WriteAsync(editor.BuildCsv());
+                editor.ReportStatus($"Exported {editor.SelectedTestcase?.RowCount} rows to {file.Name}.");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            editor.ReportStatus("CSV failed: " + ex.Message, isError: true);
+        }
+    }
 
     /// <summary>A grid that was hidden forgets its selection; restore it when its tab is shown again.</summary>
     private void OnEditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

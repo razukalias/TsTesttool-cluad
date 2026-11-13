@@ -173,6 +173,25 @@ public class ResultsTests
     }
 
     [Fact]
+    public void Selecting_a_failure_opens_the_preview_on_its_step_for_that_row()
+    {
+        using var dir = new TempDir();
+        var path = LargeWithRun(dir);
+        Directory.CreateDirectory(Path.GetDirectoryName(dir.Combine("Templates/create.json"))!);
+        File.WriteAllText(dir.Combine("Templates/create.json"), "{ \"name\": \"_name_\" }");
+        var vm = new DataEditorViewModel(path);
+        vm.ApplyResults(RunResultsReader.ReadLatest(vm.ResultsFolder));
+        vm.SelectedRow = vm.VisibleRows[1]; // CUST002
+        Assert.False(vm.PreviewVisible);
+
+        vm.SelectedFailure = vm.RowFailures[0];
+
+        Assert.True(vm.PreviewVisible);
+        Assert.Equal("CreateCustomer", vm.PreviewStepName);
+        Assert.Contains("Customer 2", vm.Preview!.Body);
+    }
+
+    [Fact]
     public void Selecting_a_failed_row_lists_its_failures_and_selecting_one_reveals_its_column()
     {
         using var dir = new TempDir();

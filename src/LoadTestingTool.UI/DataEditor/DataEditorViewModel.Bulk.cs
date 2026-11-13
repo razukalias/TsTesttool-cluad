@@ -76,9 +76,9 @@ public sealed partial class DataEditorViewModel
         FinishBulk(changed, $"Pasted {changed} {(changed == 1 ? "cell" : "cells")}", skippedCells, skippedLines);
     }
 
-    private void AddPastedRow(TestcaseItem testcase)
+    private void AddPastedRow(TestcaseItem testcase, string? dataId = null)
     {
-        var (request, response) = _document.AddDataRow(testcase.Index, NextDataId(testcase));
+        var (request, response) = _document.AddDataRow(testcase.Index, string.IsNullOrWhiteSpace(dataId) ? NextDataId(testcase) : dataId);
         var row = new DataRowViewModel(testcase.Index, request, response, Columns, OnCellEdited);
         _allRows.Add(row);
         VisibleRows.Add(row);

@@ -84,7 +84,14 @@ public sealed partial class DataEditorViewModel
 
     partial void OnSelectedFailureChanged(FailureViewModel? value)
     {
-        if (value is null || value.CellIndex < 1) return;
+        if (value is null) return;
+        // Show the request that was sent for the failing step, so the cause can be read next to the failure.
+        if (PreviewStepNames.FirstOrDefault(n => string.Equals(n, value.Detail.StepName, StringComparison.OrdinalIgnoreCase)) is { } step)
+        {
+            PreviewStepName = step;
+            PreviewVisible = true;
+        }
+        if (value.CellIndex < 1) return;
         CurrentCellIndex = value.CellIndex;
         RevealColumnRequested?.Invoke(this, value.CellIndex);
     }
