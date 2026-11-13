@@ -27,7 +27,7 @@ public sealed partial class DataEditorViewModel
     private void ClearRowFilters()
     {
         _clearingFilters = true;
-        try { FilterText = string.Empty; RowNumberFilter = string.Empty; }
+        try { FilterText = string.Empty; RowNumberFilter = string.Empty; ColumnFilters.Clear(); OnPropertyChanged(nameof(ColumnFilterSummary)); }
         finally { _clearingFilters = false; }
         if (!_loading) ApplyFilter();
     }

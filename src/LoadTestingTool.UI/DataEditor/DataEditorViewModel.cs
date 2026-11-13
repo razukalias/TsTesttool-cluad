@@ -69,7 +69,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
     public string SaveStatusColor => IsDirty ? "#F6C76B" : "#39D39B";
     public bool HasNoProblems => ErrorCount == 0 && WarningCount == 0;
     public string ProblemSummary => HasNoProblems ? "No problems" : $"{ErrorCount} {(ErrorCount == 1 ? "error" : "errors")}, {WarningCount} {(WarningCount == 1 ? "warning" : "warnings")}";
-    public string RowCountText => FilterText.Length == 0 && RowNumberFilter.Trim().Length == 0 && !ShowFailedOnly ? $"{VisibleRows.Count} {(VisibleRows.Count == 1 ? "row" : "rows")}" : $"{VisibleRows.Count} of {_allRows.Count} rows";
+    public string RowCountText => FilterText.Length == 0 && RowNumberFilter.Trim().Length == 0 && ColumnFilters.Count == 0 && !ShowFailedOnly ? $"{VisibleRows.Count} {(VisibleRows.Count == 1 ? "row" : "rows")}" : $"{VisibleRows.Count} of {_allRows.Count} rows";
 
     // ---- Selection and filtering ---------------------------------------------------------
 
@@ -188,6 +188,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         Columns = BuildColumns(testcase, pairs);
         foreach (var pair in pairs) _allRows.Add(new DataRowViewModel(testcase.Index, pair.Request, pair.Response, Columns, OnCellEdited));
         AssignOutcomes();
+        RefreshFilterColumns();
         ColumnsChanged?.Invoke(this, EventArgs.Empty);
         ApplyFilter();
         SelectedRow = VisibleRows.FirstOrDefault();
@@ -205,6 +206,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             var row = _allRows[n];
             if (numbers.Count > 0 && !numbers.Contains(n + 1)) continue;
             if (ShowFailedOnly && row.Outcome is not { Passed: false }) continue;
+            if (!PassesColumnFilters(row)) continue;
             if (text.Length == 0 || row.Cells.Any(c => c.Contains(text, StringComparison.OrdinalIgnoreCase)))
                 VisibleRows.Add(row);
         }

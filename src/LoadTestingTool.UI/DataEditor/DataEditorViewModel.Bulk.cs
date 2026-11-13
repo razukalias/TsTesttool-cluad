@@ -54,7 +54,7 @@ public sealed partial class DataEditorViewModel
         var missing = startRow + block.Length - VisibleRows.Count;
         if (missing > 0)
         {
-            if (FilterText.Trim().Length > 0) skippedLines = missing;
+            if (FilterText.Trim().Length > 0 || RowNumberFilter.Trim().Length > 0 || ColumnFilters.Count > 0) skippedLines = missing;
             else for (var i = 0; i < missing; i++) AddPastedRow(testcase);
         }
 

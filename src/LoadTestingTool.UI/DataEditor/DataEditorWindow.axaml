@@ -219,12 +219,38 @@
             <CheckBox Content="Show every column" IsChecked="{Binding ShowAllColumns, Mode=TwoWay}" />
             <CheckBox Content="Failed rows only" IsChecked="{Binding ShowFailedOnly, Mode=TwoWay}" IsEnabled="{Binding HasResults}" />
           </StackPanel>
+          <Button Content="{Binding ColumnFilterSummary}" Command="{Binding ToggleColumnFiltersCommand}" Margin="0,0,8,8" MinHeight="36" ToolTip.Tip="Only show rows where a column has a value, like an Excel filter" />
           <Button Content="Find &amp; replace" Command="{Binding OpenFindCommand}" Margin="0,0,8,8" MinHeight="36" />
           <Button Content="Add column" Command="{Binding OpenAddColumnCommand}" Margin="0,0,8,8" MinHeight="36" />
           <Button Content="Rename / remove column" Command="{Binding OpenEditColumnCommand}" ToolTip.Tip="Acts on the column whose cell you last clicked" Margin="0,0,8,8" MinHeight="36" />
           <Button Content="Import CSV…" Command="{Binding ImportCsvFileCommand}" Margin="0,0,8,8" MinHeight="36" />
           <Button Content="Export CSV…" Command="{Binding ExportCsvFileCommand}" Margin="0,0,8,8" MinHeight="36" />
         </WrapPanel>
+        <Border IsVisible="{Binding ColumnFiltersVisible}" Classes="panel" Padding="14,12">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="caption" Text="COLUMN FILTERS · ROWS MUST MATCH ALL" />
+            <WrapPanel Classes="form">
+              <ComboBox ItemsSource="{Binding FilterColumnOptions}" SelectedItem="{Binding NewFilterColumn, Mode=TwoWay}" MinWidth="240" />
+              <ComboBox ItemsSource="{x:Static vm:DataEditorViewModel.FilterOperators}" SelectedItem="{Binding NewFilterOperator, Mode=TwoWay}" MinWidth="150" />
+              <TextBox Text="{Binding NewFilterValue, Mode=TwoWay}" IsVisible="{Binding NewFilterNeedsValue}" Watermark="Value" MinWidth="200" />
+              <Button Content="Add filter" Classes="primary" Command="{Binding AddColumnFilterCommand}" />
+              <Button Content="Clear all" Command="{Binding ClearColumnFiltersCommand}" />
+            </WrapPanel>
+            <ItemsControl ItemsSource="{Binding ColumnFilters}">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ColumnFilter">
+                  <Border Background="#16335A" BorderBrush="#2F6FD0" BorderThickness="1" CornerRadius="14" Padding="10,3,4,3" Margin="0,0,8,6">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <TextBlock Text="{Binding Text}" VerticalAlignment="Center" FontSize="12.5" />
+                      <Button Content="✕" Command="{Binding RemoveCommand}" CommandParameter="{Binding}" MinHeight="22" MinWidth="22" Padding="0" FontSize="11" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
         <Border IsVisible="{Binding FindVisible}" Classes="panel" Padding="14,12">
           <StackPanel Spacing="10">
             <TextBlock Classes="caption" Text="FIND &amp; REPLACE (in the rows shown)" />

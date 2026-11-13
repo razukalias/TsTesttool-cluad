@@ -34,6 +34,7 @@ public sealed partial class DataEditorViewModel
 
     partial void OnShowStepsChanged(bool value)
     {
+        if (value) ColumnFiltersVisible = false;
         OnPropertyChanged(nameof(CurrentColumnTitle));
         CurrentCellIndex = -1;
         UpdateMatches();
