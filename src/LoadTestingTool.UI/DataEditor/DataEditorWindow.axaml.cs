@@ -31,6 +31,7 @@ public partial class DataEditorWindow : Window
             Close();
         };
         AttachCurrent();
+        InitCompletion();
         Opened += async (_, _) =>
         {
             await shell.RefreshResultsAsync();

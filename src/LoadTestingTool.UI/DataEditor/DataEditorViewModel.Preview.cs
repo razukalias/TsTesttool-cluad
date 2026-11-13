@@ -56,6 +56,17 @@ public sealed partial class DataEditorViewModel
         }
         RefreshPreview();
     };
+
+    /// <summary>Autocomplete for cells: the workbook's sheets and their headers, as the document has them right now (including unsaved columns).</summary>
+    public CellCompletion Completion => new(
+        () => ["config", "request", "response", .. _document.OtherSheets],
+        sheet => sheet.ToLowerInvariant() switch
+        {
+            "config" => _document.Config.Headers,
+            "request" => _document.Request.Headers,
+            "response" => _document.Response.Headers,
+            _ => [],
+        });
 }
 
 public sealed record TemplateEditRequest(string TemplatesFolder, string Source, string StepType, string Testcase, string Step, Action<string> Saved);
