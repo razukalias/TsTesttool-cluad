@@ -19,6 +19,10 @@
       <Setter Property="Fill" Value="#16335A" />
       <Setter Property="Opacity" Value="1" />
     </Style>
+    <Style Selector="WrapPanel.form > :is(Control)">
+      <Setter Property="Margin" Value="0,0,10,8" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
     <Style Selector="Button.tab">
       <Setter Property="MinHeight" Value="34" />
       <Setter Property="MinWidth" Value="84" />
@@ -150,19 +154,37 @@
           <Button Content="Steps" Classes="tab" Classes.active="{Binding ShowSteps}" Command="{Binding OpenStepsTabCommand}" />
         </StackPanel>
         <StackPanel Grid.Row="1" IsVisible="{Binding ShowData}" Spacing="10" Margin="0,0,0,10">
-        <Grid ColumnDefinitions="260,Auto,*,Auto,Auto">
+        <Grid ColumnDefinitions="260,Auto,*,Auto,Auto,Auto">
           <TextBox Grid.Column="0" Text="{Binding FilterText, Mode=TwoWay}" Watermark="Filter rows" MinHeight="36" />
           <CheckBox Grid.Column="1" Content="Show every column" IsChecked="{Binding ShowAllColumns, Mode=TwoWay}" Margin="16,0,0,0" VerticalAlignment="Center" />
           <TextBlock Grid.Column="3" Text="{Binding RowCountText}" Foreground="#8EA4BC" VerticalAlignment="Center" />
-          <Button Grid.Column="4" Content="Add column" Command="{Binding OpenAddColumnCommand}" Margin="14,0,0,0" MinHeight="36" />
+          <Button Grid.Column="4" Content="Find &amp; replace" Command="{Binding OpenFindCommand}" Margin="14,0,0,0" MinHeight="36" />
+          <Button Grid.Column="5" Content="Add column" Command="{Binding OpenAddColumnCommand}" Margin="14,0,0,0" MinHeight="36" />
         </Grid>
+        <Border IsVisible="{Binding FindVisible}" Classes="panel" Padding="14,12">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="caption" Text="FIND &amp; REPLACE (in the rows shown)" />
+            <WrapPanel Classes="form">
+              <TextBox x:Name="FindBox" Text="{Binding FindText, Mode=TwoWay}" Watermark="Find" MinWidth="200" />
+              <TextBox Text="{Binding ReplaceText, Mode=TwoWay}" Watermark="Replace with" MinWidth="200" />
+              <ComboBox ItemsSource="{x:Static vm:DataEditorViewModel.FindScopes}" SelectedItem="{Binding FindScope, Mode=TwoWay}" MinWidth="150" />
+              <CheckBox Content="Match case" IsChecked="{Binding FindMatchCase, Mode=TwoWay}" />
+              <CheckBox Content="Whole cell" IsChecked="{Binding FindWholeCell, Mode=TwoWay}" />
+              <Button Content="Replace all" Classes="primary" Command="{Binding ReplaceAllCommand}" />
+              <Button Content="Close" Command="{Binding CloseFindCommand}" />
+            </WrapPanel>
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <TextBlock Text="{Binding MatchSummary}" Foreground="#8EA4BC" />
+              <TextBlock Foreground="#8EA4BC" IsVisible="{Binding FindScopeIsCurrent}">
+                <Run Text="Current column:" /><Run Text="{Binding CurrentColumnTitle, Mode=OneWay}" FontWeight="SemiBold" />
+              </TextBlock>
+            </StackPanel>
+          </StackPanel>
+        </Border>
         <Border IsVisible="{Binding AddColumnVisible}" Classes="panel" Padding="14,12">
           <StackPanel Spacing="10">
             <TextBlock Classes="caption" Text="NEW DATA COLUMN" />
-            <WrapPanel>
-              <WrapPanel.Styles>
-                <Style Selector="WrapPanel > Control"><Setter Property="Margin" Value="0,0,10,8" /></Style>
-              </WrapPanel.Styles>
+            <WrapPanel Classes="form">
               <ComboBox ItemsSource="{Binding NewColumnSteps}" SelectedItem="{Binding NewColumnStep, Mode=TwoWay}" PlaceholderText="Step" MinWidth="160" />
               <ComboBox ItemsSource="{x:Static vm:DataEditorViewModel.ColumnKinds}" SelectedItem="{Binding NewColumnKind, Mode=TwoWay}" MinWidth="150" />
               <ComboBox IsVisible="{Binding NewColumnIsExpected}" ItemsSource="{x:Static vm:DataEditorViewModel.AssertionVerbs}" SelectedItem="{Binding NewColumnVerb, Mode=TwoWay}" MinWidth="130" />
@@ -181,7 +203,7 @@
                     CanUserSortColumns="False"
                     CanUserReorderColumns="False"
                     CanUserResizeColumns="True"
-                    SelectionMode="Single"
+                    SelectionMode="Extended"
                     GridLinesVisibility="All"
                     HeadersVisibility="Column"
                     FrozenColumnCount="1"

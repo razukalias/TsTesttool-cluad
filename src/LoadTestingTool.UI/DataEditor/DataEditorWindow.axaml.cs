@@ -97,6 +97,23 @@ public partial class DataEditorWindow : Window
             Save();
             e.Handled = true;
         }
+        else if (e.Key == Key.F)
+        {
+            SyncCurrentColumn();
+            _shell.Current?.OpenFindCommand.Execute(null);
+            this.FindControl<TextBox>("FindBox")?.Focus();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.D && FocusManager?.GetFocusedElement() is not TextBox)
+        {
+            FillDownSelection();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.V && FocusManager?.GetFocusedElement() is not TextBox)
+        {
+            _ = PasteFromClipboardAsync();
+            e.Handled = true;
+        }
         else if (e.Key is Key.Z or Key.Y && FocusManager?.GetFocusedElement() is not TextBox)
         {
             // While typing in a cell or the filter box, Ctrl+Z belongs to the text box; otherwise it undoes the last change.
@@ -106,6 +123,41 @@ public partial class DataEditorWindow : Window
             e.Handled = true;
         }
     }
+
+    /// <summary>The grid keeps its own notion of the current cell; tell the view-model which column that is.</summary>
+    private void SyncCurrentColumn()
+    {
+        var grid = this.FindControl<DataGrid>("Grid");
+        if (grid is null || _shell.Current is null) return;
+        _shell.Current.CurrentCellIndex = grid.CurrentColumn?.DisplayIndex ?? -1;
+    }
+
+    private void FillDownSelection()
+    {
+        var grid = this.FindControl<DataGrid>("Grid");
+        var editor = _shell.Current;
+        if (grid is null || editor is null || !editor.ShowData) return;
+        CommitPendingEdit();
+        SyncCurrentColumn();
+        var selected = grid.SelectedItems.OfType<DataRowViewModel>().ToHashSet();
+        editor.FillDown(editor.VisibleRows.Where(selected.Contains).ToList(), editor.CurrentCellIndex);
+    }
+
+    private async Task PasteFromClipboardAsync()
+    {
+        var grid = this.FindControl<DataGrid>("Grid");
+        var editor = _shell.Current;
+        if (grid is null || editor is null || !editor.ShowData) return;
+        var text = Clipboard is null ? null : await Clipboard.GetTextAsync();
+        if (string.IsNullOrEmpty(text)) return;
+        CommitPendingEdit();
+        SyncCurrentColumn();
+        var start = grid.SelectedItem is DataRowViewModel row ? editor.VisibleRows.IndexOf(row) : 0;
+        editor.PasteBlock(Math.Max(start, 0), Math.Max(editor.CurrentCellIndex, 0), ClipboardTable.Parse(text));
+    }
+
+    private void OnGridCellPointerPressed(object? sender, DataGridCellPointerPressedEventArgs e)
+        => _shell.Current!.CurrentCellIndex = e.Column.DisplayIndex;
 
     private void OnSaveClick(object? sender, RoutedEventArgs e) => Save();
 
@@ -127,6 +179,9 @@ public partial class DataEditorWindow : Window
         var grid = this.FindControl<DataGrid>("Grid");
         var editor = _shell?.Current;
         if (grid is null || editor is null) return;
+        grid.CellPointerPressed -= OnGridCellPointerPressed;
+        grid.CellPointerPressed += OnGridCellPointerPressed;
+        editor.CurrentCellIndex = -1;
         grid.Columns.Clear();
         grid.Columns.Add(CreateColumn(new GridColumn("Data ID", ColumnGroup.Id, 0, -1)));
         foreach (var column in editor.Columns) grid.Columns.Add(CreateColumn(column));
