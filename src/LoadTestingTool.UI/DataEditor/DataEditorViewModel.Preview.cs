@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace LoadTestingTool.UI.DataEditor;
 
@@ -27,4 +28,34 @@ public sealed partial class DataEditorViewModel
         if (SelectedRow is not { } row || step is null) { Preview = null; return; }
         Preview = RequestPreview.Build(WorkbookPath, row.Request, _document.Request.Headers, step.Row, _document.Config.Headers);
     }
+
+    /// <summary>Raised when the view should open the template editor for the previewed step.</summary>
+    public event EventHandler<TemplateEditRequest>? EditTemplateRequested;
+
+    public string TemplatesFolder => Path.Combine(Path.GetDirectoryName(Path.GetFullPath(WorkbookPath)) ?? ".", "Templates");
+
+    [RelayCommand]
+    private void EditTemplate()
+    {
+        var step = StepRows.FirstOrDefault(s => string.Equals(s.CurrentName, PreviewStepName, StringComparison.OrdinalIgnoreCase));
+        if (step is null || SelectedTestcase is not { } testcase) return;
+        var type = step.Row.Get("steptype");
+        EditTemplateRequested?.Invoke(this, new TemplateEditRequest(TemplatesFolder, step.Row.Get("templetsource"), type.Length == 0 ? "HTTP" : type, testcase.Name, step.CurrentName, SaveTemplateChoice(step)));
+    }
+
+    /// <summary>Called by the template editor after it wrote a file: points the step at it if the name changed, and refreshes the preview.</summary>
+    private Action<string> SaveTemplateChoice(StepRowViewModel step) => relative =>
+    {
+        var column = StepColumns.FirstOrDefault(c => c.Title.Equals("templetsource", StringComparison.OrdinalIgnoreCase));
+        if (column is not null && !string.Equals(step.Row.Get("templetsource"), relative, StringComparison.Ordinal))
+        {
+            Record($"set template of {step.CurrentName}");
+            step.Row.Set("templetsource", relative);
+            step.SetCellSilently(column.CellIndex, relative);
+            StepsChanged();
+        }
+        RefreshPreview();
+    };
 }
+
+public sealed record TemplateEditRequest(string TemplatesFolder, string Source, string StepType, string Testcase, string Step, Action<string> Saved);

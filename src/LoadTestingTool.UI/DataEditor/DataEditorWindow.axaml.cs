@@ -74,6 +74,7 @@ public partial class DataEditorWindow : Window
             _subscribed.PropertyChanged -= OnEditorPropertyChanged;
             _subscribed.RevealColumnRequested -= OnRevealColumn;
             _subscribed.CsvFileRequested -= OnCsvFileRequested;
+            _subscribed.EditTemplateRequested -= OnEditTemplateRequested;
         }
         _subscribed = _shell.Current;
         if (_subscribed is null) return;
@@ -83,11 +84,18 @@ public partial class DataEditorWindow : Window
         _subscribed.PropertyChanged += OnEditorPropertyChanged;
         _subscribed.RevealColumnRequested += OnRevealColumn;
         _subscribed.CsvFileRequested += OnCsvFileRequested;
+        _subscribed.EditTemplateRequested += OnEditTemplateRequested;
         RebuildColumns();
         RebuildStepColumns();
     }
 
     private void OnColumnsChanged(object? sender, EventArgs e) => RebuildColumns();
+
+    private void OnEditTemplateRequested(object? sender, TemplateEditRequest request)
+    {
+        var editor = sender as DataEditorViewModel;
+        new TemplateEditorWindow(request.TemplatesFolder, request.Source, request.StepType, request.Saved, editor?.InstanceName, request.Testcase, request.Step).Show(this);
+    }
 
     private async void OnCsvFileRequested(object? sender, bool import)
     {

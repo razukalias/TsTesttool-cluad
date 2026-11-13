@@ -56,6 +56,39 @@ public class PreviewAndRunTests
     }
 
     [Fact]
+    public void Preview_lists_placeholders_that_have_no_data_column()
+    {
+        using var dir = new TempDir();
+        var vm = Open(dir);
+        File.WriteAllText(dir.Combine("Templates/create.json"), "{ \"name\": \"_name_\", \"token\": \"_authToken_\" }");
+        vm.RefreshPreview();
+        Assert.Contains("_authToken_", vm.Preview!.Warning);
+        Assert.DoesNotContain("_name_", vm.Preview.Warning);
+    }
+
+    [Fact]
+    public void Edit_template_hands_the_view_the_steps_template_and_a_save_callback_that_repoints_the_step()
+    {
+        using var dir = new TempDir();
+        var vm = Open(dir);
+        TemplateEditRequest? request = null;
+        vm.EditTemplateRequested += (_, r) => request = r;
+
+        vm.EditTemplateCommand.Execute(null);
+
+        Assert.NotNull(request);
+        Assert.Equal("create.json", request!.Source);
+        Assert.Equal("CreateCustomer", request.Step);
+        Assert.EndsWith("Templates", request.TemplatesFolder);
+        File.WriteAllText(dir.Combine("Templates/create-v2.json"), "{ \"name\": \"V2 _name_\" }");
+        request.Saved("create-v2.json");
+
+        Assert.True(vm.IsDirty);
+        Assert.Contains("\"name\": \"V2 Customer 1\"", vm.Preview!.Body);
+        Assert.Equal("create-v2.json", vm.StepRows[0].Row.Get("templetsource"));
+    }
+
+    [Fact]
     public async Task Run_testcase_asks_the_host_for_every_row_and_run_row_for_the_selected_one()
     {
         using var dir = new TempDir();

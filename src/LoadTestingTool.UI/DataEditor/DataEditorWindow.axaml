@@ -286,7 +286,10 @@
         <DockPanel>
           <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
             <TextBlock Classes="caption" Text="PREVIEW · SELECTED ROW" />
-            <ComboBox ItemsSource="{Binding PreviewStepNames}" SelectedItem="{Binding PreviewStepName, Mode=TwoWay}" HorizontalAlignment="Stretch" />
+            <Grid ColumnDefinitions="*,Auto">
+              <ComboBox ItemsSource="{Binding PreviewStepNames}" SelectedItem="{Binding PreviewStepName, Mode=TwoWay}" HorizontalAlignment="Stretch" />
+              <Button Grid.Column="1" Content="Edit template…" Command="{Binding EditTemplateCommand}" Margin="8,0,0,0" ToolTip.Tip="Open this step's template file in the template editor" />
+            </Grid>
           </StackPanel>
           <TextBlock DockPanel.Dock="Top" Text="{Binding Preview.Warning}" IsVisible="{Binding Preview.HasWarning, FallbackValue=False}" Foreground="#F6C76B" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,8" />
           <ScrollViewer>

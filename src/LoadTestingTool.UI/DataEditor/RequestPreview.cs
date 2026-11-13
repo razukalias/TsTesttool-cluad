@@ -54,7 +54,15 @@ public sealed record RequestPreview(string StepName, string StepType, string Ver
             if (!File.Exists(file)) warnings.Add($"Template '{template}' was not found in {folder}.");
             else
             {
-                try { body = TemplateRenderer.Render(File.ReadAllText(file), contentType, variables); }
+                try
+                {
+                    var raw = File.ReadAllText(file);
+                    var unknown = System.Text.RegularExpressions.Regex.Matches(raw, @"_(?:\*([\p{L}\p{N}._\-]+)\*|([\p{L}\p{N}._\-]+))_")
+                        .Select(m => m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value)
+                        .Where(n => !variables.ContainsKey(n)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    if (unknown.Count > 0) warnings.Add($"No data column for {string.Join(", ", unknown.Select(n => "_" + n + "_"))} (fine if it comes from an earlier step's response).");
+                    body = TemplateRenderer.Render(raw, contentType, variables);
+                }
                 catch (Exception ex) when (ex is InvalidDataException or IOException) { warnings.Add(ex.Message); }
             }
         }
