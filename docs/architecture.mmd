@@ -1,0 +1,45 @@
+flowchart LR
+    subgraph Input[Inputs]
+        CFG[appsettings.json]
+        XLSX[Excel workbook]
+        TPL[Templates and workspace files]
+    end
+
+    subgraph Runner[LoadTestingTool console runner]
+        P[Program]
+        WR[WorkbookReader]
+        SEL[TestcaseSelectionParser]
+        TR[TestRunner]
+        AE[AssertionEngine]
+        EP[ExecutionPipeline]
+        EX[GraphQL / SQL / File / Script executors]
+    end
+
+    subgraph Output[Run artifacts]
+        HIST[Excel history workbook]
+        EVT[NDJSON live events]
+        LOG[Logs]
+        RES[Results/pass or Results/failed]
+    end
+
+    subgraph Desktop[Optional Avalonia UI]
+        UI[Instance Manager]
+        INST[Instances/* workbooks]
+    end
+
+    CFG --> P
+    XLSX --> WR
+    TPL --> TR
+    P --> WR
+    WR --> SEL
+    SEL --> TR
+    TR --> AE
+    TR --> EP
+    EP --> EX
+    TR --> HIST
+    TR --> EVT
+    TR --> LOG
+    TR --> RES
+    INST --> UI
+    UI -->|launches runner process| P
+    EVT -->|polls live status and assertions| UI

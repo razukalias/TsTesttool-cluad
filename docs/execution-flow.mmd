@@ -1,0 +1,35 @@
+flowchart TD
+    A[Start console runner] --> B[Load appsettings.json]
+    B --> C[Apply command-line overrides]
+    C --> D[Read config, request, and response worksheets]
+    D --> E{Workbook valid?}
+    E -- No --> X[Write fatal error and exit 1]
+    E -- Yes --> F[Resolve testcase and data-ID selections]
+    F --> G[Resolve environments]
+    G --> H[Create testcase/environment run]
+    H --> I[For each data row, thread, and iteration]
+    I --> J[Select step variables]
+    J --> K[Merge environment and correlation values]
+    K --> L{Step type}
+    L -- HTTP --> M[Render template and send HTTP request]
+    L -- GraphQL --> N[Build GraphQL POST and send request]
+    L -- SQL --> O[Run SQL Server command]
+    L -- File --> P[Read or write workspace file]
+    L -- Script --> Q[Run trusted C# script]
+    M --> R[Record result]
+    N --> R
+    O --> R
+    P --> R
+    Q --> R
+    R --> S[Evaluate assertions when applicable]
+    S --> T[Publish outputs and correlations]
+    T --> U{Failed and stopOnFailure?}
+    U -- Yes --> V[Skip remaining steps]
+    U -- No --> W{More steps?}
+    V --> Y[Write history, logs, and events]
+    W -- Yes --> J
+    W -- No --> Y
+    Y --> Z{More runs?}
+    Z -- Yes --> I
+    Z -- No --> AA[Move result to pass or failed folder]
+    AA --> AB[Return 0, 1, or 2]

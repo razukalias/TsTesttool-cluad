@@ -1,0 +1,32 @@
+# .NET build output
+bin/
+obj/
+
+# Runtime output
+Results/
+History/
+Logs/
+.running/
+
+# Local workbooks and generated archives
+*.xlsx
+*.xlsm
+*.zip
+
+# Local IDE/user files
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Local runtime configuration overrides
+appsettings.local.json
+
+# Generated distributions and local visual checks
+/dist/
+/verification/
+/ui-design-*.png
+
+# Per-instance local run-selection preferences
+**/.run-selection.json
+**/.run-selection.json.tmp

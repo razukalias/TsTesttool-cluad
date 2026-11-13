@@ -1,0 +1,75 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fluent="using:Avalonia.Themes.Fluent"
+             x:Class="LoadTestingTool.UI.App" RequestedThemeVariant="Dark">
+  <Application.Styles>
+    <fluent:FluentTheme />
+    <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
+    <Style Selector="Window">
+      <Setter Property="FontFamily" Value="Inter, Segoe UI, sans-serif" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Background" Value="#0A1421" />
+      <Setter Property="Foreground" Value="#E3EDF9" />
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="Background" Value="#172A40" />
+      <Setter Property="Foreground" Value="#D7E5F5" />
+      <Setter Property="BorderBrush" Value="#304961" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="MinHeight" Value="32" />
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="#1875F0" />
+      <Setter Property="BorderBrush" Value="#3291FF" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.danger">
+      <Setter Property="Background" Value="#342131" />
+      <Setter Property="BorderBrush" Value="#964354" />
+      <Setter Property="Foreground" Value="#FF8998" />
+    </Style>
+    <Style Selector="Button.nav">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="FontSize" Value="14" />
+    </Style>
+    <Style Selector="Button.nav.active">
+      <Setter Property="Background" Value="#173F73" />
+      <Setter Property="Foreground" Value="#79BCFF" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="#0C1928" />
+      <Setter Property="BorderBrush" Value="#30445B" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Padding" Value="10,7" />
+      <Setter Property="MinHeight" Value="34" />
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="Background" Value="#0C1928" />
+      <Setter Property="BorderBrush" Value="#30445B" />
+      <Setter Property="Padding" Value="10,7" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="ComboBoxItem">
+      <Setter Property="Foreground" Value="#E3EDF9" />
+      <Setter Property="Background" Value="#102036" />
+      <Setter Property="Padding" Value="10,7" />
+    </Style>
+    <Style Selector="ComboBoxItem:pointerover">
+      <Setter Property="Background" Value="#1D4C79" />
+    </Style>
+    <Style Selector="ComboBoxItem:selected">
+      <Setter Property="Background" Value="#173F73" />
+      <Setter Property="Foreground" Value="#FFFFFF" />
+    </Style>
+    <Style Selector="TabItem">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Padding" Value="10,10" />
+      <Setter Property="MinHeight" Value="38" />
+    </Style>
+    <Style Selector="TabItem /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+  </Application.Styles>
+</Application>

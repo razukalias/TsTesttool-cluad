@@ -1,0 +1,17 @@
+{
+  "metadata": {
+    "option": "_option_"
+  },
+  "handlingar": [
+    {
+      "metadata": {},
+      "filer": [
+        {
+          "filnamn": "_fileName_",
+          "fil": "_fileData_"
+        }
+      ]
+    }
+  ],
+  "arbetsdokument": []
+}

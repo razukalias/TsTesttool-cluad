@@ -1,0 +1,11 @@
+{
+  "customer": {
+    "id": "C-100",
+    "name": "Example Customer"
+  },
+  "items": [
+    1,
+    2,
+    3
+  ]
+}
