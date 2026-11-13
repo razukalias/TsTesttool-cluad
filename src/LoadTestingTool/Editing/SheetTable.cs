@@ -75,6 +75,30 @@ public sealed class SheetTable
         return true;
     }
 
+    /// <summary>Captures the current edits so <see cref="Restore"/> can return to this exact state (used for undo).</summary>
+    public SheetSnapshot Snapshot()
+        => new(_columns.Select(c => ((object)c, c.Header)).ToArray(), _rows.Select(r => (r, r.CaptureValues())).ToArray(), _removedSourceRows.ToArray());
+
+    /// <summary>Returns to a state captured by <see cref="Snapshot"/>. Only valid until the table is next saved.</summary>
+    public void Restore(SheetSnapshot snapshot)
+    {
+        _columns.Clear();
+        foreach (var (captured, header) in snapshot.Columns)
+        {
+            var column = (Column)captured;
+            column.Header = header;
+            _columns.Add(column);
+        }
+        _rows.Clear();
+        foreach (var (row, values) in snapshot.Rows)
+        {
+            row.RestoreValues(values);
+            _rows.Add(row);
+        }
+        _removedSourceRows.Clear();
+        _removedSourceRows.AddRange(snapshot.RemovedSourceRows);
+    }
+
     internal static SheetTable Load(IXLWorksheet sheet)
     {
         var header = sheet.FirstRowUsed() ?? throw new InvalidDataException($"Worksheet '{sheet.Name}' has no header row.");
@@ -191,6 +215,21 @@ public sealed class SheetTable
     }
 }
 
+/// <summary>An opaque capture of a <see cref="SheetTable"/>'s edits, taken with <see cref="SheetTable.Snapshot"/>.</summary>
+public sealed class SheetSnapshot
+{
+    internal SheetSnapshot((object Column, string Header)[] columns, (TableRow Row, string[] Values)[] rows, int[] removedSourceRows)
+    {
+        Columns = columns;
+        Rows = rows;
+        RemovedSourceRows = removedSourceRows;
+    }
+
+    internal (object Column, string Header)[] Columns { get; }
+    internal (TableRow Row, string[] Values)[] Rows { get; }
+    internal int[] RemovedSourceRows { get; }
+}
+
 /// <summary>One data row of a <see cref="SheetTable"/>. Missing cells read as an empty string.</summary>
 public sealed class TableRow
 {
@@ -258,6 +297,10 @@ public sealed class TableRow
         if (_original is null) return null;
         return column < _original.Length ? _original[column] : string.Empty;
     }
+
+    internal string[] CaptureValues() => (string[])_values.Clone();
+
+    internal void RestoreValues(string[] values) => _values = (string[])values.Clone();
 
     internal void Resize(int count)
     {

@@ -408,4 +408,43 @@ public class WorkbookDocumentTests
         Assert.Contains(problems, p => p.Severity == ProblemSeverity.Warning && p.Message.Contains("GhostStep"));
         Assert.DoesNotContain(problems, p => p.Severity == ProblemSeverity.Error);
     }
+
+    // ---- Snapshots (undo) ----------------------------------------------------------------
+
+    [Fact]
+    public void Restore_returns_to_a_snapshot_including_rows_columns_and_cleanliness()
+    {
+        using var dir = new TempDir();
+        var path = Samples.Copy(dir, Samples.IntegrationScenarios);
+        var document = WorkbookDocument.Load(path);
+        var clean = document.Snapshot();
+        var rows = document.Request.Rows.Count;
+        var columns = document.Request.ColumnCount;
+        var first = document.Request.Rows[0];
+        var original = first.Get("dataid");
+
+        document.Request.RemoveRow(first);
+        document.AddDataRow(1, "NEW001");
+        document.Request.EnsureColumn("Added.column");
+        document.Request.Rows[0].Set("dataid", "EDITED");
+        Assert.True(document.IsDirty);
+        var edited = document.Snapshot();
+
+        document.Restore(clean);
+        Assert.False(document.IsDirty);
+        Assert.Equal(rows, document.Request.Rows.Count);
+        Assert.Equal(columns, document.Request.ColumnCount);
+        Assert.Same(first, document.Request.Rows[0]);
+        Assert.Equal(original, first.Get("dataid"));
+
+        document.Restore(edited);
+        Assert.True(document.IsDirty);
+        Assert.Equal(columns + 1, document.Request.ColumnCount);
+        Assert.DoesNotContain(first, document.Request.Rows);
+
+        document.Restore(clean);
+        var before = File.ReadAllBytes(path);
+        Assert.False(document.Save().Saved);
+        Assert.Equal(before, File.ReadAllBytes(path));
+    }
 }

@@ -207,8 +207,16 @@ public sealed partial class DataEditorViewModel : ObservableObject
 
     private void OnCellEdited(DataRowViewModel row, int cellIndex, string value)
     {
+        if (cellIndex == 0 && value == row.CurrentDataId) return;
+        if (cellIndex > 0)
+        {
+            var shown = Columns[cellIndex - 1];
+            var existing = shown.Group == ColumnGroup.Request ? row.Request.GetAt(shown.SheetColumn) : row.Response?.GetAt(shown.SheetColumn) ?? string.Empty;
+            if (existing == value) return;
+        }
         if (cellIndex == 0)
         {
+            Record($"rename data ID {row.CurrentDataId}");
             try
             {
                 if (!_document.RenameDataRow(row.TestcaseIndex, row.CurrentDataId, value))
@@ -221,6 +229,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             }
             catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
             {
+                DiscardLastRecord();
                 row.SetCellSilently(0, row.CurrentDataId);
                 ShowStatus(ex is ArgumentException ? "A data ID cannot be empty." : ex.Message, isError: true);
                 return;
@@ -229,6 +238,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         else
         {
             var column = Columns[cellIndex - 1];
+            Record($"edit {column.Title} of {row.CurrentDataId}");
             if (column.Group == ColumnGroup.Request) row.Request.SetAt(column.SheetColumn, value);
             else EnsureResponse(row).SetAt(column.SheetColumn, value);
         }
@@ -262,6 +272,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
 
     private void AppendRow(TestcaseItem testcase, string dataId, DataRowViewModel? copyFrom)
     {
+        Record(copyFrom is null ? $"add row {dataId}" : $"duplicate row as {dataId}");
         var (request, response) = _document.AddDataRow(testcase.Index, dataId);
         if (copyFrom is not null)
         {
@@ -288,6 +299,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
     private void RemoveRow()
     {
         if (SelectedTestcase is not { } testcase || SelectedRow is not { } row) return;
+        Record($"remove row {row.CurrentDataId}");
         _document.Request.RemoveRow(row.Request);
         if (row.Response is not null) _document.Response.RemoveRow(row.Response);
         _allRows.Remove(row);
@@ -374,6 +386,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         try
         {
             var result = _document.Save(options);
+            if (result.Saved) ClearUndoHistory();
             ConflictVisible = false;
             IsDirty = _document.IsDirty;
             if (result.BackupPath is not null) LastBackupPath = result.BackupPath;
@@ -400,6 +413,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
     {
         var keep = SelectedTestcase?.Index;
         _document = WorkbookDocument.Load(WorkbookPath);
+        ClearUndoHistory();
         ConflictVisible = false;
         ClosePromptVisible = false;
         IsDirty = false;

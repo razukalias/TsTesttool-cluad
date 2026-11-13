@@ -91,9 +91,18 @@ public partial class DataEditorWindow : Window
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (e.Key == Key.S && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        if (!e.KeyModifiers.HasFlag(KeyModifiers.Control)) return;
+        if (e.Key == Key.S)
         {
             Save();
+            e.Handled = true;
+        }
+        else if (e.Key is Key.Z or Key.Y && FocusManager?.GetFocusedElement() is not TextBox)
+        {
+            // While typing in a cell or the filter box, Ctrl+Z belongs to the text box; otherwise it undoes the last change.
+            var redo = e.Key == Key.Y || e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+            if (redo) _shell.Current?.RedoCommand.Execute(null);
+            else _shell.Current?.UndoCommand.Execute(null);
             e.Handled = true;
         }
     }

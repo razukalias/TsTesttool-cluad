@@ -102,6 +102,9 @@
           <Button Content="Add step" Command="{Binding AddStepCommand}" IsVisible="{Binding ShowSteps}" MinHeight="36" />
           <Button Content="Remove step" Classes="danger" Command="{Binding RemoveStepCommand}" IsVisible="{Binding ShowSteps}" IsEnabled="{Binding SelectedStep, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
           <Border Width="1" Background="#22364D" Margin="4,6" />
+          <Button Content="Undo" Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}" ToolTip.Tip="{Binding UndoTip}" MinHeight="36" />
+          <Button Content="Redo" Command="{Binding RedoCommand}" IsEnabled="{Binding CanRedo}" ToolTip.Tip="{Binding RedoTip}" MinHeight="36" />
+          <Border Width="1" Background="#22364D" Margin="4,6" />
           <Button Content="Reload" Command="{Binding ReloadCommand}" MinHeight="36" />
           <Button Content="Save" Classes="primary" Click="OnSaveClick" MinHeight="36" MinWidth="76" />
         </StackPanel>

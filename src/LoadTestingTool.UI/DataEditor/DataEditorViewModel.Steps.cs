@@ -60,6 +60,7 @@ public sealed partial class DataEditorViewModel
 
     private void OnStepEdited(StepRowViewModel step, int cellIndex, string value)
     {
+        if (cellIndex == 0 ? value == step.CurrentName : step.Row.GetAt(StepColumns[cellIndex - 1].SheetColumn) == value) return;
         if (cellIndex == 0)
         {
             var name = value.Trim();
@@ -70,12 +71,14 @@ public sealed partial class DataEditorViewModel
             }
             if (name.Length == 0) { RejectStepName(step, "A step name cannot be empty."); return; }
             if (StepNameTaken(name, except: step.Row)) { RejectStepName(step, $"A step named '{name}' already exists."); return; }
+            Record($"rename step to {name}");
             step.Row.Set("stepname", name);
             step.CurrentName = name;
             if (name != value) step.SetCellSilently(0, name);
         }
         else
         {
+            Record($"edit {StepColumns[cellIndex - 1].Title} of step {step.CurrentName}");
             step.Row.SetAt(StepColumns[cellIndex - 1].SheetColumn, value);
         }
         StepsChanged();
@@ -99,6 +102,7 @@ public sealed partial class DataEditorViewModel
         do name = "Step" + (++number).ToString(CultureInfo.InvariantCulture);
         while (StepNameTaken(name));
 
+        Record("add step");
         var row = _document.Config.AddRow();
         row.Set("testcaseindex", testcase.Index.ToString(CultureInfo.InvariantCulture));
         row.Set("testcase", testcase.Name);
@@ -120,6 +124,7 @@ public sealed partial class DataEditorViewModel
         if (SelectedStep is not { } step) return;
         var name = step.CurrentName;
         var index = StepRows.IndexOf(step);
+        Record($"remove step {name}");
         _document.Config.RemoveRow(step.Row);
         StepRows.Remove(step);
         SelectedStep = StepRows.Count == 0 ? null : StepRows[Math.Min(index, StepRows.Count - 1)];

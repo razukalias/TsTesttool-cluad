@@ -115,6 +115,16 @@ public sealed class WorkbookDocument
     }
 
     /// <summary>Checks the workbook against the same rules the runner applies when it reads it.</summary>
+    /// <summary>Captures every edit so far; <see cref="Restore"/> goes back to it. Invalid once the document has been saved.</summary>
+    public DocumentSnapshot Snapshot() => new(Config.Snapshot(), Request.Snapshot(), Response.Snapshot());
+
+    public void Restore(DocumentSnapshot snapshot)
+    {
+        Config.Restore(snapshot.Config);
+        Request.Restore(snapshot.Request);
+        Response.Restore(snapshot.Response);
+    }
+
     public IReadOnlyList<WorkbookProblem> Validate() => WorkbookValidator.Validate(this);
 
     /// <summary>

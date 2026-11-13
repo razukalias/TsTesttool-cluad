@@ -59,6 +59,7 @@ public sealed partial class DataEditorViewModel
             : table.FindColumn(header) >= 0;
         if (clash) { ShowStatus($"The {(expected ? "response" : "request")} sheet already has a column for {step}.{name}.", isError: true); return; }
 
+        Record($"add column {header}");
         table.EnsureColumn(header);
         AddColumnVisible = false;
         MarkChanged();
