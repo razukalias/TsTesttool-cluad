@@ -141,6 +141,7 @@
           <ToggleButton Content="Preview request" IsChecked="{Binding PreviewVisible, Mode=TwoWay}" ToolTip.Tip="Show what a step sends for the selected row" MinHeight="36" />
           <Border Width="1" Background="#22364D" Margin="4,6" />
           <Button Content="Add step" Command="{Binding AddStepCommand}" IsVisible="{Binding ShowSteps}" MinHeight="36" />
+          <Button Content="Show its columns" Command="{Binding ShowStepDataCommand}" IsVisible="{Binding ShowSteps}" IsEnabled="{Binding SelectedStep, Converter={x:Static ObjectConverters.IsNotNull}}" ToolTip.Tip="Open the Data tab narrowed to the selected step's columns" MinHeight="36" />
           <Button Content="Remove step" Classes="danger" Command="{Binding RemoveStepCommand}" IsVisible="{Binding ShowSteps}" IsEnabled="{Binding SelectedStep, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
           <Border Width="1" Background="#22364D" Margin="4,6" />
           <Button Content="Undo" Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}" ToolTip.Tip="{Binding UndoTip}" MinHeight="36" />
@@ -196,6 +197,7 @@
         <StackPanel Grid.Row="1" IsVisible="{Binding ShowData}" Spacing="10" Margin="0,0,0,10">
         <WrapPanel>
           <TextBox Width="220" Text="{Binding FilterText, Mode=TwoWay}" Watermark="Filter rows" MinHeight="36" Margin="0,0,14,8" />
+          <ComboBox ItemsSource="{Binding StepFilterOptions}" SelectedItem="{Binding StepFilter, Mode=TwoWay}" MinWidth="160" MinHeight="36" Margin="0,0,14,8" ToolTip.Tip="Show only this step's request and response columns" />
           <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center" Margin="0,0,14,8">
             <CheckBox Content="Show every column" IsChecked="{Binding ShowAllColumns, Mode=TwoWay}" />
             <CheckBox Content="Failed rows only" IsChecked="{Binding ShowFailedOnly, Mode=TwoWay}" IsEnabled="{Binding HasResults}" />

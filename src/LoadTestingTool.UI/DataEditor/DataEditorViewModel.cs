@@ -84,6 +84,62 @@ public sealed partial class DataEditorViewModel : ObservableObject
         if (!_loading) BuildRows();
     }
 
+    // ---- Step filter: narrow the data grid to one step's columns ---------------------------
+
+    public const string AllSteps = "All steps";
+    private bool _refreshingStepOptions;
+
+    public ObservableCollection<string> StepFilterOptions { get; } = [AllSteps];
+
+    [ObservableProperty] private string? _stepFilter = AllSteps;
+
+    private bool FilteringByStep => StepFilter is { } f && f != AllSteps;
+
+    partial void OnStepFilterChanged(string? value)
+    {
+        if (_loading || _refreshingStepOptions) return;
+        BuildRows();
+    }
+
+    /// <summary>Rebuilds the dropdown from the selected testcase's steps, keeping the chosen step when it still exists.</summary>
+    private void RefreshStepOptions()
+    {
+        var keep = StepFilter;
+        _refreshingStepOptions = true;
+        try
+        {
+            StepFilterOptions.Clear();
+            StepFilterOptions.Add(AllSteps);
+            if (SelectedTestcase is { } testcase)
+                foreach (var row in _document.Config.Rows.Where(r => !r.IsBlank && WorkbookDocument.EffectiveIndex(r) == testcase.Index))
+                {
+                    var name = row.Get("stepname").Trim();
+                    if (name.Length > 0 && !StepFilterOptions.Contains(name, StringComparer.OrdinalIgnoreCase)) StepFilterOptions.Add(name);
+                }
+            StepFilter = StepFilterOptions.FirstOrDefault(o => string.Equals(o, keep, StringComparison.OrdinalIgnoreCase)) ?? AllSteps;
+        }
+        finally { _refreshingStepOptions = false; }
+    }
+
+    /// <summary>From the Steps tab: show just the selected step's request and response columns in the data grid.</summary>
+    [RelayCommand]
+    private void ShowStepData()
+    {
+        if (SelectedStep is not { } step) return;
+        var name = step.CurrentName.Trim();
+        if (name.Length == 0) return;
+        _refreshingStepOptions = true;
+        try
+        {
+            if (!StepFilterOptions.Contains(name, StringComparer.OrdinalIgnoreCase)) StepFilterOptions.Add(name);
+            StepFilter = StepFilterOptions.First(o => string.Equals(o, name, StringComparison.OrdinalIgnoreCase));
+        }
+        finally { _refreshingStepOptions = false; }
+        _dataStale = false;
+        ShowSteps = false;
+        BuildRows();
+    }
+
     partial void OnFilterTextChanged(string value) => ApplyFilter();
 
     partial void OnSelectedProblemChanged(ProblemViewModel? value)
@@ -111,6 +167,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
 
     private void BuildRows()
     {
+        RefreshStepOptions();
         _allRows.Clear();
         SelectedRow = null;
         var testcase = SelectedTestcase;
@@ -169,7 +226,9 @@ public sealed partial class DataEditorViewModel : ObservableObject
             var header = requestHeaders[i];
             if (ReservedColumns.Contains(header)) continue;
             var prefix = RequestStepPrefix(header);
-            var relevant = ShowAllColumns || prefix is null || steps.Contains(prefix) || pairs.Any(p => !string.IsNullOrWhiteSpace(p.Request.GetAt(i)));
+            var relevant = FilteringByStep
+                ? string.Equals(prefix, StepFilter, StringComparison.OrdinalIgnoreCase)
+                : ShowAllColumns || prefix is null || steps.Contains(prefix) || pairs.Any(p => !string.IsNullOrWhiteSpace(p.Request.GetAt(i)));
             if (relevant) columns.Add(new GridColumn(header, ColumnGroup.Request, cell++, i));
         }
 
@@ -179,7 +238,9 @@ public sealed partial class DataEditorViewModel : ObservableObject
             var header = responseHeaders[i];
             if (ReservedColumns.Contains(header)) continue;
             var prefix = ResponseStepPrefix(header);
-            var relevant = ShowAllColumns || prefix is null || steps.Contains(prefix) || pairs.Any(p => p.Response is { } r && !string.IsNullOrWhiteSpace(r.GetAt(i)));
+            var relevant = FilteringByStep
+                ? string.Equals(prefix, StepFilter, StringComparison.OrdinalIgnoreCase)
+                : ShowAllColumns || prefix is null || steps.Contains(prefix) || pairs.Any(p => p.Response is { } r && !string.IsNullOrWhiteSpace(r.GetAt(i)));
             if (relevant) columns.Add(new GridColumn(DisplayResponseHeader(header), ColumnGroup.Response, cell++, i));
         }
         return columns;
