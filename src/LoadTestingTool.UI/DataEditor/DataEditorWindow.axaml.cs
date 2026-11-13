@@ -12,6 +12,7 @@ public partial class DataEditorWindow : Window
     private EditorShellViewModel _shell = null!;
     private DataEditorViewModel? _subscribed;
     private bool _forceClose;
+    private DispatcherTimer? _resultsTimer;
 
     /// <summary>Needed by the XAML loader and designer; the editor is always opened with a view-model.</summary>
     public DataEditorWindow() => InitializeComponent();
@@ -30,7 +31,15 @@ public partial class DataEditorWindow : Window
             Close();
         };
         AttachCurrent();
-        Opened += async (_, _) => await shell.RefreshResultsAsync();
+        Opened += async (_, _) =>
+        {
+            await shell.RefreshResultsAsync();
+            // While a run is writing results, keep the editor's view of them current.
+            _resultsTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+            _resultsTimer.Tick += async (_, _) => await shell.RefreshResultsIfChangedAsync();
+            _resultsTimer.Start();
+        };
+        Closed += (_, _) => _resultsTimer?.Stop();
     }
 
     public EditorShellViewModel Shell => _shell;

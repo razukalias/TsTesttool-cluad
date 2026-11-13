@@ -74,6 +74,23 @@ public static class RunResultsReader
         outcome.ExplainedRequests = explained.Count;
     }
 
+    /// <summary>Largest run the editor refreshes by itself; bigger ones (long load tests) are only read when asked.</summary>
+    public const long AutoRefreshLimitBytes = 50L * 1024 * 1024;
+
+    /// <summary>
+    /// A cheap fingerprint of an instance's event files (count, newest write, total size), so the editor can tell
+    /// whether a run has written anything new without reading it. Null when there are no event files.
+    /// </summary>
+    public static (string Signature, long TotalBytes)? Signature(string resultsFolder)
+    {
+        if (!Directory.Exists(resultsFolder)) return null;
+        var files = Directory.EnumerateFiles(resultsFolder, "events_*.ndjson", SearchOption.AllDirectories)
+            .Select(f => new FileInfo(f)).ToList();
+        if (files.Count == 0) return null;
+        var bytes = files.Sum(f => f.Length);
+        return ($"{files.Count}|{files.Max(f => f.LastWriteTimeUtc.Ticks)}|{bytes}", bytes);
+    }
+
     private static string RunIdOf(string fileName)
     {
         var name = Path.GetFileNameWithoutExtension(fileName)["events_".Length..];

@@ -108,6 +108,8 @@ public sealed partial class EditorShellViewModel : ObservableObject
         IsLoadingResults = true;
         try
         {
+            foreach (var node in Instances.Where(n => n.Editor is not null))
+                _signatures[node.Path] = RunResultsReader.Signature(node.Editor!.ResultsFolder)?.Signature;
             var loaded = await Task.WhenAll(Instances.Where(n => n.Editor is not null).Select(async node =>
             {
                 try { return (node, results: await Task.Run(() => RunResultsReader.ReadLatest(node.Editor!.ResultsFolder))); }
@@ -122,6 +124,26 @@ public sealed partial class EditorShellViewModel : ObservableObject
     }
 
     [ObservableProperty] private bool _isLoadingResults;
+
+    private readonly Dictionary<string, string?> _signatures = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Re-reads the results only if a run has written something since they were last read. Meant to be called on a
+    /// timer; returns whether it refreshed. Runs too large to re-read every few seconds are left to the Refresh button.
+    /// </summary>
+    public async Task<bool> RefreshResultsIfChangedAsync()
+    {
+        if (IsLoadingResults) return false;
+        var changed = await Task.Run(() => Instances.Where(n => n.Editor is not null).Any(node =>
+        {
+            var now = RunResultsReader.Signature(node.Editor!.ResultsFolder);
+            _signatures.TryGetValue(node.Path, out var before);
+            return now is { } current && current.Signature != before && current.TotalBytes <= RunResultsReader.AutoRefreshLimitBytes;
+        }));
+        if (!changed) return false;
+        await RefreshResultsAsync();
+        return true;
+    }
 
     /// <summary>Called when the user tries to close the window; true when nothing is left unsaved.</summary>
     public bool RequestClose()

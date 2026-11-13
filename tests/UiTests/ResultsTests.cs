@@ -243,6 +243,44 @@ public class ResultsTests
         Assert.Equal("FAIL", shell.Instances[0].Editor!.VisibleRows[1].ResultText);
     }
 
+    [Fact]
+    public async Task Results_refresh_by_themselves_only_when_a_run_wrote_something_new()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, 3);
+        var shell = new EditorShellViewModel([("A", path)], path);
+        var editor = shell.Current!;
+
+        await shell.RefreshResultsAsync();
+        Assert.Equal("No results yet", editor.RunSummaryText);
+        Assert.False(await shell.RefreshResultsIfChangedAsync()); // nothing on disk, nothing to do
+
+        var file = FakeRun.Write(FakeRun.Folder(path, "running"), $"events_{FakeRun.RunId}.ndjson", FakeRun.Request(1, "CUST001", "CreateCustomer"));
+        Assert.True(await shell.RefreshResultsIfChangedAsync());
+        Assert.Equal("PASS", editor.VisibleRows[0].ResultText);
+        Assert.False(await shell.RefreshResultsIfChangedAsync()); // unchanged since
+
+        File.AppendAllText(file, JsonSerializer.Serialize(FakeRun.Request(1, "CUST001", "CreateCustomer", result: "FAIL", status: 500, error: "boom")) + "\n");
+        Assert.True(await shell.RefreshResultsIfChangedAsync());
+        Assert.Equal("FAIL", editor.VisibleRows[0].ResultText);
+    }
+
+    [Fact]
+    public async Task Auto_refresh_keeps_the_selected_row_and_the_scroll_position_of_the_rows()
+    {
+        using var dir = new TempDir();
+        var path = LargeWithRun(dir);
+        var shell = new EditorShellViewModel([("A", path)], path);
+        var editor = shell.Current!;
+        editor.SelectedRow = editor.VisibleRows[3];
+        var rows = editor.VisibleRows.ToList();
+
+        await shell.RefreshResultsAsync();
+
+        Assert.Same(rows[3], editor.SelectedRow);
+        Assert.Equal(rows, editor.VisibleRows.ToList());
+    }
+
     [AvaloniaFact]
     public void Renders_results_in_the_tree_the_grid_and_the_detail_panel()
     {
