@@ -75,6 +75,7 @@ public partial class DataEditorWindow : Window
             _subscribed.RevealColumnRequested -= OnRevealColumn;
             _subscribed.CsvFileRequested -= OnCsvFileRequested;
             _subscribed.EditTemplateRequested -= OnEditTemplateRequested;
+            _subscribed.NewTestcaseRequested -= OnNewTestcaseRequested;
         }
         _subscribed = _shell.Current;
         if (_subscribed is null) return;
@@ -85,11 +86,26 @@ public partial class DataEditorWindow : Window
         _subscribed.RevealColumnRequested += OnRevealColumn;
         _subscribed.CsvFileRequested += OnCsvFileRequested;
         _subscribed.EditTemplateRequested += OnEditTemplateRequested;
+        _subscribed.NewTestcaseRequested += OnNewTestcaseRequested;
         RebuildColumns();
         RebuildStepColumns();
     }
 
     private void OnColumnsChanged(object? sender, EventArgs e) => RebuildColumns();
+
+    private void OnNewTestcaseRequested(object? sender, int nextIndex)
+    {
+        if (sender is not DataEditorViewModel editor) return;
+        var created = nextIndex;
+        var wizard = new TestcaseWizardWindow(nextIndex, draft => { created = draft.TestcaseIndex; editor.CreateTestcase(draft); });
+        wizard.Closed += (_, _) =>
+        {
+            if (!wizard.Saved) return;
+            editor.FinishNewTestcase(created);
+            _shell.SelectedNode = editor.SelectedTestcase is { } testcase ? testcase : _shell.SelectedNode;
+        };
+        wizard.Show(this);
+    }
 
     private void OnEditTemplateRequested(object? sender, TemplateEditRequest request)
     {

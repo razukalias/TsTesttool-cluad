@@ -62,3 +62,43 @@ public class CsvTests
         Assert.Contains("None of the file's columns", vm.StatusMessage);
     }
 }
+
+public class NewTestcaseTests
+{
+    [Fact]
+    public void New_testcase_needs_saved_changes_then_reloads_and_selects_the_created_testcase()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 2);
+        var vm = new DataEditorViewModel(path);
+        var asked = new List<int>();
+        vm.NewTestcaseRequested += (_, next) => asked.Add(next);
+        vm.CreateTestcaseHandler = _ =>
+        {
+            using var workbook = new ClosedXML.Excel.XLWorkbook(path);
+            var config = workbook.Worksheet("config");
+            config.Cell(3, 1).Value = 2; config.Cell(3, 2).Value = "Orders"; config.Cell(3, 3).Value = "CreateOrder"; config.Cell(3, 4).Value = "HTTP";
+            config.Cell(3, 5).Value = "order.json"; config.Cell(3, 6).Value = "https://api.example.test/orders"; config.Cell(3, 7).Value = "POST";
+            var request = workbook.Worksheet("request"); request.Cell(4, 1).Value = 2; request.Cell(4, 2).Value = "Orders"; request.Cell(4, 3).Value = "ORD001";
+            var response = workbook.Worksheet("response"); response.Cell(4, 1).Value = 2; response.Cell(4, 2).Value = "Orders"; response.Cell(4, 3).Value = "ORD001";
+            workbook.Save();
+        };
+
+        vm.VisibleRows[0].Cells[vm.Columns.First(c => c.Title == "CreateCustomer.name").CellIndex] = "Edited";
+        vm.NewTestcaseCommand.Execute(null);
+        Assert.Empty(asked);
+        Assert.Contains("Save your changes first", vm.StatusMessage);
+
+        vm.SaveCommand.Execute(null);
+        vm.NewTestcaseCommand.Execute(null);
+        Assert.Equal([2], asked);
+
+        vm.CreateTestcase(new LoadTestingTool.UI.TestcaseWizardDraft { TestcaseIndex = 2, TestcaseName = "Orders" });
+        vm.FinishNewTestcase(2);
+
+        Assert.Equal(["Customers", "Orders"], vm.Testcases.Select(t => t.Name));
+        Assert.Equal(2, vm.SelectedTestcase!.Index);
+        Assert.False(vm.IsDirty);
+        Assert.Contains("Created testcase 2", vm.StatusMessage);
+    }
+}

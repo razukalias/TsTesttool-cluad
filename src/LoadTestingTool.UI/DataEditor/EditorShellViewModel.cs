@@ -166,8 +166,12 @@ public sealed partial class EditorShellViewModel : ObservableObject
     /// <summary>Starts a run of one instance: its name and what to run.</summary>
     public Func<string, RunRequest, Task<string?>>? RunHandler { get; set; }
 
+    /// <summary>Writes a wizard-built testcase into an instance's workbook file: instance name and the draft.</summary>
+    public Action<string, TestcaseWizardDraft>? CreateTestcaseHandler { get; set; }
+
     private void Wire(InstanceNode node)
     {
+        node.Editor!.CreateTestcaseHandler = draft => CreateTestcaseHandler?.Invoke(node.Name, draft);
         node.Editor!.CloseRequested += (_, _) => OnEditorClosed();
         node.Editor.RunHandler = request => RunHandler is { } run ? run(node.Name, request) : Task.FromResult<string?>("Running is not available here.");
     }

@@ -106,4 +106,37 @@ public sealed partial class DataEditorViewModel
         }
         finally { IsStartingRun = false; }
     }
+
+    // ---- New testcase ----------------------------------------------------------------------
+
+    /// <summary>Writes a testcase from the wizard into the workbook file; set by whoever hosts the editor.</summary>
+    public Action<TestcaseWizardDraft>? CreateTestcaseHandler { get; set; }
+
+    public bool CanCreateTestcase => CreateTestcaseHandler is not null;
+
+    /// <summary>Raised with the next free testcase index when the view should show the testcase wizard.</summary>
+    public event EventHandler<int>? NewTestcaseRequested;
+
+    [RelayCommand]
+    private void NewTestcase()
+    {
+        if (CreateTestcaseHandler is null) { ShowStatus("Creating a testcase is only available when the editor is opened from the dashboard.", isError: true); return; }
+        if (IsDirty) { ShowStatus("Save your changes first — the wizard adds the testcase to the saved workbook.", isError: true); return; }
+        NewTestcaseRequested?.Invoke(this, Testcases.Select(t => t.Index).DefaultIfEmpty(0).Max() + 1);
+    }
+
+    public void CreateTestcase(TestcaseWizardDraft draft) => CreateTestcaseHandler?.Invoke(draft);
+
+    /// <summary>After the wizard wrote the file: re-reads it and selects the new testcase.</summary>
+    public void FinishNewTestcase(int index)
+    {
+        _document = LoadTestingTool.Editing.WorkbookDocument.Load(WorkbookPath);
+        ClearUndoHistory();
+        ConflictVisible = false;
+        IsDirty = false;
+        FilterText = string.Empty;
+        LoadTestcases(index);
+        var created = Testcases.Any(t => t.Index == index);
+        ShowStatus(created ? $"Created testcase {index}. Add its data rows below." : $"The testcase was not created — see the dashboard for the reason.", isError: !created);
+    }
 }
