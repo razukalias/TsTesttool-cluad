@@ -8,13 +8,17 @@ namespace LoadTestingTool.UI.DataEditor;
 /// One step of a testcase: a row of the config sheet. Cell 0 is the step name, followed by the other config
 /// columns in sheet order. Editing a cell writes through to the workbook.
 /// </summary>
-public sealed class StepRowViewModel
+public sealed class StepRowViewModel : IFormattedRow
 {
+    private readonly SheetTable? _table;
+    private readonly IReadOnlyList<GridColumn> _columns;
     private readonly Action<StepRowViewModel, int, string> _edited;
     private bool _suppress;
 
-    public StepRowViewModel(TableRow row, IReadOnlyList<GridColumn> columns, Action<StepRowViewModel, int, string> edited)
+    public StepRowViewModel(TableRow row, IReadOnlyList<GridColumn> columns, Action<StepRowViewModel, int, string> edited, SheetTable? table = null)
     {
+        _table = table;
+        _columns = columns;
         Row = row;
         _edited = edited;
         var values = new List<string> { row.Get("stepname") };
@@ -22,6 +26,18 @@ public sealed class StepRowViewModel
         CurrentName = values[0];
         Cells = new ObservableCollection<string>(values);
         Cells.CollectionChanged += OnCellsChanged;
+        Formats = new ObservableCollection<CellStyleView>(Enumerable.Range(0, values.Count).Select(_ => new CellStyleView()));
+        for (var cell = 0; cell < Formats.Count; cell++)
+            Formats[cell].Set(Locate(cell) is { } at ? at.Table.GetFormat(at.Row, at.Column) : CellFormat.None);
+    }
+
+    public ObservableCollection<CellStyleView> Formats { get; }
+
+    public (SheetTable Table, TableRow Row, int Column)? Locate(int cell)
+    {
+        if (_table is null) return null;
+        var column = cell == 0 ? _table.FindColumn("stepname") : _columns[cell - 1].SheetColumn;
+        return column < 0 ? null : (_table, Row, column);
     }
 
     public TableRow Row { get; }

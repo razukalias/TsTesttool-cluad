@@ -197,6 +197,9 @@ public sealed partial class WorkbookDocument
         columns += Request.RenamedHeaders().Count + Response.RenamedHeaders().Count > 0 ? 1 : 0;
         if (inserted > 0) EnsureRowsCanMove();
         var renumbered = RowInsertion.Apply(workbook, [Request, Response]); // also renames references to renamed columns
+        Config.ApplyFormats(workbook.Worksheet(Config.SheetName));
+        Request.ApplyFormats(workbook.Worksheet(Request.SheetName));
+        Response.ApplyFormats(workbook.Worksheet(Response.SheetName));
 
         var directory = Path.GetDirectoryName(FilePath)!;
         var temp = Path.Combine(directory, $"{Path.GetFileName(FilePath)}.tmp-{Guid.NewGuid():N}");

@@ -33,6 +33,9 @@
       <Setter Property="BorderBrush" Value="#3291FF" />
       <Setter Property="FontWeight" Value="Bold" />
     </Style>
+    <Style Selector="DataGridRow">
+      <Setter Property="MinHeight" Value="36" />
+    </Style>
     <Style Selector="DataGridCell">
       <Setter Property="FontSize" Value="13" />
     </Style>
@@ -148,6 +151,32 @@
               </Flyout>
             </Button.Flyout>
           </Button>
+          <Button Content="Format ▾" MinHeight="36" ToolTip.Tip="Highlight or wrap cells; saved in the workbook">
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedLeft">
+                <StackPanel Width="330" Spacing="10" x:DataType="vm:DataEditorViewModel">
+                  <TextBlock Classes="caption" Text="FORMAT" />
+                  <ComboBox ItemsSource="{x:Static vm:DataEditorViewModel.FormatScopes}" SelectedItem="{Binding FormatScope, Mode=TwoWay}" HorizontalAlignment="Stretch" />
+                  <WrapPanel>
+                    <Button Tag="fill:#FFEB9C" Click="OnFormatClick" Background="#FFEB9C" Width="34" Height="30" Margin="0,0,6,6" ToolTip.Tip="Yellow" />
+                    <Button Tag="fill:#C6EFCE" Click="OnFormatClick" Background="#C6EFCE" Width="34" Height="30" Margin="0,0,6,6" ToolTip.Tip="Green" />
+                    <Button Tag="fill:#FFC7CE" Click="OnFormatClick" Background="#FFC7CE" Width="34" Height="30" Margin="0,0,6,6" ToolTip.Tip="Red" />
+                    <Button Tag="fill:#BDD7EE" Click="OnFormatClick" Background="#BDD7EE" Width="34" Height="30" Margin="0,0,6,6" ToolTip.Tip="Blue" />
+                    <Button Tag="fill:#F8CBAD" Click="OnFormatClick" Background="#F8CBAD" Width="34" Height="30" Margin="0,0,6,6" ToolTip.Tip="Orange" />
+                    <Button Tag="fill:#D9C7F0" Click="OnFormatClick" Background="#D9C7F0" Width="34" Height="30" Margin="0,0,6,6" ToolTip.Tip="Purple" />
+                    <Button Tag="fill:#D9D9D9" Click="OnFormatClick" Background="#D9D9D9" Width="34" Height="30" Margin="0,0,6,6" ToolTip.Tip="Grey" />
+                    <Button Tag="fill:none" Click="OnFormatClick" Content="Clear highlight" Height="30" Margin="0,0,6,6" />
+                  </WrapPanel>
+                  <WrapPanel>
+                    <Button Tag="wrap:on" Click="OnFormatClick" Content="Wrap text" Margin="0,0,8,0" />
+                    <Button Tag="wrap:off" Click="OnFormatClick" Content="No wrap" />
+                  </WrapPanel>
+                  <TextBlock Text="Acts on the cell you last clicked, the selected rows, or the whole column of the rows shown." FontSize="12" Foreground="#8EA4BC" TextWrapping="Wrap" />
+                </StackPanel>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+          <Button Content="Edit cell…" Click="OnEditCellClick" MinHeight="36" ToolTip.Tip="Open the cell you last clicked in a large text box" />
           <Button Content="Compare runs…" Command="{Binding OpenHistoryCommand}" ToolTip.Tip="Open the History Explorer filtered to this instance and testcase" MinHeight="36" />
           <ToggleButton Content="Preview request" IsChecked="{Binding PreviewVisible, Mode=TwoWay}" ToolTip.Tip="Show what a step sends for the selected row" MinHeight="36" />
           <Border Width="1" Background="#22364D" Margin="4,6" />
@@ -271,6 +300,16 @@
             </StackPanel>
           </StackPanel>
         </Border>
+        <Border IsVisible="{Binding CellEditorVisible}" Classes="panel" Padding="14,12">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="caption" Text="{Binding CellEditorTitle, StringFormat='CELL · {0}'}" />
+            <TextBox Text="{Binding CellEditorText, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="180" MaxHeight="360" FontFamily="Consolas,Menlo,monospace" FontSize="12.5" />
+            <WrapPanel Classes="form">
+              <Button Content="Apply" Classes="primary" Command="{Binding ApplyCellEditorCommand}" />
+              <Button Content="Cancel" Command="{Binding CloseCellEditorCommand}" />
+            </WrapPanel>
+          </StackPanel>
+        </Border>
         <Border IsVisible="{Binding TestcasePanelVisible}" Classes="panel" Padding="14,12">
           <StackPanel Spacing="10">
             <TextBlock Classes="caption" Text="{Binding TestcasePanelTitle}" />
@@ -322,7 +361,6 @@
                     GridLinesVisibility="All"
                     HeadersVisibility="Column"
                     FrozenColumnCount="2"
-                    RowHeight="36"
                     Background="Transparent"
                     BorderThickness="0"
                     HorizontalGridLinesBrush="#1B2D44"
@@ -347,7 +385,6 @@
                       GridLinesVisibility="All"
                       HeadersVisibility="Column"
                       FrozenColumnCount="1"
-                      RowHeight="36"
                       Background="Transparent"
                       BorderThickness="0"
                       HorizontalGridLinesBrush="#1B2D44"

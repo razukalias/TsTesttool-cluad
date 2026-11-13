@@ -186,7 +186,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             .Select(r => (Request: r, Response: FindResponse(r)))
             .ToList();
         Columns = BuildColumns(testcase, pairs);
-        foreach (var pair in pairs) _allRows.Add(new DataRowViewModel(testcase.Index, pair.Request, pair.Response, Columns, OnCellEdited));
+        foreach (var pair in pairs) _allRows.Add(new DataRowViewModel(testcase.Index, pair.Request, pair.Response, Columns, OnCellEdited, _document.Request, _document.Response));
         AssignOutcomes();
         RefreshFilterColumns();
         ColumnsChanged?.Invoke(this, EventArgs.Empty);
@@ -365,7 +365,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             if (copyFrom.Response is { } sourceResponse) CopyValues(sourceResponse, response, _document.Response);
         }
         ClearRowFilters();
-        var row = new DataRowViewModel(testcase.Index, request, response, Columns, OnCellEdited);
+        var row = new DataRowViewModel(testcase.Index, request, response, Columns, OnCellEdited, _document.Request, _document.Response);
         _allRows.Add(row);
         ApplyFilter();
         testcase.RowCount++;

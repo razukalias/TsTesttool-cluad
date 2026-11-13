@@ -38,7 +38,7 @@ public sealed partial class DataEditorViewModel
         {
             var (request, response) = _document.InsertDataRowBefore(testcase.Index, dataId, beforeId);
             ClearRowFilters();
-            var row = new DataRowViewModel(testcase.Index, request, response, Columns, OnCellEdited);
+            var row = new DataRowViewModel(testcase.Index, request, response, Columns, OnCellEdited, _document.Request, _document.Response);
             _allRows.Insert(Math.Max(0, _allRows.IndexOf(before)), row);
             ApplyFilter();
             testcase.RowCount++;

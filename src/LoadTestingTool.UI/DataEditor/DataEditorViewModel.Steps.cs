@@ -56,7 +56,7 @@ public sealed partial class DataEditorViewModel
         StepColumns = columns;
         if (SelectedTestcase is { } testcase)
             foreach (var row in _document.Config.Rows.Where(r => !r.IsBlank && WorkbookDocument.EffectiveIndex(r) == testcase.Index))
-                StepRows.Add(new StepRowViewModel(row, StepColumns, OnStepEdited));
+                StepRows.Add(new StepRowViewModel(row, StepColumns, OnStepEdited, _document.Config));
         StepColumnsChanged?.Invoke(this, EventArgs.Empty);
         OnPropertyChanged(nameof(StepCountText));
         SelectedStep = StepRows.FirstOrDefault();
@@ -132,7 +132,7 @@ public sealed partial class DataEditorViewModel
         row.Set("steptype", "HTTP");
         row.Set("stage", "Test");
         row.Set("enabled", "True");
-        var step = new StepRowViewModel(row, StepColumns, OnStepEdited);
+        var step = new StepRowViewModel(row, StepColumns, OnStepEdited, _document.Config);
         StepRows.Add(step);
         SelectedStep = step;
         OnPropertyChanged(nameof(StepCountText));

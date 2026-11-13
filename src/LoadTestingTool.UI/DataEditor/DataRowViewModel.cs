@@ -83,13 +83,19 @@ public sealed class ProblemViewModel
 /// One line of the grid: a request row and its response row shown together. Cell 0 is the data ID, followed
 /// by the request columns and then the expected-response columns. Editing a cell writes through to the workbook.
 /// </summary>
-public sealed partial class DataRowViewModel : ObservableObject
+public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow
 {
+    private readonly SheetTable? _requestTable;
+    private readonly SheetTable? _responseTable;
+    private readonly IReadOnlyList<GridColumn> _columns;
     private readonly Action<DataRowViewModel, int, string> _edited;
     private bool _suppress;
 
-    public DataRowViewModel(int testcaseIndex, TableRow request, TableRow? response, IReadOnlyList<GridColumn> columns, Action<DataRowViewModel, int, string> edited)
+    public DataRowViewModel(int testcaseIndex, TableRow request, TableRow? response, IReadOnlyList<GridColumn> columns, Action<DataRowViewModel, int, string> edited, SheetTable? requestTable = null, SheetTable? responseTable = null)
     {
+        _columns = columns;
+        _requestTable = requestTable;
+        _responseTable = responseTable;
         TestcaseIndex = testcaseIndex;
         Request = request;
         Response = response;
@@ -100,6 +106,25 @@ public sealed partial class DataRowViewModel : ObservableObject
         CurrentDataId = values[0];
         Cells = new ObservableCollection<string>(values);
         Cells.CollectionChanged += OnCellsChanged;
+        Formats = new ObservableCollection<CellStyleView>(Enumerable.Range(0, values.Count).Select(_ => new CellStyleView()));
+        RefreshFormats();
+    }
+
+    public ObservableCollection<CellStyleView> Formats { get; }
+
+    public (SheetTable Table, TableRow Row, int Column)? Locate(int cell)
+    {
+        if (cell == 0) return _requestTable is null || _requestTable.FindColumn("dataid") is not (>= 0 and var id) ? null : (_requestTable, Request, id);
+        var column = _columns[cell - 1];
+        if (column.Group == ColumnGroup.Request) return _requestTable is null ? null : (_requestTable, Request, column.SheetColumn);
+        return _responseTable is null || Response is null ? null : (_responseTable, Response, column.SheetColumn);
+    }
+
+    /// <summary>Reads every cell's look from the workbook tables again.</summary>
+    public void RefreshFormats()
+    {
+        for (var cell = 0; cell < Formats.Count; cell++)
+            Formats[cell].Set(Locate(cell) is { } at ? at.Table.GetFormat(at.Row, at.Column) : CellFormat.None);
     }
 
     /// <summary>How this row fared in the latest run, or null when there are no results for it.</summary>

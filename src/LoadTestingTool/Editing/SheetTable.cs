@@ -13,6 +13,13 @@ namespace LoadTestingTool.Editing;
 /// the last used row, because workbook cells can refer to other rows by absolute number
 /// (for example &lt;From_request_title_4&gt;).
 /// </remarks>
+/// <summary>Look of one cell that the editor can change: a fill colour (#RRGGBB) and whether long text wraps.</summary>
+public readonly record struct CellFormat(string? Fill, bool Wrap)
+{
+    public static readonly CellFormat None = new(null, false);
+    public bool IsDefault => Fill is null && !Wrap;
+}
+
 public sealed class SheetTable
 {
     private static readonly HashSet<string> NumericHeaders = new(StringComparer.OrdinalIgnoreCase)
@@ -24,6 +31,8 @@ public sealed class SheetTable
     private readonly List<TableRow> _rows = [];
     private readonly List<int> _removedSourceRows = [];
     private readonly List<int> _removedSourceColumns = [];
+    private Dictionary<(TableRow Row, Column Column), CellFormat> _formats = [];
+    private Dictionary<(TableRow Row, Column Column), CellFormat> _formatBaseline = [];
 
     private SheetTable(string sheetName, int headerRowNumber)
     {
@@ -37,7 +46,52 @@ public sealed class SheetTable
     public int ColumnCount => _columns.Count;
     public IReadOnlyList<string> Headers => _columns.Select(c => c.Header).ToList();
 
-    public bool IsDirty => _removedSourceRows.Count > 0 || _removedSourceColumns.Count > 0 || _columns.Any(c => c.IsModified) || _rows.Any(r => r.IsModified);
+    public bool IsDirty => _removedSourceRows.Count > 0 || _removedSourceColumns.Count > 0 || _columns.Any(c => c.IsModified) || _rows.Any(r => r.IsModified) || ChangedFormats().Count > 0;
+
+    // ---- Cell formats (highlight and wrap) -------------------------------------------------
+
+    public CellFormat GetFormat(TableRow row, int column)
+        => _formats.TryGetValue((row, _columns[column]), out var format) ? format : CellFormat.None;
+
+    public void SetFormat(TableRow row, int column, CellFormat format)
+    {
+        var key = (row, _columns[column]);
+        if (format.IsDefault) _formats.Remove(key);
+        else _formats[key] = format;
+    }
+
+    /// <summary>Formats that differ from what the file holds, for cells that still exist.</summary>
+    private List<((TableRow Row, Column Column) Key, CellFormat Now)> ChangedFormats()
+    {
+        var result = new List<((TableRow, Column), CellFormat)>();
+        var live = _rows.Count == 0 ? null : new HashSet<TableRow>(_rows);
+        var columns = new HashSet<Column>(_columns);
+        foreach (var key in _formats.Keys.Concat(_formatBaseline.Keys).Distinct())
+        {
+            if (live is null || !live.Contains(key.Row) || !columns.Contains(key.Column)) continue;
+            var now = _formats.GetValueOrDefault(key, CellFormat.None);
+            var before = _formatBaseline.GetValueOrDefault(key, CellFormat.None);
+            if (now != before) result.Add((key, now));
+        }
+        return result;
+    }
+
+    /// <summary>Writes changed fills and wrapping at the cells' final positions. Runs after rows and columns were placed.</summary>
+    internal void ApplyFormats(IXLWorksheet sheet)
+    {
+        var inserts = PendingInserts();
+        foreach (var (key, now) in ChangedFormats())
+        {
+            var row = key.Row.PendingSourceRow ?? (key.Row.SourceRow is int source ? source + inserts.Count(i => i.Before <= source) : (int?)null);
+            var column = key.Column.PendingSourceColumn;
+            if (row is null || column is null) continue;
+            var cell = sheet.Cell(row.Value, column.Value);
+            if (now.Fill is { } fill) cell.Style.Fill.BackgroundColor = XLColor.FromHtml(fill);
+            else cell.Style.Fill.PatternType = XLFillPatternValues.None;
+            cell.Style.Alignment.WrapText = now.Wrap;
+            sheet.Row(row.Value).ClearHeight(); // let Excel size the row to its wrapped text
+        }
+    }
 
     /// <summary>Index of the first column with this header, or -1.</summary>
     public int FindColumn(string header)
@@ -162,7 +216,7 @@ public sealed class SheetTable
 
     /// <summary>Captures the current edits so <see cref="Restore"/> can return to this exact state (used for undo).</summary>
     public SheetSnapshot Snapshot()
-        => new(_columns.Select(c => ((object)c, c.Header)).ToArray(), _rows.Select(r => { var (values, original) = r.Capture(); return (r, values, original); }).ToArray(), _removedSourceRows.ToArray(), _removedSourceColumns.ToArray());
+        => new(_columns.Select(c => ((object)c, c.Header)).ToArray(), _rows.Select(r => { var (values, original) = r.Capture(); return (r, values, original); }).ToArray(), _removedSourceRows.ToArray(), _removedSourceColumns.ToArray(), _formats.Select(kv => (kv.Key.Row, (object)kv.Key.Column, kv.Value)).ToArray());
 
     /// <summary>Returns to a state captured by <see cref="Snapshot"/>. Only valid until the table is next saved.</summary>
     public void Restore(SheetSnapshot snapshot)
@@ -184,6 +238,7 @@ public sealed class SheetTable
         _removedSourceRows.AddRange(snapshot.RemovedSourceRows);
         _removedSourceColumns.Clear();
         _removedSourceColumns.AddRange(snapshot.RemovedSourceColumns);
+        _formats = snapshot.Formats.ToDictionary(f => (f.Row, (Column)f.Column), f => f.Format);
     }
 
     internal static SheetTable Load(IXLWorksheet sheet)
@@ -201,8 +256,19 @@ public sealed class SheetTable
             var values = new string[table._columns.Count];
             for (var i = 0; i < values.Length; i++) values[i] = sheetRow.Cell(table._columns[i].SourceColumn!.Value).GetString();
             if (values.All(string.IsNullOrWhiteSpace)) continue;
-            table._rows.Add(new TableRow(table, sheetRow.RowNumber(), values, isNew: false));
+            var tableRow = new TableRow(table, sheetRow.RowNumber(), values, isNew: false);
+            table._rows.Add(tableRow);
+            for (var i = 0; i < table._columns.Count; i++)
+            {
+                var style = sheetRow.Cell(table._columns[i].SourceColumn!.Value).Style;
+                var fill = style.Fill.PatternType == XLFillPatternValues.Solid && style.Fill.BackgroundColor.ColorType == XLColorType.Color
+                    ? "#" + style.Fill.BackgroundColor.Color.R.ToString("X2") + style.Fill.BackgroundColor.Color.G.ToString("X2") + style.Fill.BackgroundColor.Color.B.ToString("X2")
+                    : null;
+                var format = new CellFormat(fill, style.Alignment.WrapText);
+                if (!format.IsDefault) table._formats[(tableRow, table._columns[i])] = format;
+            }
         }
+        table._formatBaseline = new(table._formats);
         return table;
     }
 
@@ -259,6 +325,7 @@ public sealed class SheetTable
         foreach (var row in _rows) row.AcceptChanges();
         _removedSourceRows.Clear();
         _removedSourceColumns.Clear();
+        _formatBaseline = new(_formats);
     }
 
     private static void WriteCell(IXLCell cell, string value, string header)
@@ -318,14 +385,16 @@ public sealed class SheetTable
 /// <summary>An opaque capture of a <see cref="SheetTable"/>'s edits, taken with <see cref="SheetTable.Snapshot"/>.</summary>
 public sealed class SheetSnapshot
 {
-    internal SheetSnapshot((object Column, string Header)[] columns, (TableRow Row, string[] Values, string[]? Original)[] rows, int[] removedSourceRows, int[] removedSourceColumns)
+    internal SheetSnapshot((object Column, string Header)[] columns, (TableRow Row, string[] Values, string[]? Original)[] rows, int[] removedSourceRows, int[] removedSourceColumns, (TableRow Row, object Column, CellFormat Format)[] formats)
     {
+        Formats = formats;
         Columns = columns;
         Rows = rows;
         RemovedSourceRows = removedSourceRows;
         RemovedSourceColumns = removedSourceColumns;
     }
 
+    internal (TableRow Row, object Column, CellFormat Format)[] Formats { get; }
     internal (object Column, string Header)[] Columns { get; }
     internal (TableRow Row, string[] Values, string[]? Original)[] Rows { get; }
     internal int[] RemovedSourceColumns { get; }

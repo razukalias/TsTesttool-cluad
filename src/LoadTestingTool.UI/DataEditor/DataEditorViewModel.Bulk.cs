@@ -81,7 +81,7 @@ public sealed partial class DataEditorViewModel
     private void AddPastedRow(TestcaseItem testcase, string? dataId = null)
     {
         var (request, response) = _document.AddDataRow(testcase.Index, string.IsNullOrWhiteSpace(dataId) ? NextDataId(testcase) : dataId);
-        var row = new DataRowViewModel(testcase.Index, request, response, Columns, OnCellEdited);
+        var row = new DataRowViewModel(testcase.Index, request, response, Columns, OnCellEdited, _document.Request, _document.Response);
         _allRows.Add(row);
         VisibleRows.Add(row);
         testcase.RowCount++;
