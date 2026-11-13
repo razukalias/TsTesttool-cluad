@@ -180,8 +180,8 @@ public sealed class WorkbookReader
     private static bool Bool(Dictionary<string, int> h, IXLRow row, string key, bool fallback) => bool.TryParse(Text(h, row, key), out var value) ? value : fallback;
     private static bool IsBlank(IXLRow row) => row.CellsUsed().All(c => string.IsNullOrWhiteSpace(c.GetString()));
     private static IReadOnlyList<string> SplitValues(string value) => string.IsNullOrWhiteSpace(value) ? [] : value.Split(',', '|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    private static bool IsVerb(string value) => new[] { "eq", "ne", "lt", "lte", "gt", "gte", "contains", "notcontains", "startswith", "endswith", "regex", "exists", "notexists", "empty", "notempty", "in", "size" }.Contains(value.Trim().ToLowerInvariant());
-    private static bool AllowsBlankExpectedValue(string value) => value.Equals("empty", StringComparison.OrdinalIgnoreCase)
+    internal static bool IsVerb(string value) => new[] { "eq", "ne", "lt", "lte", "gt", "gte", "contains", "notcontains", "startswith", "endswith", "regex", "exists", "notexists", "empty", "notempty", "in", "size" }.Contains(value.Trim().ToLowerInvariant());
+    internal static bool AllowsBlankExpectedValue(string value) => value.Equals("empty", StringComparison.OrdinalIgnoreCase)
         || value.Equals("notempty", StringComparison.OrdinalIgnoreCase)
         || value.Equals("exists", StringComparison.OrdinalIgnoreCase)
         || value.Equals("notexists", StringComparison.OrdinalIgnoreCase);
