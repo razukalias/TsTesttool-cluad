@@ -69,7 +69,17 @@
         </Grid>
         <CheckBox DockPanel.Dock="Bottom" Content="Load instances only when opened" IsChecked="{Binding LazyLoading, Mode=TwoWay}" Margin="6,12,0,0" FontSize="12"
                   ToolTip.Tip="On: a workbook is read the first time you click its instance, so the editor opens quickly with many or large workbooks. Off: every workbook is read when the editor opens." />
-        <TreeView ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
+        <TreeView x:Name="Tree" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
+          <TreeView.ContextMenu>
+            <ContextMenu>
+              <MenuItem Header="Rename testcase…" Command="{Binding Current.OpenRenameTestcaseCommand}" IsEnabled="{Binding TestcaseNodeSelected}" />
+              <MenuItem Header="Copy testcase…" Command="{Binding Current.OpenCopyTestcaseCommand}" IsEnabled="{Binding TestcaseNodeSelected}" />
+              <MenuItem Header="Move up (runs earlier)" Command="{Binding Current.MoveTestcaseUpCommand}" IsEnabled="{Binding TestcaseNodeSelected}" />
+              <MenuItem Header="Move down (runs later)" Command="{Binding Current.MoveTestcaseDownCommand}" IsEnabled="{Binding TestcaseNodeSelected}" />
+              <Separator />
+              <MenuItem Header="Delete testcase…" Command="{Binding Current.OpenDeleteTestcaseCommand}" IsEnabled="{Binding TestcaseNodeSelected}" />
+            </ContextMenu>
+          </TreeView.ContextMenu>
           <TreeView.DataTemplates>
             <TreeDataTemplate DataType="vm:InstanceNode" ItemsSource="{Binding Testcases}">
               <Grid ColumnDefinitions="Auto,*" Margin="0,4">
@@ -141,6 +151,8 @@
           <ToggleButton Content="Preview request" IsChecked="{Binding PreviewVisible, Mode=TwoWay}" ToolTip.Tip="Show what a step sends for the selected row" MinHeight="36" />
           <Border Width="1" Background="#22364D" Margin="4,6" />
           <Button Content="Add step" Command="{Binding AddStepCommand}" IsVisible="{Binding ShowSteps}" MinHeight="36" />
+          <Button Content="Move step up" Command="{Binding MoveStepUpCommand}" IsVisible="{Binding ShowSteps}" IsEnabled="{Binding SelectedStep, Converter={x:Static ObjectConverters.IsNotNull}}" ToolTip.Tip="Run this step earlier" MinHeight="36" />
+          <Button Content="Move step down" Command="{Binding MoveStepDownCommand}" IsVisible="{Binding ShowSteps}" IsEnabled="{Binding SelectedStep, Converter={x:Static ObjectConverters.IsNotNull}}" ToolTip.Tip="Run this step later" MinHeight="36" />
           <Button Content="Find &amp; replace" Command="{Binding OpenFindCommand}" IsVisible="{Binding ShowSteps}" MinHeight="36" />
           <Button Content="Show its columns" Command="{Binding ShowStepDataCommand}" IsVisible="{Binding ShowSteps}" IsEnabled="{Binding SelectedStep, Converter={x:Static ObjectConverters.IsNotNull}}" ToolTip.Tip="Open the Data tab narrowed to the selected step's columns" MinHeight="36" />
           <Button Content="Remove step" Classes="danger" Command="{Binding RemoveStepCommand}" IsVisible="{Binding ShowSteps}" IsEnabled="{Binding SelectedStep, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
@@ -230,6 +242,18 @@
                 <Run Text="Current column:" /><Run Text="{Binding CurrentColumnTitle, Mode=OneWay}" FontWeight="SemiBold" />
               </TextBlock>
             </StackPanel>
+          </StackPanel>
+        </Border>
+        <Border IsVisible="{Binding TestcasePanelVisible}" Classes="panel" Padding="14,12">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="caption" Text="{Binding TestcasePanelTitle}" />
+            <WrapPanel Classes="form">
+              <TextBox x:Name="TestcaseNameBox" Text="{Binding TestcasePanelName, Mode=TwoWay}" IsVisible="{Binding TestcasePanelAsksName}" MinWidth="320" />
+              <Button Content="{Binding TestcasePanelConfirmText}" Classes="primary" Command="{Binding ConfirmTestcaseActionCommand}" IsVisible="{Binding !TestcasePanelIsDelete}" />
+              <Button Content="{Binding TestcasePanelConfirmText}" Classes="danger" Command="{Binding ConfirmTestcaseActionCommand}" IsVisible="{Binding TestcasePanelIsDelete}" />
+              <Button Content="Cancel" Command="{Binding CloseTestcasePanelCommand}" />
+            </WrapPanel>
+            <TextBlock Text="{Binding TestcasePanelNote}" Foreground="#8EA4BC" FontSize="12" TextWrapping="Wrap" />
           </StackPanel>
         </Border>
         <Border IsVisible="{Binding EditColumnVisible}" Classes="panel" Padding="14,12">

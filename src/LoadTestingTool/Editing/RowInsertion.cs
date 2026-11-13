@@ -20,8 +20,12 @@ internal static class RowInsertion
     /// <c>&lt;From_response_Step.output_2&gt;</c> is not a row reference: the runner leaves a response reference whose name contains a dot
     /// alone and resolves it from earlier step responses at run time, so its number must never be touched.
     /// </summary>
-    private static bool IsRuntimeReference(string sheet, string header)
+    internal static bool IsRuntimeReference(string sheet, string header)
         => sheet.Equals("response", StringComparison.OrdinalIgnoreCase) && header.Contains('.', StringComparison.Ordinal);
+
+    /// <summary>How many numeric row references one cell's text holds.</summary>
+    internal static int CountRowReferences(string text)
+        => Full.Matches(text).Count(m => !IsRuntimeReference(m.Groups[1].Value, m.Groups[2].Value)) + Short.Matches(text).Count;
 
     /// <summary>All numeric row references in the workbook (used to tell the user what an insert will touch).</summary>
     public static List<RowReference> Scan(XLWorkbook workbook)

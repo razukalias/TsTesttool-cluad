@@ -74,8 +74,12 @@ public sealed partial class InstanceNode : ObservableObject
             OnPropertyChanged(name);
     }
 
+    /// <summary>Raised when the editor's selected testcase changed, so the tree can follow (after a rename, copy, delete or move).</summary>
+    internal event EventHandler? SelectedTestcaseChanged;
+
     private void OnEditorChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(DataEditorViewModel.SelectedTestcase)) SelectedTestcaseChanged?.Invoke(this, EventArgs.Empty);
         if (e.PropertyName == nameof(DataEditorViewModel.IsDirty)) IsDirty = Editor!.IsDirty;
         else if (e.PropertyName == nameof(DataEditorViewModel.RunSummaryText)) OnPropertyChanged(nameof(RunSummary));
     }
@@ -126,8 +130,12 @@ public sealed partial class EditorShellViewModel : ObservableObject
 
     public IReadOnlyList<string> SavedWorkbookPaths => Instances.Where(i => i.Editor?.LastBackupPath is not null).Select(i => i.Path).ToList();
 
+    /// <summary>True when a testcase (not an instance) is selected in the tree, so the testcase menu applies.</summary>
+    public bool TestcaseNodeSelected => SelectedNode is TestcaseItem;
+
     partial void OnSelectedNodeChanged(object? value)
     {
+        OnPropertyChanged(nameof(TestcaseNodeSelected));
         switch (value)
         {
             case InstanceNode { Editor: { } editor }:
@@ -173,6 +181,10 @@ public sealed partial class EditorShellViewModel : ObservableObject
     {
         node.Editor!.CreateTestcaseHandler = draft => CreateTestcaseHandler?.Invoke(node.Name, draft);
         node.Editor!.CloseRequested += (_, _) => OnEditorClosed();
+        node.SelectedTestcaseChanged += (_, _) =>
+        {
+            if (ReferenceEquals(Current, node.Editor) && node.Editor!.SelectedTestcase is { } chosen && !ReferenceEquals(SelectedNode, chosen)) SelectedNode = chosen;
+        };
         node.Editor.RunHandler = request => RunHandler is { } run ? run(node.Name, request) : Task.FromResult<string?>("Running is not available here.");
     }
 
