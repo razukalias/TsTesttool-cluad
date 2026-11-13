@@ -163,7 +163,7 @@ public class ResultsTests
 
         vm.ShowFailedOnly = true;
         Assert.Equal(["CUST002", "CUST004"], vm.VisibleRows.Select(r => r.Cells[0]));
-        Assert.Equal("2 rows", vm.RowCountText);
+        Assert.Equal("2 of 6 rows", vm.RowCountText);
 
         vm.FilterText = "CUST004";
         Assert.Equal(["CUST004"], vm.VisibleRows.Select(r => r.Cells[0]));

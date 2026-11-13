@@ -53,7 +53,17 @@ public partial class DataEditorWindow : Window
 
     /// <summary>Opens every instance as a parent node with its testcases beneath it, starting on <paramref name="selectedPath"/>.</summary>
     public static DataEditorWindow Open(IEnumerable<(string Name, string Path)> instances, string? selectedPath = null)
-        => new(new EditorShellViewModel(instances, selectedPath));
+    {
+        var settings = EditorSettings.Load();
+        var shell = new EditorShellViewModel(instances, selectedPath, settings.LazyLoading);
+        shell.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(EditorShellViewModel.LazyLoading)) return;
+            settings.LazyLoading = shell.LazyLoading;
+            settings.Save();
+        };
+        return new DataEditorWindow(shell);
+    }
 
     private void AttachCurrent()
     {

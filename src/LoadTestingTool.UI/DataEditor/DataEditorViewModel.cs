@@ -69,7 +69,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
     public string SaveStatusColor => IsDirty ? "#F6C76B" : "#39D39B";
     public bool HasNoProblems => ErrorCount == 0 && WarningCount == 0;
     public string ProblemSummary => HasNoProblems ? "No problems" : $"{ErrorCount} {(ErrorCount == 1 ? "error" : "errors")}, {WarningCount} {(WarningCount == 1 ? "warning" : "warnings")}";
-    public string RowCountText => FilterText.Length == 0 ? $"{VisibleRows.Count} rows" : $"{VisibleRows.Count} of {_allRows.Count} rows";
+    public string RowCountText => FilterText.Length == 0 && !ShowFailedOnly ? $"{VisibleRows.Count} {(VisibleRows.Count == 1 ? "row" : "rows")}" : $"{VisibleRows.Count} of {_allRows.Count} rows";
 
     // ---- Selection and filtering ---------------------------------------------------------
 

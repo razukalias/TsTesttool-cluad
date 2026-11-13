@@ -17,6 +17,14 @@ public static class TestAppBuilder
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
 }
 
+internal static class TestEnvironment
+{
+    /// <summary>Keeps the tests away from the real per-user settings file.</summary>
+    [System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void IsolateSettings()
+        => LoadTestingTool.UI.DataEditor.EditorSettings.FilePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "uitests-settings-" + Guid.NewGuid().ToString("N"), "data-editor.json");
+}
+
 internal sealed class TempDir : IDisposable
 {
     public TempDir() => Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "uitests-" + Guid.NewGuid().ToString("N"));
