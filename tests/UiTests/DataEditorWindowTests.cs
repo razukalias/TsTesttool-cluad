@@ -25,7 +25,7 @@ public class DataEditorWindowTests
         window.Show();
 
         var grid = window.FindControl<DataGrid>("Grid")!;
-        Assert.Equal(1 + window.ViewModel.Columns.Count, grid.Columns.Count);
+        Assert.Equal(2 + window.ViewModel.Columns.Count, grid.Columns.Count); // data ID, last run, then the data columns
         Assert.Equal(300, window.ViewModel.VisibleRows.Count);
 
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();

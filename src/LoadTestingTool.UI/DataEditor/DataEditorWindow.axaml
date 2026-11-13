@@ -63,8 +63,11 @@
     <!-- Instances as parents, their testcases as children -->
     <Border Grid.Column="0" Background="#0C1828" BorderBrush="#22364D" BorderThickness="0,0,1,0" Padding="12,16">
       <DockPanel>
-        <TextBlock DockPanel.Dock="Top" Classes="caption" Text="INSTANCES" Margin="6,0,0,10" />
-        <TreeView ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="6,0,0,10">
+          <TextBlock Classes="caption" Text="INSTANCES" VerticalAlignment="Center" />
+          <Button Grid.Column="1" Content="Refresh results" Command="{Binding RefreshResultsCommand}" IsEnabled="{Binding !IsLoadingResults}" MinHeight="28" Padding="10,2" FontSize="12" />
+        </Grid>
+        <TreeView ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
           <TreeView.DataTemplates>
             <TreeDataTemplate DataType="vm:InstanceNode" ItemsSource="{Binding Testcases}">
               <Grid ColumnDefinitions="Auto,*" Margin="0,4">
@@ -72,6 +75,7 @@
                 <StackPanel Grid.Column="1" Spacing="1">
                   <TextBlock Text="{Binding Name}" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
                   <TextBlock Text="{Binding Subtitle}" FontSize="11" Foreground="#8EA4BC" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding RunSummary}" FontSize="11" Foreground="#6F87A1" TextWrapping="Wrap" />
                 </StackPanel>
               </Grid>
             </TreeDataTemplate>
@@ -79,6 +83,7 @@
               <StackPanel Spacing="1" Margin="0,3">
                 <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                 <TextBlock Text="{Binding Summary}" FontSize="11" Foreground="#8EA4BC" />
+                <TextBlock Text="{Binding ResultText}" IsVisible="{Binding HasResults}" Foreground="{Binding ResultColor}" FontSize="11" FontWeight="SemiBold" />
               </StackPanel>
             </DataTemplate>
           </TreeView.DataTemplates>
@@ -149,17 +154,22 @@
     <Grid Grid.Row="2" ColumnDefinitions="*,330" Margin="16,16,16,8">
 
       <Grid Grid.Column="0" RowDefinitions="Auto,Auto,*" Margin="0,0,12,0">
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="0,0,0,10">
-          <Button Content="Data" Classes="tab" Classes.active="{Binding ShowData}" Command="{Binding OpenDataTabCommand}" />
-          <Button Content="Steps" Classes="tab" Classes.active="{Binding ShowSteps}" Command="{Binding OpenStepsTabCommand}" />
-        </StackPanel>
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <Button Content="Data" Classes="tab" Classes.active="{Binding ShowData}" Command="{Binding OpenDataTabCommand}" />
+            <Button Content="Steps" Classes="tab" Classes.active="{Binding ShowSteps}" Command="{Binding OpenStepsTabCommand}" />
+          </StackPanel>
+          <TextBlock Grid.Column="2" Text="{Binding RowCountText}" IsVisible="{Binding ShowData}" Foreground="#8EA4BC" VerticalAlignment="Center" />
+        </Grid>
         <StackPanel Grid.Row="1" IsVisible="{Binding ShowData}" Spacing="10" Margin="0,0,0,10">
-        <Grid ColumnDefinitions="260,Auto,*,Auto,Auto,Auto">
+        <Grid ColumnDefinitions="220,Auto,*,Auto,Auto">
           <TextBox Grid.Column="0" Text="{Binding FilterText, Mode=TwoWay}" Watermark="Filter rows" MinHeight="36" />
-          <CheckBox Grid.Column="1" Content="Show every column" IsChecked="{Binding ShowAllColumns, Mode=TwoWay}" Margin="16,0,0,0" VerticalAlignment="Center" />
-          <TextBlock Grid.Column="3" Text="{Binding RowCountText}" Foreground="#8EA4BC" VerticalAlignment="Center" />
-          <Button Grid.Column="4" Content="Find &amp; replace" Command="{Binding OpenFindCommand}" Margin="14,0,0,0" MinHeight="36" />
-          <Button Grid.Column="5" Content="Add column" Command="{Binding OpenAddColumnCommand}" Margin="14,0,0,0" MinHeight="36" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" Margin="14,0,0,0" VerticalAlignment="Center">
+            <CheckBox Content="Show every column" IsChecked="{Binding ShowAllColumns, Mode=TwoWay}" />
+            <CheckBox Content="Failed rows only" IsChecked="{Binding ShowFailedOnly, Mode=TwoWay}" IsEnabled="{Binding HasResults}" />
+          </StackPanel>
+          <Button Grid.Column="3" Content="Find &amp; replace" Command="{Binding OpenFindCommand}" Margin="14,0,0,0" MinHeight="36" />
+          <Button Grid.Column="4" Content="Add column" Command="{Binding OpenAddColumnCommand}" Margin="14,0,0,0" MinHeight="36" />
         </Grid>
         <Border IsVisible="{Binding FindVisible}" Classes="panel" Padding="14,12">
           <StackPanel Spacing="10">
@@ -206,7 +216,7 @@
                     SelectionMode="Extended"
                     GridLinesVisibility="All"
                     HeadersVisibility="Column"
-                    FrozenColumnCount="1"
+                    FrozenColumnCount="2"
                     RowHeight="36"
                     Background="Transparent"
                     BorderThickness="0"
@@ -241,7 +251,8 @@
         </Border>
       </Grid>
 
-      <Border Classes="panel" Grid.Column="1" Padding="14">
+      <Grid Grid.Column="1" RowDefinitions="*,Auto">
+      <Border Classes="panel" Padding="14">
         <DockPanel>
           <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,10">
             <TextBlock Classes="caption" Text="PROBLEMS" />
@@ -266,6 +277,30 @@
           </ListBox>
         </DockPanel>
       </Border>
+      <Border Grid.Row="1" Classes="panel" Padding="14" Margin="0,12,0,0" MaxHeight="360" IsVisible="{Binding HasRowResult}">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,8">
+            <TextBlock Classes="caption" Text="LAST RUN · SELECTED ROW" />
+            <TextBlock Text="{Binding RowResultHeadline}" Foreground="{Binding RowResultColor}" FontWeight="SemiBold" TextWrapping="Wrap" />
+          </StackPanel>
+          <ListBox ItemsSource="{Binding RowFailures}" SelectedItem="{Binding SelectedFailure, Mode=TwoWay}" Background="Transparent">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:FailureViewModel">
+                <StackPanel Spacing="4">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Border CornerRadius="10" Padding="8,1" Background="#432333">
+                      <TextBlock Text="{Binding Kind}" Foreground="#FF7588" FontSize="10.5" FontWeight="Bold" />
+                    </Border>
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12.5" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="12" Foreground="#C9D8EA" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+      </Grid>
     </Grid>
 
     <!-- Status line -->

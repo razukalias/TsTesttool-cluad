@@ -104,6 +104,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             SelectedTestcase = Testcases.FirstOrDefault(t => t.Index == keepIndex) ?? Testcases.FirstOrDefault();
         }
         finally { _loading = false; }
+        UpdateTestcaseResults();
         BuildRows();
         Revalidate();
     }
@@ -129,6 +130,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             .ToList();
         Columns = BuildColumns(testcase, pairs);
         foreach (var pair in pairs) _allRows.Add(new DataRowViewModel(testcase.Index, pair.Request, pair.Response, Columns, OnCellEdited));
+        AssignOutcomes();
         ColumnsChanged?.Invoke(this, EventArgs.Empty);
         ApplyFilter();
         SelectedRow = VisibleRows.FirstOrDefault();
@@ -138,10 +140,15 @@ public sealed partial class DataEditorViewModel : ObservableObject
     private void ApplyFilter()
     {
         var text = FilterText.Trim();
+        var keep = SelectedRow;
         VisibleRows.Clear();
         foreach (var row in _allRows)
+        {
+            if (ShowFailedOnly && row.Outcome is not { Passed: false }) continue;
             if (text.Length == 0 || row.Cells.Any(c => c.Contains(text, StringComparison.OrdinalIgnoreCase)))
                 VisibleRows.Add(row);
+        }
+        if (keep is not null && VisibleRows.Contains(keep)) SelectedRow = keep;
         OnPropertyChanged(nameof(RowCountText));
     }
 

@@ -39,6 +39,21 @@ public sealed partial class TestcaseItem : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Summary))]
     private int _rowCount;
+
+    /// <summary>Latest-run result for the testcase's rows, e.g. "3 failed · 12 passed"; empty when there are no results.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasResults))]
+    private string _resultText = string.Empty;
+
+    [ObservableProperty] private string _resultColor = "#8EA4BC";
+
+    public bool HasResults => ResultText.Length > 0;
+
+    public void SetResults(int passed, int failed)
+    {
+        if (passed + failed == 0) { ResultText = string.Empty; return; }
+        ResultText = failed > 0 ? $"{failed} failed · {passed} passed" : $"{passed} passed";
+        ResultColor = failed > 0 ? "#FF7588" : "#39D39B";
+    }
 }
 
 public sealed class ProblemViewModel
@@ -62,7 +77,7 @@ public sealed class ProblemViewModel
 /// One line of the grid: a request row and its response row shown together. Cell 0 is the data ID, followed
 /// by the request columns and then the expected-response columns. Editing a cell writes through to the workbook.
 /// </summary>
-public sealed class DataRowViewModel
+public sealed partial class DataRowViewModel : ObservableObject
 {
     private readonly Action<DataRowViewModel, int, string> _edited;
     private bool _suppress;
@@ -80,6 +95,13 @@ public sealed class DataRowViewModel
         Cells = new ObservableCollection<string>(values);
         Cells.CollectionChanged += OnCellsChanged;
     }
+
+    /// <summary>How this row fared in the latest run, or null when there are no results for it.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ResultText), nameof(ResultColor))]
+    private RowOutcome? _outcome;
+
+    public string ResultText => Outcome is null ? "—" : Outcome.Passed ? "PASS" : "FAIL";
+    public string ResultColor => Outcome is null ? "#5E7590" : Outcome.Passed ? "#39D39B" : "#FF7588";
 
     public int TestcaseIndex { get; }
     public TableRow Request { get; }

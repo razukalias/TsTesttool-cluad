@@ -30,6 +30,7 @@ public partial class DataEditorWindow : Window
             Close();
         };
         AttachCurrent();
+        Opened += async (_, _) => await shell.RefreshResultsAsync();
     }
 
     public EditorShellViewModel Shell => _shell;
@@ -52,6 +53,7 @@ public partial class DataEditorWindow : Window
             _subscribed.ColumnsChanged -= OnColumnsChanged;
             _subscribed.StepColumnsChanged -= OnStepColumnsChanged;
             _subscribed.PropertyChanged -= OnEditorPropertyChanged;
+            _subscribed.RevealColumnRequested -= OnRevealColumn;
         }
         _subscribed = _shell.Current;
         if (_subscribed is null) return;
@@ -59,6 +61,7 @@ public partial class DataEditorWindow : Window
         _subscribed.ColumnsChanged += OnColumnsChanged;
         _subscribed.StepColumnsChanged += OnStepColumnsChanged;
         _subscribed.PropertyChanged += OnEditorPropertyChanged;
+        _subscribed.RevealColumnRequested += OnRevealColumn;
         RebuildColumns();
         RebuildStepColumns();
     }
@@ -76,6 +79,13 @@ public partial class DataEditorWindow : Window
             if (this.FindControl<DataGrid>("StepsGrid") is { } steps && editor.SelectedStep is not null && !ReferenceEquals(steps.SelectedItem, editor.SelectedStep)) steps.SelectedItem = editor.SelectedStep;
             if (this.FindControl<DataGrid>("Grid") is { } data && editor.SelectedRow is not null && !ReferenceEquals(data.SelectedItem, editor.SelectedRow)) data.SelectedItem = editor.SelectedRow;
         }, DispatcherPriority.Background);
+    }
+
+    private void OnRevealColumn(object? sender, int cellIndex)
+    {
+        var grid = this.FindControl<DataGrid>("Grid");
+        var column = grid?.Columns.FirstOrDefault(c => c.Tag is int tag && tag == cellIndex);
+        if (grid?.SelectedItem is { } row && column is not null) grid.ScrollIntoView(row, column);
     }
 
     private void OnStepColumnsChanged(object? sender, EventArgs e) => RebuildStepColumns();
@@ -129,7 +139,7 @@ public partial class DataEditorWindow : Window
     {
         var grid = this.FindControl<DataGrid>("Grid");
         if (grid is null || _shell.Current is null) return;
-        _shell.Current.CurrentCellIndex = grid.CurrentColumn?.DisplayIndex ?? -1;
+        _shell.Current.CurrentCellIndex = grid.CurrentColumn?.Tag is int tag ? tag : -1;
     }
 
     private void FillDownSelection()
@@ -157,7 +167,7 @@ public partial class DataEditorWindow : Window
     }
 
     private void OnGridCellPointerPressed(object? sender, DataGridCellPointerPressedEventArgs e)
-        => _shell.Current!.CurrentCellIndex = e.Column.DisplayIndex;
+        => _shell.Current!.CurrentCellIndex = e.Column.Tag is int tag ? tag : -1;
 
     private void OnSaveClick(object? sender, RoutedEventArgs e) => Save();
 
@@ -184,6 +194,7 @@ public partial class DataEditorWindow : Window
         editor.CurrentCellIndex = -1;
         grid.Columns.Clear();
         grid.Columns.Add(CreateColumn(new GridColumn("Data ID", ColumnGroup.Id, 0, -1)));
+        grid.Columns.Add(CreateResultColumn());
         foreach (var column in editor.Columns) grid.Columns.Add(CreateColumn(column));
         // The grid drops its selection while columns are rebuilt; keep the first row selected so Duplicate/Remove work.
         Dispatcher.UIThread.Post(() =>
@@ -230,8 +241,26 @@ public partial class DataEditorWindow : Window
         })
     };
 
+    /// <summary>The latest run's result for each row (PASS / FAIL / —).</summary>
+    private static DataGridTemplateColumn CreateResultColumn() => new()
+    {
+        Header = CreateHeader(new GridColumn("Result", ColumnGroup.Id, -1, -1)),
+        Width = new DataGridLength(92),
+        CanUserSort = false,
+        CanUserResize = false,
+        Tag = -1,
+        CellTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<DataRowViewModel>((_, _) =>
+        {
+            var text = new TextBlock { FontSize = 11.5, FontWeight = FontWeight.Bold, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Margin = new Avalonia.Thickness(12, 0) };
+            text.Bind(TextBlock.TextProperty, new Binding("ResultText"));
+            text.Bind(TextBlock.ForegroundProperty, new Binding("ResultColor"));
+            return text;
+        })
+    };
+
     private static DataGridTextColumn CreateColumn(GridColumn column, bool step = false) => new()
     {
+        Tag = column.CellIndex,
         Header = CreateHeader(step ? column with { Group = ColumnGroup.Id } : column),
         Binding = new Binding($"Cells[{column.CellIndex}]") { Mode = BindingMode.TwoWay },
         MinWidth = 110,

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace LoadTestingTool.UI.DataEditor;
 
@@ -38,7 +39,11 @@ public sealed partial class InstanceNode : ObservableObject
     private void OnEditorChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(DataEditorViewModel.IsDirty)) IsDirty = Editor!.IsDirty;
+        else if (e.PropertyName == nameof(DataEditorViewModel.RunSummaryText)) OnPropertyChanged(nameof(RunSummary));
     }
+
+    /// <summary>"Last run …: 12 passed, 3 failed", or "No results yet".</summary>
+    public string RunSummary => Editor?.RunSummaryText ?? string.Empty;
 }
 
 /// <summary>
@@ -95,6 +100,28 @@ public sealed partial class EditorShellViewModel : ObservableObject
                 break;
         }
     }
+
+    /// <summary>Reads the latest run of every instance from its Results folder, off the UI thread (event files can be large).</summary>
+    [RelayCommand]
+    public async Task RefreshResultsAsync()
+    {
+        IsLoadingResults = true;
+        try
+        {
+            var loaded = await Task.WhenAll(Instances.Where(n => n.Editor is not null).Select(async node =>
+            {
+                try { return (node, results: await Task.Run(() => RunResultsReader.ReadLatest(node.Editor!.ResultsFolder))); }
+                catch (IOException) { return (node, results: (RunResults?)null); }
+            }));
+            foreach (var (node, results) in loaded) node.Editor!.ApplyResults(results);
+        }
+        finally
+        {
+            IsLoadingResults = false;
+        }
+    }
+
+    [ObservableProperty] private bool _isLoadingResults;
 
     /// <summary>Called when the user tries to close the window; true when nothing is left unsaved.</summary>
     public bool RequestClose()
