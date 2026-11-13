@@ -34,6 +34,9 @@ public sealed partial class DataEditorViewModel
 
     partial void OnShowStepsChanged(bool value)
     {
+        OnPropertyChanged(nameof(CurrentColumnTitle));
+        CurrentCellIndex = -1;
+        UpdateMatches();
         if (value || !_dataStale || _loading) return;
         _dataStale = false;
         BuildRows(); // step names decide which data columns matter, so rebuild after step edits
@@ -66,17 +69,23 @@ public sealed partial class DataEditorViewModel
         if (cellIndex == 0)
         {
             var name = value.Trim();
-            if (!step.IsNew)
+            if (name.Length == 0) { RejectStepName(step, "A step name cannot be empty."); return; }
+            var old = step.CurrentName;
+            Record($"rename step {old} to {name}");
+            StepRenameResult result;
+            try { result = _document.RenameStep(old, name); }
+            catch (InvalidOperationException ex)
             {
-                RejectStepName(step, $"Step '{step.CurrentName}' cannot be renamed: its data columns ({step.CurrentName}.…) and expected values refer to that name. Add a new step instead.");
+                DiscardLastRecord();
+                RejectStepName(step, ex.Message);
                 return;
             }
-            if (name.Length == 0) { RejectStepName(step, "A step name cannot be empty."); return; }
-            if (StepNameTaken(name, except: step.Row)) { RejectStepName(step, $"A step named '{name}' already exists."); return; }
-            Record($"rename step to {name}");
             step.Row.Set("stepname", name);
             step.CurrentName = name;
             if (name != value) step.SetCellSilently(0, name);
+            StepsChanged();
+            ShowStatus(RenameSummary(old, name, result), isError: false);
+            return;
         }
         else
         {
@@ -84,6 +93,16 @@ public sealed partial class DataEditorViewModel
             step.Row.SetAt(StepColumns[cellIndex - 1].SheetColumn, value);
         }
         StepsChanged();
+    }
+
+    private static string RenameSummary(string old, string name, StepRenameResult r)
+    {
+        var parts = new List<string> { $"Renamed step {old} to {name}" };
+        if (r.ColumnsRenamed > 0) parts.Add($"{r.ColumnsRenamed} data {(r.ColumnsRenamed == 1 ? "column" : "columns")} renamed");
+        if (r.CellsRewritten > 0) parts.Add($"{r.CellsRewritten} {(r.CellsRewritten == 1 ? "cell" : "cells")} updated (references, dontrun, extractvariable)");
+        var text = string.Join("; ", parts) + ".";
+        if (r.ElsewhereMentions > 0) text += $" {r.ElsewhereMentions} {(r.ElsewhereMentions == 1 ? "cell" : "cells")} on other sheets still use the old name; update {(r.ElsewhereMentions == 1 ? "it" : "them")} in Excel. Template files are not scanned.";
+        return text;
     }
 
     private void RejectStepName(StepRowViewModel step, string message)

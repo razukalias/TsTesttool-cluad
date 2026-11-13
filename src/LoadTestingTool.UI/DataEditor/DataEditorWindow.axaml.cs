@@ -221,7 +221,7 @@ public partial class DataEditorWindow : Window
     /// <summary>The grid keeps its own notion of the current cell; tell the view-model which column that is.</summary>
     private void SyncCurrentColumn()
     {
-        var grid = this.FindControl<DataGrid>("Grid");
+        var grid = this.FindControl<DataGrid>(_shell.Current?.ShowSteps == true ? "StepsGrid" : "Grid");
         if (grid is null || _shell.Current is null) return;
         _shell.Current.CurrentCellIndex = grid.CurrentColumn?.Tag is int tag ? tag : -1;
     }
@@ -230,7 +230,17 @@ public partial class DataEditorWindow : Window
     {
         var grid = this.FindControl<DataGrid>("Grid");
         var editor = _shell.Current;
-        if (grid is null || editor is null || !editor.ShowData) return;
+        if (grid is null || editor is null) return;
+        if (editor.ShowSteps)
+        {
+            var stepsGrid = this.FindControl<DataGrid>("StepsGrid");
+            if (stepsGrid is null) return;
+            CommitPendingEdit();
+            SyncCurrentColumn();
+            var chosen = stepsGrid.SelectedItems.OfType<StepRowViewModel>().ToHashSet();
+            editor.FillDownSteps(editor.StepRows.Where(chosen.Contains).ToList(), editor.CurrentCellIndex);
+            return;
+        }
         CommitPendingEdit();
         SyncCurrentColumn();
         var selected = grid.SelectedItems.OfType<DataRowViewModel>().ToHashSet();
@@ -241,11 +251,18 @@ public partial class DataEditorWindow : Window
     {
         var grid = this.FindControl<DataGrid>("Grid");
         var editor = _shell.Current;
-        if (grid is null || editor is null || !editor.ShowData) return;
+        if (grid is null || editor is null) return;
         var text = Clipboard is null ? null : await Clipboard.GetTextAsync();
         if (string.IsNullOrEmpty(text)) return;
         CommitPendingEdit();
         SyncCurrentColumn();
+        if (editor.ShowSteps)
+        {
+            var stepsGrid = this.FindControl<DataGrid>("StepsGrid");
+            var first = stepsGrid?.SelectedItem is StepRowViewModel chosen ? editor.StepRows.IndexOf(chosen) : 0;
+            editor.PasteStepBlock(Math.Max(first, 0), Math.Max(editor.CurrentCellIndex, 0), ClipboardTable.Parse(text));
+            return;
+        }
         var start = grid.SelectedItem is DataRowViewModel row ? editor.VisibleRows.IndexOf(row) : 0;
         editor.PasteBlock(Math.Max(start, 0), Math.Max(editor.CurrentCellIndex, 0), ClipboardTable.Parse(text));
     }
@@ -293,6 +310,8 @@ public partial class DataEditorWindow : Window
         var grid = this.FindControl<DataGrid>("StepsGrid");
         var editor = _shell?.Current;
         if (grid is null || editor is null) return;
+        grid.CellPointerPressed -= OnGridCellPointerPressed;
+        grid.CellPointerPressed += OnGridCellPointerPressed;
         grid.Columns.Clear();
         grid.Columns.Add(CreateColumn(new GridColumn("stepname", ColumnGroup.Id, 0, -1)));
         foreach (var column in editor.StepColumns)

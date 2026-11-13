@@ -29,7 +29,9 @@ public sealed partial class DataEditorViewModel
     public bool FindScopeIsCurrent => FindScope == ScopeCurrentColumn;
     [ObservableProperty] private string _matchSummary = string.Empty;
 
-    public string CurrentColumnTitle => CurrentCellIndex > 0 && CurrentCellIndex <= Columns.Count ? Columns[CurrentCellIndex - 1].Title : "none selected";
+    public string CurrentColumnTitle => ShowSteps
+        ? (CurrentCellIndex > 0 && CurrentCellIndex <= StepColumns.Count ? StepColumns[CurrentCellIndex - 1].Title : "none selected")
+        : (CurrentCellIndex > 0 && CurrentCellIndex <= Columns.Count ? Columns[CurrentCellIndex - 1].Title : "none selected");
 
     partial void OnFindTextChanged(string value) => UpdateMatches();
     partial void OnFindMatchCaseChanged(bool value) => UpdateMatches();
@@ -118,6 +120,13 @@ public sealed partial class DataEditorViewModel
         var total = 0;
         var cellsChanged = 0;
         Record($"replace \"{Shorten(FindText)}\" with \"{Shorten(ReplaceText)}\"");
+        if (ShowSteps)
+        {
+            foreach (var (step, cell, text) in StepMatchingCells())
+                if (ApplyStepCell(step, cell, Replace(text)) == CellResult.Changed) { cellsChanged++; total += CountMatches(text); }
+            if (cellsChanged > 0) StepsChanged();
+        }
+        else
         foreach (var (row, cell, text) in MatchingCells())
         {
             var replaced = Replace(text);
@@ -142,6 +151,21 @@ public sealed partial class DataEditorViewModel
         }
     }
 
+    private IEnumerable<(StepRowViewModel Step, int Cell, string Text)> StepMatchingCells()
+    {
+        if (FindText.Length == 0) yield break;
+        var currentOnly = FindScope == ScopeCurrentColumn;
+        for (var cell = 1; cell <= StepColumns.Count; cell++)
+        {
+            if (currentOnly && cell != CurrentCellIndex) continue;
+            foreach (var step in StepRows)
+            {
+                var text = step.Cells[cell];
+                if (IsMatch(text)) yield return (step, cell, text);
+            }
+        }
+    }
+
     private StringComparison Comparison => FindMatchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
 
     private bool IsMatch(string text) => FindWholeCell ? string.Equals(text, FindText, Comparison) : text.Contains(FindText, Comparison);
@@ -159,9 +183,10 @@ public sealed partial class DataEditorViewModel
     private void UpdateMatches()
     {
         if (!FindVisible || FindText.Length == 0) { MatchSummary = string.Empty; return; }
-        if (FindScope == ScopeCurrentColumn && (CurrentCellIndex < 1 || CurrentCellIndex > Columns.Count)) { MatchSummary = "Click a cell to choose the column."; return; }
-        var cells = MatchingCells().ToList();
-        var matches = cells.Sum(c => CountMatches(c.Text));
+        var columnCount = ShowSteps ? StepColumns.Count : Columns.Count;
+        if (FindScope == ScopeCurrentColumn && (CurrentCellIndex < 1 || CurrentCellIndex > columnCount)) { MatchSummary = "Click a cell to choose the column."; return; }
+        var cells = (ShowSteps ? StepMatchingCells().Select(c => c.Text) : MatchingCells().Select(c => c.Text)).ToList();
+        var matches = cells.Sum(CountMatches);
         MatchSummary = matches == 0 ? "No matches" : $"{matches} {(matches == 1 ? "match" : "matches")} in {cells.Count} {(cells.Count == 1 ? "cell" : "cells")}";
     }
 

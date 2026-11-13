@@ -141,6 +141,7 @@
           <ToggleButton Content="Preview request" IsChecked="{Binding PreviewVisible, Mode=TwoWay}" ToolTip.Tip="Show what a step sends for the selected row" MinHeight="36" />
           <Border Width="1" Background="#22364D" Margin="4,6" />
           <Button Content="Add step" Command="{Binding AddStepCommand}" IsVisible="{Binding ShowSteps}" MinHeight="36" />
+          <Button Content="Find &amp; replace" Command="{Binding OpenFindCommand}" IsVisible="{Binding ShowSteps}" MinHeight="36" />
           <Button Content="Show its columns" Command="{Binding ShowStepDataCommand}" IsVisible="{Binding ShowSteps}" IsEnabled="{Binding SelectedStep, Converter={x:Static ObjectConverters.IsNotNull}}" ToolTip.Tip="Open the Data tab narrowed to the selected step's columns" MinHeight="36" />
           <Button Content="Remove step" Classes="danger" Command="{Binding RemoveStepCommand}" IsVisible="{Binding ShowSteps}" IsEnabled="{Binding SelectedStep, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
           <Border Width="1" Background="#22364D" Margin="4,6" />
@@ -194,8 +195,8 @@
           </StackPanel>
           <TextBlock Grid.Column="2" Text="{Binding RowCountText}" IsVisible="{Binding ShowData}" Foreground="#8EA4BC" VerticalAlignment="Center" />
         </Grid>
-        <StackPanel Grid.Row="1" IsVisible="{Binding ShowData}" Spacing="10" Margin="0,0,0,10">
-        <WrapPanel>
+        <StackPanel Grid.Row="1" Spacing="10" Margin="0,0,0,10">
+        <WrapPanel IsVisible="{Binding ShowData}">
           <TextBox Width="260" Text="{Binding HeaderFilter, Mode=TwoWay}" Watermark="Headers: header1 &amp; header2…" ToolTip.Tip="Keep columns whose header contains any term. Separate terms with &amp;" MinHeight="36" Margin="0,0,10,8" />
           <TextBox Width="130" Text="{Binding RowNumberFilter, Mode=TwoWay}" Watermark="Rows: 1,2,5-9…" ToolTip.Tip="Keep these rows only. 1 is the first row of the testcase" MinHeight="36" Margin="0,0,10,8" />
           <TextBox Width="240" Text="{Binding ValueFilter, Mode=TwoWay}" Watermark="Cell values: value1 &amp; value2…" ToolTip.Tip="Keep columns where a row shown has a cell containing any term. Separate terms with &amp;" MinHeight="36" Margin="0,0,10,8" />
@@ -276,11 +277,11 @@
                     HorizontalGridLinesBrush="#1B2D44"
                     VerticalGridLinesBrush="#1B2D44" />
         </Border>
-        <Border Grid.Row="1" Grid.RowSpan="2" IsVisible="{Binding ShowSteps}" Classes="panel" ClipToBounds="True">
+        <Border Grid.Row="2" IsVisible="{Binding ShowSteps}" Classes="panel" ClipToBounds="True">
           <DockPanel>
             <Border DockPanel.Dock="Top" Padding="14,10" BorderBrush="#22364D" BorderThickness="0,0,0,1">
               <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Text="Steps run top to bottom, in sheet order. Names of existing steps are fixed because data columns refer to them." Foreground="#8EA4BC" FontSize="12" TextWrapping="Wrap" />
+                <TextBlock Text="Steps run top to bottom, in sheet order. Renaming a step also renames its data columns and updates references to it." Foreground="#8EA4BC" FontSize="12" TextWrapping="Wrap" />
                 <TextBlock Grid.Column="1" Text="{Binding StepCountText}" Foreground="#8EA4BC" Margin="16,0,0,0" />
               </Grid>
             </Border>
@@ -291,7 +292,7 @@
                       CanUserSortColumns="False"
                       CanUserReorderColumns="False"
                       CanUserResizeColumns="True"
-                      SelectionMode="Single"
+                      SelectionMode="Extended"
                       GridLinesVisibility="All"
                       HeadersVisibility="Column"
                       FrozenColumnCount="1"

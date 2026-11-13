@@ -9,7 +9,7 @@ namespace LoadTestingTool.Editing;
 /// plus operations that keep them consistent (a request row always has a response row).
 /// Every other sheet, and every cell that was not edited, is left exactly as it was on save.
 /// </summary>
-public sealed class WorkbookDocument
+public sealed partial class WorkbookDocument
 {
     private byte[] _baselineBytes;
     private string _baselineHash;

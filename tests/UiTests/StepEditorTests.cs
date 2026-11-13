@@ -48,18 +48,79 @@ public class StepEditorTests
         Assert.Equal(LoadTestingTool.Domain.ExecutionStage.Teardown, step.Stage);
     }
 
+    private static string RenameSample(TempDir dir)
+    {
+        var path = Samples.CreateLarge(dir, rows: 3);
+        using var workbook = new ClosedXML.Excel.XLWorkbook(path);
+        workbook.Worksheet("request").Cell(2, 4).Value = "CreateCustomer, Other";           // dontrun
+        workbook.Worksheet("config").Cell("F2").Value = "https://api.example.test/<From_response_CreateCustomer.id_2>";
+        var response = workbook.Worksheet("response");
+        response.Cell(1, 7).Value = "extractvariable";
+        response.Cell(2, 7).Value = "CreateCustomer.id:custId|Other.x:y";
+        workbook.AddWorksheet("notes").Cell("A1").Value = "see <From_response_CreateCustomer.id_2>";
+        workbook.Save();
+        return path;
+    }
+
     [Fact]
-    public void Existing_step_names_cannot_be_renamed()
+    public void Renaming_an_existing_step_carries_its_columns_references_dontrun_and_extract_mappings_along()
     {
         using var dir = new TempDir();
-        var vm = new DataEditorViewModel(Samples.Copy(dir, Samples.IntegrationScenarios));
+        var path = RenameSample(dir);
+        var vm = new DataEditorViewModel(path);
 
-        vm.StepRows[0].Cells[0] = "Other";
+        vm.StepRows[0].Cells[0] = "MakeCustomer";
 
-        Assert.Equal("FetchUser", vm.StepRows[0].Cells[0]);
+        Assert.False(vm.StatusIsError);
+        Assert.Contains("Renamed step CreateCustomer to MakeCustomer", vm.StatusMessage);
+        Assert.Contains("still use the old name", vm.StatusMessage); // the notes sheet
+        vm.SaveCommand.Execute(null);
+
+        using var workbook = new ClosedXML.Excel.XLWorkbook(path);
+        Assert.Equal("MakeCustomer", workbook.Worksheet("config").Cell("C2").GetString());
+        Assert.Equal("https://api.example.test/<From_response_MakeCustomer.id_2>", workbook.Worksheet("config").Cell("F2").GetString());
+        var request = workbook.Worksheet("request");
+        Assert.Equal("MakeCustomer.email", request.Cell(1, 6).GetString());
+        Assert.Equal("MakeCustomer, Other", request.Cell(2, 4).GetString());
+        var response = workbook.Worksheet("response");
+        Assert.Equal("{eq}MakeCustomer.statusCode", response.Cell(1, 4).GetString());
+        Assert.Equal("MakeCustomer.id:custId|Other.x:y", response.Cell(2, 7).GetString());
+        Assert.Equal("see <From_response_CreateCustomer.id_2>", workbook.Worksheet("notes").Cell("A1").GetString());
+        Assert.Equal("customer1@example.test", request.Cell(2, 6).GetString());
+    }
+
+    [Fact]
+    public void A_rename_that_would_clash_or_use_a_forbidden_character_is_refused_without_changes()
+    {
+        using var dir = new TempDir();
+        var vm = new DataEditorViewModel(RenameSample(dir));
+        vm.AddStepCommand.Execute(null);
+        var other = vm.StepRows[1].CurrentName;
+
+        vm.StepRows[0].Cells[0] = other;
         Assert.True(vm.StatusIsError);
-        Assert.Contains("cannot be renamed", vm.StatusMessage);
-        Assert.False(vm.IsDirty);
+        Assert.Equal("CreateCustomer", vm.StepRows[0].Cells[0]);
+
+        vm.StepRows[0].Cells[0] = "Bad.Name";
+        Assert.True(vm.StatusIsError);
+        Assert.Equal("CreateCustomer", vm.StepRows[0].Cells[0]);
+        Assert.Contains(vm.Columns, c => c.Title == "CreateCustomer.email");
+    }
+
+    [Fact]
+    public void Undo_restores_the_old_step_name_and_its_columns()
+    {
+        using var dir = new TempDir();
+        var vm = new DataEditorViewModel(RenameSample(dir));
+        vm.ShowSteps = true;
+        vm.StepRows[0].Cells[0] = "MakeCustomer";
+        vm.ShowSteps = false;
+        Assert.Contains(vm.Columns, c => c.Title == "MakeCustomer.email");
+
+        vm.UndoCommand.Execute(null);
+
+        Assert.Contains(vm.Columns, c => c.Title == "CreateCustomer.email");
+        Assert.Equal("CreateCustomer", vm.StepRows[0].Cells[0]);
     }
 
     [Fact]
