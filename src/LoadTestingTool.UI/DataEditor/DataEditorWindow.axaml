@@ -148,6 +148,7 @@
               </Flyout>
             </Button.Flyout>
           </Button>
+          <Button Content="Compare runs…" Command="{Binding OpenHistoryCommand}" ToolTip.Tip="Open the History Explorer filtered to this instance and testcase" MinHeight="36" />
           <ToggleButton Content="Preview request" IsChecked="{Binding PreviewVisible, Mode=TwoWay}" ToolTip.Tip="Show what a step sends for the selected row" MinHeight="36" />
           <Border Width="1" Background="#22364D" Margin="4,6" />
           <Button Content="Add step" Command="{Binding AddStepCommand}" IsVisible="{Binding ShowSteps}" MinHeight="36" />

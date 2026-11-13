@@ -44,7 +44,7 @@ public sealed class HistoryWorkspaceWindow : Window
     private bool _grouped;
     private bool _loading;
 
-    public HistoryWorkspaceWindow(string instancesRoot)
+    public HistoryWorkspaceWindow(string instancesRoot, string? instance = null, string? testcase = null)
     {
         _instancesRoot = Path.GetFullPath(instancesRoot);
         _settingsPath = ResolveSettingsPath(_instancesRoot);
@@ -54,6 +54,8 @@ public sealed class HistoryWorkspaceWindow : Window
         WindowState = WindowState.Maximized;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Content = BuildView();
+        if (!string.IsNullOrWhiteSpace(instance)) _instance.Text = instance;
+        if (!string.IsNullOrWhiteSpace(testcase)) _testcase.Text = testcase;
         Opened += (_, _) =>
         {
             var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;

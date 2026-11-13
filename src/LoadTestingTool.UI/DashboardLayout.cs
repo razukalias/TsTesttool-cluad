@@ -518,7 +518,7 @@ public sealed partial class MainWindow
         FilterInstances();
     }
 
-    private void LaunchHistoryWorkspace()
+    private void LaunchHistoryWorkspace(string? instance = null, string? testcase = null)
     {
         try
         {
@@ -527,6 +527,8 @@ public sealed partial class MainWindow
             var entryAssembly = System.Reflection.Assembly.GetEntryAssembly()?.Location;
             if (!string.IsNullOrWhiteSpace(entryAssembly) && (Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase) || Path.GetFileNameWithoutExtension(processPath).Equals("dotnet.exe", StringComparison.OrdinalIgnoreCase))) start.ArgumentList.Add(entryAssembly);
             start.ArgumentList.Add("--history"); start.ArgumentList.Add(Path.GetFullPath(_config.InstancesRoot));
+            if (!string.IsNullOrWhiteSpace(instance)) { start.ArgumentList.Add("--history-instance"); start.ArgumentList.Add(instance); }
+            if (!string.IsNullOrWhiteSpace(testcase)) { start.ArgumentList.Add("--history-testcase"); start.ArgumentList.Add(testcase); }
             var history = Process.Start(start) ?? throw new InvalidOperationException("The History workspace process could not be started.");
             history.EnableRaisingEvents = true;
             history.Exited += (_, _) => Dispatcher.UIThread.Post(() => UiLog($"History workspace closed. exitCode={history.ExitCode}"));
@@ -971,6 +973,7 @@ public sealed partial class MainWindow
         {
             var editor = DataEditor.DataEditorWindow.Open(_instances.Select(x => (x.Name, x.WorkbookPath)), _selectedInstance.WorkbookPath);
             editor.Shell.RunHandler = RunFromEditorAsync;
+            editor.Shell.HistoryHandler = LaunchHistoryWorkspace;
             editor.Shell.CreateTestcaseHandler = (name, draft) => { if (_instances.FirstOrDefault(x => x.Name == name) is { } target) CreateTestcaseForInstance(target, draft); };
             editor.Closed += (_, _) =>
             {

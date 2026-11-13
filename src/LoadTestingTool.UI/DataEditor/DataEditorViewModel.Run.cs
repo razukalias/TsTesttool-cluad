@@ -107,6 +107,21 @@ public sealed partial class DataEditorViewModel
         finally { IsStartingRun = false; }
     }
 
+    // ---- Compare runs ----------------------------------------------------------------------
+
+    /// <summary>Opens the History Explorer for this instance, filtered to the given testcase name; set by whoever hosts the editor.</summary>
+    public Action<string?>? HistoryHandler { get; set; }
+
+    public bool CanOpenHistory => HistoryHandler is not null;
+
+    [RelayCommand]
+    private void OpenHistory()
+    {
+        if (HistoryHandler is null) { ShowStatus("Comparing runs is only available when the editor is opened from the dashboard.", isError: true); return; }
+        HistoryHandler(SelectedTestcase?.Name);
+        ShowStatus("Opened the History Explorer. Tick two or more runs and use Compare there.", isError: false);
+    }
+
     // ---- New testcase ----------------------------------------------------------------------
 
     /// <summary>Writes a testcase from the wizard into the workbook file; set by whoever hosts the editor.</summary>

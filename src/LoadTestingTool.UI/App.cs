@@ -80,10 +80,16 @@ public sealed class App : Application
                 }
                 var historyIndex = Array.FindIndex(args, x => x.Equals("--history", StringComparison.OrdinalIgnoreCase));
                 desktop.MainWindow = historyIndex >= 0 && historyIndex + 1 < args.Length
-                    ? new HistoryWorkspaceWindow(args[historyIndex + 1])
+                    ? new HistoryWorkspaceWindow(args[historyIndex + 1], ArgAfter(args, "--history-instance"), ArgAfter(args, "--history-testcase"))
                     : new MainWindow();
             }
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static string? ArgAfter(string[] args, string name)
+    {
+        var at = Array.FindIndex(args, x => x.Equals(name, StringComparison.OrdinalIgnoreCase));
+        return at >= 0 && at + 1 < args.Length ? args[at + 1] : null;
     }
 }

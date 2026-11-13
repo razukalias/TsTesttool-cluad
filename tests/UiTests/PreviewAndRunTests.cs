@@ -184,3 +184,33 @@ public class PreviewWindowTests
         window.Close();
     }
 }
+
+public class CompareRunsTests
+{
+    [Fact]
+    public void Compare_runs_opens_the_history_for_the_instance_and_selected_testcase_name()
+    {
+        using var dir = new TempDir();
+        var shell = new EditorShellViewModel([("Sample", Samples.CreateLarge(dir, rows: 2))]);
+        string? instance = null, testcase = null;
+        shell.HistoryHandler = (i, t) => { instance = i; testcase = t; };
+
+        shell.Current!.OpenHistoryCommand.Execute(null);
+
+        Assert.Equal("Sample", instance);
+        Assert.Equal("Customers", testcase);
+        Assert.False(shell.Current.StatusIsError);
+    }
+
+    [Fact]
+    public void Compare_runs_explains_itself_when_the_editor_is_not_hosted_by_the_dashboard()
+    {
+        using var dir = new TempDir();
+        var vm = new DataEditorViewModel(Samples.CreateLarge(dir, rows: 2));
+
+        vm.OpenHistoryCommand.Execute(null);
+
+        Assert.True(vm.StatusIsError);
+        Assert.Contains("dashboard", vm.StatusMessage);
+    }
+}
