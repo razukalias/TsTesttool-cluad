@@ -56,6 +56,8 @@ public sealed partial class DataEditorViewModel
         StepColumnsChanged?.Invoke(this, EventArgs.Empty);
         OnPropertyChanged(nameof(StepCountText));
         SelectedStep = StepRows.FirstOrDefault();
+        OnPropertyChanged(nameof(PreviewStepNames));
+        RefreshPreview();
     }
 
     private void OnStepEdited(StepRowViewModel step, int cellIndex, string value)

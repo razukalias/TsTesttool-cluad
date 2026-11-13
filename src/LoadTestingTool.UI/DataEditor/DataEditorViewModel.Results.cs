@@ -80,7 +80,7 @@ public sealed partial class DataEditorViewModel
 
     partial void OnShowFailedOnlyChanged(bool value) => ApplyFilter();
 
-    partial void OnSelectedRowChanged(DataRowViewModel? value) => RefreshRowFailures();
+    partial void OnSelectedRowChanged(DataRowViewModel? value) { RefreshRowFailures(); RefreshPreview(); }
 
     partial void OnSelectedFailureChanged(FailureViewModel? value)
     {

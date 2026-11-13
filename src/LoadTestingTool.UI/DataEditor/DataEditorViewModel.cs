@@ -338,6 +338,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
     {
         IsDirty = _document.IsDirty;
         Revalidate();
+        RefreshPreview();
     }
 
     // ---- Problems ------------------------------------------------------------------------

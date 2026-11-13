@@ -984,62 +984,88 @@ public sealed partial class MainWindow : Window
         var selected = _instances.Where(x => x.Selected).ToList();
         UiLog($"Run selected started. selected={selected.Count}; runnable={selected.Count(x => x.Process is null || x.Process.HasExited)}");
         foreach (var item in selected.Where(x => x.Process is null || x.Process.HasExited))
-        {
-            try
-            {
-                if (promptForMissingSelection && !item.HasAppliedSelection && !await ChooseRunSelectionAsync(item)) continue;
-                if (item.GenerateResults) Directory.CreateDirectory(item.ResultsFolder);
-                var runner = Path.GetFullPath(_config.RunnerDll);
-                var selection = string.IsNullOrWhiteSpace(item.TestcaseSelection) ? "0" : item.TestcaseSelection;
-                item.CurrentRunId = $"{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}"[..25];
-                item.CurrentRunFolder = item.GenerateResults ? item.ResultsFolder : item.LogsFolder;
-                var environments = item.EnvironmentSelection;
-                if (!string.IsNullOrWhiteSpace(item.SelectionReadError)) throw new InvalidDataException(item.SelectionReadError);
-                var draft = new RunSelectionDraft(item.TestcaseOptions, item.EnvironmentOptions, selection, item.StepSelectionJson, environments, item.EnvironmentSelectionJson);
-                if (!draft.TryBuild(out _, out var validationError)) throw new InvalidDataException(validationError);
-                var uiLaunchId = $"ui-{Guid.NewGuid():N}";
-                var uiLaunchAt = DateTimeOffset.Now;
-                SaveCentralRunId(item);
-                var runnerIsDll = runner.EndsWith(".dll", StringComparison.OrdinalIgnoreCase);
-                var start = new ProcessStartInfo(runnerIsDll ? "dotnet" : runner)
-                {
-                    WorkingDirectory = item.FolderPath,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
-                if (runnerIsDll) start.ArgumentList.Add(runner);
-                void Arg(string name, string value) { start.ArgumentList.Add(name); start.ArgumentList.Add(value); }
-                Arg("--config", _config.SettingsFile); Arg("--instance", item.Name);
-                Arg("--ui-launch-id", uiLaunchId); Arg("--ui-launch-at", uiLaunchAt.ToString("O"));
-                UiLog($"Runner launch requested. instance={item.Name}; runId={item.CurrentRunId}; runner={runner}; args={JsonSerializer.Serialize(start.ArgumentList)}");
-                item.Process = Process.Start(start);
-                if (item.Process is null) throw new InvalidOperationException("The runner process could not be started.");
-                item.Process.EnableRaisingEvents = true;
-                item.Process.OutputDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) UiLog($"Runner stdout. instance={item.Name}; runId={item.CurrentRunId}; message={e.Data}"); };
-                item.Process.ErrorDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) UiLog($"Runner stderr. instance={item.Name}; runId={item.CurrentRunId}; message={e.Data}"); };
-                item.Process.Exited += (_, _) => UiLog($"Runner process exited. instance={item.Name}; runId={item.CurrentRunId}; processId={item.Process?.Id}; exitCode={item.Process?.ExitCode}; hasEvents={item.EventMessages.Count > 0}");
-                item.Process.BeginOutputReadLine();
-                item.Process.BeginErrorReadLine();
-                UiLog($"Runner launch returned. instance={item.Name}; runId={item.CurrentRunId}; uiLaunchId={uiLaunchId}; processId={item.Process?.Id}; returnedAt={DateTimeOffset.Now:O}");
-                item.Status = "Running"; item.LastEvent = $"Started with testcases {selection}"; item.EventPosition = 0; item.EventLineIndex = 0; item.EventLinePositions.Clear(); item.Assertions.Clear();
-                item.Requests.Clear(); item.ManualActions.Clear(); item.EventMessages.Clear(); item.CompletedRequests = null; item.AverageMs = null;
-                item.P95Ms = null; item.RequestsPerSecond = null; item.StartedAt = DateTimeOffset.Now; item.CompletedAt = null;
-                item.EventMessages.Add($"{DateTime.Now:HH:mm:ss}  RUN started / testcases {selection}");
-                UiLog($"Run state initialized. instance={item.Name}; runId={item.CurrentRunId}; testcases={selection}; mode={item.RowsExecutionMode}; environments={environments}; dataIds={item.DataIdSelection}; internalLog={_enableInternalLog.IsChecked == true}");
-            }
-            catch (Exception ex)
-            {
-                UiLog($"Runner launch failed for '{item.Name}': {ex}");
-                item.Status = "Launch failed";
-                item.LastEvent = ex.Message;
-                _details.Text = $"Cannot run {item.Name}: {ex.Message}";
-            }
-        }
+            await LaunchAsync(item, promptForMissingSelection);
 
         RefreshRows();
         UiLog("Run selected completed.");
+    }
+
+    private async Task LaunchAsync(InstanceInfo item, bool promptForMissingSelection, IReadOnlyList<(string Name, string Value)>? overrides = null)
+    {
+        try
+        {
+            if (promptForMissingSelection && !item.HasAppliedSelection && !await ChooseRunSelectionAsync(item)) return;
+            if (item.GenerateResults) Directory.CreateDirectory(item.ResultsFolder);
+            var runner = Path.GetFullPath(_config.RunnerDll);
+            var selection = string.IsNullOrWhiteSpace(item.TestcaseSelection) ? "0" : item.TestcaseSelection;
+            item.CurrentRunId = $"{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}"[..25];
+            item.CurrentRunFolder = item.GenerateResults ? item.ResultsFolder : item.LogsFolder;
+            var environments = item.EnvironmentSelection;
+            if (!string.IsNullOrWhiteSpace(item.SelectionReadError)) throw new InvalidDataException(item.SelectionReadError);
+            var draft = new RunSelectionDraft(item.TestcaseOptions, item.EnvironmentOptions, selection, item.StepSelectionJson, environments, item.EnvironmentSelectionJson);
+            if (!draft.TryBuild(out _, out var validationError)) throw new InvalidDataException(validationError);
+            var uiLaunchId = $"ui-{Guid.NewGuid():N}";
+            var uiLaunchAt = DateTimeOffset.Now;
+            SaveCentralRunId(item);
+            var runnerIsDll = runner.EndsWith(".dll", StringComparison.OrdinalIgnoreCase);
+            var start = new ProcessStartInfo(runnerIsDll ? "dotnet" : runner)
+            {
+                WorkingDirectory = item.FolderPath,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            if (runnerIsDll) start.ArgumentList.Add(runner);
+            void Arg(string name, string value) { start.ArgumentList.Add(name); start.ArgumentList.Add(value); }
+            Arg("--config", _config.SettingsFile); Arg("--instance", item.Name);
+            Arg("--ui-launch-id", uiLaunchId); Arg("--ui-launch-at", uiLaunchAt.ToString("O"));
+            foreach (var (name, value) in overrides ?? []) Arg(name, value);
+            UiLog($"Runner launch requested. instance={item.Name}; runId={item.CurrentRunId}; runner={runner}; args={JsonSerializer.Serialize(start.ArgumentList)}");
+            item.Process = Process.Start(start);
+            if (item.Process is null) throw new InvalidOperationException("The runner process could not be started.");
+            item.Process.EnableRaisingEvents = true;
+            item.Process.OutputDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) UiLog($"Runner stdout. instance={item.Name}; runId={item.CurrentRunId}; message={e.Data}"); };
+            item.Process.ErrorDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) UiLog($"Runner stderr. instance={item.Name}; runId={item.CurrentRunId}; message={e.Data}"); };
+            item.Process.Exited += (_, _) => UiLog($"Runner process exited. instance={item.Name}; runId={item.CurrentRunId}; processId={item.Process?.Id}; exitCode={item.Process?.ExitCode}; hasEvents={item.EventMessages.Count > 0}");
+            item.Process.BeginOutputReadLine();
+            item.Process.BeginErrorReadLine();
+            UiLog($"Runner launch returned. instance={item.Name}; runId={item.CurrentRunId}; uiLaunchId={uiLaunchId}; processId={item.Process?.Id}; returnedAt={DateTimeOffset.Now:O}");
+            item.Status = "Running"; item.LastEvent = $"Started with testcases {selection}"; item.EventPosition = 0; item.EventLineIndex = 0; item.EventLinePositions.Clear(); item.Assertions.Clear();
+            item.Requests.Clear(); item.ManualActions.Clear(); item.EventMessages.Clear(); item.CompletedRequests = null; item.AverageMs = null;
+            item.P95Ms = null; item.RequestsPerSecond = null; item.StartedAt = DateTimeOffset.Now; item.CompletedAt = null;
+            item.EventMessages.Add($"{DateTime.Now:HH:mm:ss}  RUN started / testcases {selection}");
+            UiLog($"Run state initialized. instance={item.Name}; runId={item.CurrentRunId}; testcases={selection}; mode={item.RowsExecutionMode}; environments={environments}; dataIds={item.DataIdSelection}; internalLog={_enableInternalLog.IsChecked == true}");
+        }
+        catch (Exception ex)
+        {
+            UiLog($"Runner launch failed for '{item.Name}': {ex}");
+            item.Status = "Launch failed";
+            item.LastEvent = ex.Message;
+            _details.Text = $"Cannot run {item.Name}: {ex.Message}";
+        }
+    }
+
+
+    /// <summary>Runs one testcase (optionally only some data rows) of an instance on behalf of the data editor. Returns why it could not start, or null.</summary>
+    internal async Task<string?> RunFromEditorAsync(string instanceName, int testcaseIndex, IReadOnlyList<string> dataIds)
+    {
+        var item = _instances.FirstOrDefault(x => x.Name == instanceName);
+        if (item is null) return $"Instance '{instanceName}' is no longer in the dashboard.";
+        if (item.Process is { HasExited: false }) return $"{item.Name} is already running; stop it first.";
+        // The selection is passed on the command line for this run only, so the dashboard's own saved selection is untouched.
+        var (testcases, steps, dataIdSelection) = (item.TestcaseSelection, item.StepSelectionJson, item.DataIdSelection);
+        var ids = dataIds.Count == 0 ? "" : $"{testcaseIndex}:{string.Join(',', dataIds)}";
+        List<(string, string)> overrides = [("--testcases", testcaseIndex.ToString(System.Globalization.CultureInfo.InvariantCulture)), ("--steps", "")];
+        if (ids.Length > 0) overrides.Add(("--dataids", ids));
+        else overrides.Add(("--dataids", "0"));
+        item.TestcaseSelection = testcaseIndex.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        item.StepSelectionJson = "";
+        item.DataIdSelection = ids;
+        try { await LaunchAsync(item, promptForMissingSelection: false, overrides); }
+        finally { (item.TestcaseSelection, item.StepSelectionJson, item.DataIdSelection) = (testcases, steps, dataIdSelection); }
+        RefreshRows();
+        return item.Status == "Launch failed" ? item.LastEvent : null;
     }
 
     private void StopSelected(bool force)

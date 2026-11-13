@@ -97,19 +97,23 @@
 
     <!-- Title bar: what is open, whether it is saved, and the main actions -->
     <Border Grid.Row="0" Background="#0F1C2E" BorderBrush="#22364D" BorderThickness="0,0,0,1" Padding="20,14">
-      <Grid ColumnDefinitions="*,Auto,Auto">
+      <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto">
         <StackPanel Spacing="2" VerticalAlignment="Center">
           <TextBlock Text="{Binding InstanceName}" FontSize="12" Foreground="#8EA4BC" />
           <TextBlock Text="{Binding SelectedTestcase.Title, FallbackValue=Data editor}" FontSize="20" FontWeight="Bold" />
         </StackPanel>
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,24,0">
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
           <Ellipse Width="9" Height="9" Fill="{Binding SaveStatusColor}" VerticalAlignment="Center" />
           <TextBlock Text="{Binding SaveStatusText}" Foreground="{Binding SaveStatusColor}" FontWeight="SemiBold" VerticalAlignment="Center" />
         </StackPanel>
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
           <Button Content="Add row" Command="{Binding AddRowCommand}" IsVisible="{Binding ShowData}" MinHeight="36" />
           <Button Content="Duplicate" Command="{Binding DuplicateRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding SelectedRow, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
           <Button Content="Remove" Classes="danger" Command="{Binding RemoveRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding SelectedRow, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
+          <Button Content="Run row" Command="{Binding RunRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding CanRun}" ToolTip.Tip="Run only the selected data row (save first)" MinHeight="36" />
+          <Button Content="▶ Run testcase" Classes="primary" Command="{Binding RunTestcaseCommand}" IsEnabled="{Binding CanRun}" ToolTip.Tip="Run every row of this testcase (save first)" MinHeight="36" />
+          <ToggleButton Content="Preview request" IsChecked="{Binding PreviewVisible, Mode=TwoWay}" ToolTip.Tip="Show what a step sends for the selected row" MinHeight="36" />
+          <Border Width="1" Background="#22364D" Margin="4,6" />
           <Button Content="Add step" Command="{Binding AddStepCommand}" IsVisible="{Binding ShowSteps}" MinHeight="36" />
           <Button Content="Remove step" Classes="danger" Command="{Binding RemoveStepCommand}" IsVisible="{Binding ShowSteps}" IsEnabled="{Binding SelectedStep, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
           <Border Width="1" Background="#22364D" Margin="4,6" />
@@ -254,7 +258,26 @@
       </Grid>
 
       <Grid Grid.Column="1" RowDefinitions="*,Auto">
-      <Border Classes="panel" Padding="14">
+      <Border Classes="panel" Padding="14" IsVisible="{Binding PreviewVisible}">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
+            <TextBlock Classes="caption" Text="PREVIEW · SELECTED ROW" />
+            <ComboBox ItemsSource="{Binding PreviewStepNames}" SelectedItem="{Binding PreviewStepName, Mode=TwoWay}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+          <TextBlock DockPanel.Dock="Top" Text="{Binding Preview.Warning}" IsVisible="{Binding Preview.HasWarning, FallbackValue=False}" Foreground="#F6C76B" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,8" />
+          <ScrollViewer>
+            <StackPanel Spacing="6" IsVisible="{Binding Preview, Converter={x:Static ObjectConverters.IsNotNull}}">
+              <TextBlock Text="{Binding Preview.Title}" FontWeight="SemiBold" />
+              <TextBox Text="{Binding Preview.Url, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas,Menlo,monospace" FontSize="12" />
+              <TextBlock Classes="caption" Text="HEADERS" IsVisible="{Binding Preview.HeadersText, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}" />
+              <TextBox Text="{Binding Preview.HeadersText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" FontFamily="Consolas,Menlo,monospace" FontSize="12" IsVisible="{Binding Preview.HeadersText, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}" />
+              <TextBlock Classes="caption" Text="BODY" />
+              <TextBox Text="{Binding Preview.Body, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="140" FontFamily="Consolas,Menlo,monospace" FontSize="12" />
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+      <Border Classes="panel" Padding="14" IsVisible="{Binding !PreviewVisible}">
         <DockPanel>
           <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,10">
             <TextBlock Classes="caption" Text="PROBLEMS" />

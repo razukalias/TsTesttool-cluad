@@ -970,6 +970,7 @@ public sealed partial class MainWindow
         try
         {
             var editor = DataEditor.DataEditorWindow.Open(_instances.Select(x => (x.Name, x.WorkbookPath)), _selectedInstance.WorkbookPath);
+            editor.Shell.RunHandler = RunFromEditorAsync;
             editor.Closed += (_, _) =>
             {
                 if (string.IsNullOrWhiteSpace(editor.Shell.LastBackupPath)) return;
