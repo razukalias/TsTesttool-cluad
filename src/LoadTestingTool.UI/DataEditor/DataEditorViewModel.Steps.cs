@@ -111,7 +111,7 @@ public sealed partial class DataEditorViewModel
         SelectedStep = step;
         OnPropertyChanged(nameof(StepCountText));
         StepsChanged();
-        ShowStatus($"Added step {name}. Steps run in sheet order, so it runs after the others; rename it and fill in its URL or template.", isError: false);
+        ShowStatus($"Added step {name}. Steps run in sheet order, so it runs after the others; rename it, fill in its URL or template, then add its data columns on the Data tab.", isError: false);
     }
 
     [RelayCommand]
