@@ -196,7 +196,10 @@
         </Grid>
         <StackPanel Grid.Row="1" IsVisible="{Binding ShowData}" Spacing="10" Margin="0,0,0,10">
         <WrapPanel>
-          <TextBox Width="220" Text="{Binding FilterText, Mode=TwoWay}" Watermark="Filter rows" MinHeight="36" Margin="0,0,14,8" />
+          <TextBox Width="260" Text="{Binding HeaderFilter, Mode=TwoWay}" Watermark="Headers: header1 &amp; header2…" ToolTip.Tip="Keep columns whose header contains any term. Separate terms with &amp;" MinHeight="36" Margin="0,0,10,8" />
+          <TextBox Width="130" Text="{Binding RowNumberFilter, Mode=TwoWay}" Watermark="Rows: 1,2,5-9…" ToolTip.Tip="Keep these rows only. 1 is the first row of the testcase" MinHeight="36" Margin="0,0,10,8" />
+          <TextBox Width="240" Text="{Binding ValueFilter, Mode=TwoWay}" Watermark="Cell values: value1 &amp; value2…" ToolTip.Tip="Keep columns where a row shown has a cell containing any term. Separate terms with &amp;" MinHeight="36" Margin="0,0,10,8" />
+          <TextBox Width="180" Text="{Binding FilterText, Mode=TwoWay}" Watermark="Row contains…" ToolTip.Tip="Keep rows where any cell contains this text" MinHeight="36" Margin="0,0,14,8" />
           <ComboBox ItemsSource="{Binding StepFilterOptions}" SelectedItem="{Binding StepFilter, Mode=TwoWay}" MinWidth="160" MinHeight="36" Margin="0,0,14,8" ToolTip.Tip="Show only this step's request and response columns" />
           <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center" Margin="0,0,14,8">
             <CheckBox Content="Show every column" IsChecked="{Binding ShowAllColumns, Mode=TwoWay}" />

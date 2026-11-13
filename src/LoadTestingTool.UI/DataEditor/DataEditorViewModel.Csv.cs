@@ -47,7 +47,7 @@ public sealed partial class DataEditorViewModel
         }
         if (map.All(m => m < 0)) { ShowStatus("None of the file's columns match this testcase's columns. Export a CSV first to see the expected headers.", isError: true); return; }
 
-        FilterText = string.Empty;
+        ClearRowFilters();
         Record($"import {table.Length - 1} CSV rows");
         int added = 0, updated = 0, changed = 0, rejected = 0;
         for (var r = 1; r < table.Length; r++)

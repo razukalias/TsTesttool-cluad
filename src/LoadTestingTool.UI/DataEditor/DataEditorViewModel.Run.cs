@@ -135,7 +135,7 @@ public sealed partial class DataEditorViewModel
         ClearUndoHistory();
         ConflictVisible = false;
         IsDirty = false;
-        FilterText = string.Empty;
+        ClearRowFilters();
         LoadTestcases(index);
         var created = Testcases.Any(t => t.Index == index);
         ShowStatus(created ? $"Created testcase {index}. Add its data rows below." : $"The testcase was not created — see the dashboard for the reason.", isError: !created);

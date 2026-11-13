@@ -69,7 +69,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
     public string SaveStatusColor => IsDirty ? "#F6C76B" : "#39D39B";
     public bool HasNoProblems => ErrorCount == 0 && WarningCount == 0;
     public string ProblemSummary => HasNoProblems ? "No problems" : $"{ErrorCount} {(ErrorCount == 1 ? "error" : "errors")}, {WarningCount} {(WarningCount == 1 ? "warning" : "warnings")}";
-    public string RowCountText => FilterText.Length == 0 && !ShowFailedOnly ? $"{VisibleRows.Count} {(VisibleRows.Count == 1 ? "row" : "rows")}" : $"{VisibleRows.Count} of {_allRows.Count} rows";
+    public string RowCountText => FilterText.Length == 0 && RowNumberFilter.Trim().Length == 0 && !ShowFailedOnly ? $"{VisibleRows.Count} {(VisibleRows.Count == 1 ? "row" : "rows")}" : $"{VisibleRows.Count} of {_allRows.Count} rows";
 
     // ---- Selection and filtering ---------------------------------------------------------
 
@@ -199,8 +199,11 @@ public sealed partial class DataEditorViewModel : ObservableObject
         var text = FilterText.Trim();
         var keep = SelectedRow;
         VisibleRows.Clear();
-        foreach (var row in _allRows)
+        var numbers = ParseRowNumbers(RowNumberFilter);
+        for (var n = 0; n < _allRows.Count; n++)
         {
+            var row = _allRows[n];
+            if (numbers.Count > 0 && !numbers.Contains(n + 1)) continue;
             if (ShowFailedOnly && row.Outcome is not { Passed: false }) continue;
             if (text.Length == 0 || row.Cells.Any(c => c.Contains(text, StringComparison.OrdinalIgnoreCase)))
                 VisibleRows.Add(row);
@@ -229,7 +232,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             var relevant = FilteringByStep
                 ? string.Equals(prefix, StepFilter, StringComparison.OrdinalIgnoreCase)
                 : ShowAllColumns || prefix is null || steps.Contains(prefix) || pairs.Any(p => !string.IsNullOrWhiteSpace(p.Request.GetAt(i)));
-            if (relevant) columns.Add(new GridColumn(header, ColumnGroup.Request, cell++, i));
+            if (relevant && KeepColumn(header, p => p.Request.GetAt(i), pairs)) columns.Add(new GridColumn(header, ColumnGroup.Request, cell++, i));
         }
 
         var responseHeaders = _document.Response.Headers;
@@ -241,9 +244,21 @@ public sealed partial class DataEditorViewModel : ObservableObject
             var relevant = FilteringByStep
                 ? string.Equals(prefix, StepFilter, StringComparison.OrdinalIgnoreCase)
                 : ShowAllColumns || prefix is null || steps.Contains(prefix) || pairs.Any(p => p.Response is { } r && !string.IsNullOrWhiteSpace(r.GetAt(i)));
-            if (relevant) columns.Add(new GridColumn(DisplayResponseHeader(header), ColumnGroup.Response, cell++, i));
+            if (relevant && KeepColumn(DisplayResponseHeader(header), p => p.Response?.GetAt(i) ?? string.Empty, pairs)) columns.Add(new GridColumn(DisplayResponseHeader(header), ColumnGroup.Response, cell++, i));
         }
         return columns;
+    }
+
+    private bool KeepColumn(string header, Func<(TableRow Request, TableRow? Response), string> cellOf, List<(TableRow Request, TableRow? Response)> pairs)
+    {
+        if (!HasColumnFilters) return true;
+        if (!MatchesAny(header, FilterTerms(HeaderFilter))) return false;
+        var values = FilterTerms(ValueFilter);
+        if (values.Length == 0) return true;
+        var numbers = ParseRowNumbers(RowNumberFilter);
+        for (var n = 0; n < pairs.Count; n++)
+            if ((numbers.Count == 0 || numbers.Contains(n + 1)) && MatchesAny(cellOf(pairs[n]), values)) return true;
+        return false;
     }
 
     private static string? RequestStepPrefix(string header)
@@ -347,7 +362,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             CopyValues(copyFrom.Request, request, _document.Request);
             if (copyFrom.Response is { } sourceResponse) CopyValues(sourceResponse, response, _document.Response);
         }
-        FilterText = string.Empty;
+        ClearRowFilters();
         var row = new DataRowViewModel(testcase.Index, request, response, Columns, OnCellEdited);
         _allRows.Add(row);
         ApplyFilter();
@@ -437,7 +452,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             return;
         }
         ShowSteps = false;
-        FilterText = string.Empty;
+        ClearRowFilters();
         var target = _allRows.FirstOrDefault(r => r.Request == row || r.Response == row);
         if (target is not null) SelectedRow = target;
     }
@@ -495,7 +510,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         ConflictVisible = false;
         ClosePromptVisible = false;
         IsDirty = false;
-        FilterText = string.Empty;
+        ClearRowFilters();
         LoadTestcases(keep);
         ShowStatus($"Reloaded {FileName} from disk.", isError: false);
     }
