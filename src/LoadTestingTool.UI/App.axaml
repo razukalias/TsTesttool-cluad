@@ -5,6 +5,7 @@
   <Application.Styles>
     <fluent:FluentTheme />
     <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
+    <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
     <Style Selector="Window">
       <Setter Property="FontFamily" Value="Inter, Segoe UI, sans-serif" />
       <Setter Property="FontSize" Value="13" />

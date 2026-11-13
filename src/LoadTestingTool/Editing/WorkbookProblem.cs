@@ -13,7 +13,11 @@ public enum ProblemSeverity
 /// <param name="Sheet">Worksheet name the problem belongs to.</param>
 /// <param name="RowNumber">Sheet row number, or null for header-level problems and rows not saved yet.</param>
 /// <param name="Message">Human-readable explanation.</param>
-public sealed record WorkbookProblem(ProblemSeverity Severity, string Sheet, int? RowNumber, string Message);
+/// <param name="Row">The row the problem is about, including rows not saved yet; null for header-level problems.</param>
+public sealed record WorkbookProblem(ProblemSeverity Severity, string Sheet, int? RowNumber, string Message, TableRow? Row = null);
+
+/// <summary>A testcase from the config sheet: its index, name, and step names in run order.</summary>
+public sealed record TestcaseInfo(int Index, string Name, IReadOnlyList<string> Steps);
 
 /// <summary>Result of <see cref="WorkbookDocument.Save"/>.</summary>
 /// <param name="Saved">False when there was nothing to write.</param>

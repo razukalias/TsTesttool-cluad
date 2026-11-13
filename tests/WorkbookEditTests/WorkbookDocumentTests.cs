@@ -231,6 +231,50 @@ public class WorkbookDocumentTests
         Assert.Equal("later edit", sheet.Cell(5, 5).GetString());
     }
 
+    [Fact]
+    public void GetTestcases_lists_each_testcase_with_its_steps_in_run_order()
+    {
+        using var dir = new TempDir();
+        var path = Samples.Copy(dir, Samples.IntegrationScenarios);
+        var model = new WorkbookReader().Read(path);
+
+        var testcases = WorkbookDocument.Load(path).GetTestcases();
+
+        Assert.Equal(model.Testcases.Select(t => t.TestcaseIndex), testcases.Select(t => t.Index));
+        Assert.Equal(model.Testcases.Select(t => t.Testcase), testcases.Select(t => t.Name));
+        Assert.Equal(model.Testcases.Select(t => t.Steps.Select(s => s.StepName)), testcases.Select(t => t.Steps));
+    }
+
+    [Fact]
+    public void Renaming_a_data_id_changes_both_sheets_and_the_runner_reads_it()
+    {
+        using var dir = new TempDir();
+        var path = Workbooks.CreateSmall(dir);
+        var document = WorkbookDocument.Load(path);
+
+        Assert.True(document.RenameDataRow(1, "d2", "Second"));
+        document.Save();
+
+        var model = new WorkbookReader().Read(path);
+        Assert.True(model.RequestData.ContainsKey((1, "Second")));
+        Assert.False(model.RequestData.ContainsKey((1, "D2")));
+        Assert.Contains(model.Assertions.Keys, k => k.Item1 == 1 && k.Item2 == "Second");
+        Assert.Equal(["D1", "Second", "D3"], document.GetDataIds(1));
+    }
+
+    [Fact]
+    public void Renaming_a_data_id_rejects_empty_and_duplicate_ids_and_reports_unknown_rows()
+    {
+        using var dir = new TempDir();
+        var document = WorkbookDocument.Load(Workbooks.CreateSmall(dir));
+
+        Assert.Throws<ArgumentException>(() => document.RenameDataRow(1, "D1", " "));
+        Assert.Throws<InvalidOperationException>(() => document.RenameDataRow(1, "D1", "d3"));
+        Assert.False(document.RenameDataRow(1, "Nope", "Other"));
+        Assert.False(document.IsDirty);
+        Assert.True(document.RenameDataRow(1, "D1", "d1")); // changing only the case is allowed
+    }
+
     // ---- Saving safely -------------------------------------------------------------------
 
     [Fact]

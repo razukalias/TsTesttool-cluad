@@ -50,6 +50,18 @@ public sealed class WorkbookDocument
         return new WorkbookDocument(full, bytes, config, request, response, others);
     }
 
+    /// <summary>The testcases defined in the config sheet, ordered by index, with their step names in run order.</summary>
+    public IReadOnlyList<TestcaseInfo> GetTestcases()
+        => Config.Rows
+            .Where(r => !r.IsBlank)
+            .GroupBy(EffectiveIndex)
+            .OrderBy(g => g.Key)
+            .Select(g => new TestcaseInfo(
+                g.Key,
+                g.Select(r => r.Get("testcase").Trim()).FirstOrDefault(x => x.Length > 0) ?? string.Empty,
+                g.Select(r => r.Get("stepname").Trim()).Where(x => x.Length > 0).ToList()))
+            .ToList();
+
     /// <summary>Data IDs of a testcase, in sheet order.</summary>
     public IReadOnlyList<string> GetDataIds(int testcaseIndex)
         => Request.Rows.Where(r => RowIndex(r) == testcaseIndex).Select(r => r.Get("dataid").Trim()).Where(x => x.Length > 0).ToList();
@@ -81,6 +93,25 @@ public sealed class WorkbookDocument
         if (FindRow(Request, testcaseIndex, dataId) is { } request) removed |= Request.RemoveRow(request);
         if (FindRow(Response, testcaseIndex, dataId) is { } response) removed |= Response.RemoveRow(response);
         return removed;
+    }
+
+    /// <summary>
+    /// Changes a data ID in both the request and response sheets. Returns false when the testcase has no
+    /// such row. Throws when the new ID is empty or already used by another row of the same testcase.
+    /// </summary>
+    public bool RenameDataRow(int testcaseIndex, string oldDataId, string newDataId)
+    {
+        newDataId = newDataId.Trim();
+        if (newDataId.Length == 0) throw new ArgumentException("A data ID cannot be empty.", nameof(newDataId));
+        var request = FindRow(Request, testcaseIndex, oldDataId);
+        var response = FindRow(Response, testcaseIndex, oldDataId);
+        if (request is null && response is null) return false;
+        foreach (var table in new[] { Request, Response })
+            if (FindRow(table, testcaseIndex, newDataId) is { } clash && clash != request && clash != response)
+                throw new InvalidOperationException($"Testcase {testcaseIndex} already has a data row '{newDataId}'.");
+        request?.Set("dataid", newDataId);
+        response?.Set("dataid", newDataId);
+        return true;
     }
 
     /// <summary>Checks the workbook against the same rules the runner applies when it reads it.</summary>
@@ -134,6 +165,9 @@ public sealed class WorkbookDocument
         Response.AcceptChanges();
         return new SaveResult(true, backup);
     }
+
+    /// <summary>The testcase index the runner uses for a row: its cell value, or its sheet row number when that is not a number.</summary>
+    public static int EffectiveIndex(TableRow row) => RowIndex(row) ?? row.SourceRow ?? -1;
 
     internal static int? RowIndex(TableRow row)
         => int.TryParse(row.Get("testcaseindex").Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : null;

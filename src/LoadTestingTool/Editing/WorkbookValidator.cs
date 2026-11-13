@@ -224,5 +224,5 @@ public static class WorkbookValidator
     private static string Text(TableRow row, string header) => row.Get(header).Trim();
 
     private static void Add(List<WorkbookProblem> problems, ProblemSeverity severity, SheetTable table, TableRow row, string message)
-        => problems.Add(new WorkbookProblem(severity, table.SheetName, row.SourceRow, message));
+        => problems.Add(new WorkbookProblem(severity, table.SheetName, row.SourceRow, message, row));
 }

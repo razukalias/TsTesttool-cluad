@@ -964,6 +964,26 @@ public sealed partial class MainWindow
             _eventPanel.Children.Add(box);
         }
     }
+    private void OpenDataEditor()
+    {
+        if (_selectedInstance is null) { _details.Text = "Select an instance first."; return; }
+        try
+        {
+            var editor = DataEditor.DataEditorWindow.Open(_selectedInstance.WorkbookPath, _selectedInstance.Name);
+            editor.Closed += (_, _) =>
+            {
+                if (string.IsNullOrWhiteSpace(editor.ViewModel.LastBackupPath)) return;
+                RefreshInstances();
+                _details.Text = $"Workbook saved. Backup created: {Path.GetFileName(editor.ViewModel.LastBackupPath)}";
+            };
+            editor.Show(this);
+        }
+        catch (Exception ex)
+        {
+            _details.Text = $"Cannot open the data editor: {ex.Message}";
+        }
+    }
+
     private async Task EditWorkbookAsync()
     {
         if (_selectedInstance is null) { _details.Text = "Select an instance first."; return; }
@@ -1455,6 +1475,7 @@ public sealed partial class MainWindow
         _artifactPanel.Children.Clear(); var item = _selectedInstance;
         if (item is null) return;
         _artifactPanel.Children.Add(DashboardStyle.Text("Workbooks and run artifacts", 16, true));
+        _artifactPanel.Children.Add(DashboardStyle.Action("Edit data", OpenDataEditor, "primary"));
         _artifactPanel.Children.Add(DashboardStyle.Action("Handcraft: Edit workbook (legacy)", () => _ = EditWorkbookAsync()));
         _artifactPanel.Children.Add(DashboardStyle.Action("Open latest result workbook", OpenLatestResultWorkbook));
         _artifactPanel.Children.Add(DashboardStyle.Action("Open Templates folder", OpenTemplatesFolder));

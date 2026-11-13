@@ -1,0 +1,183 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:LoadTestingTool.UI.DataEditor"
+        x:Class="LoadTestingTool.UI.DataEditor.DataEditorWindow"
+        x:DataType="vm:DataEditorViewModel"
+        Title="Data editor"
+        Width="1360" Height="860" MinWidth="1000" MinHeight="600"
+        WindowStartupLocation="CenterOwner"
+        Background="#0A1421">
+
+  <Window.Styles>
+    <Style Selector="DataGridColumnHeader">
+      <Setter Property="Background" Value="#132338" />
+      <Setter Property="Foreground" Value="#E3EDF9" />
+      <Setter Property="SeparatorBrush" Value="#22364D" />
+      <Setter Property="MinHeight" Value="44" />
+    </Style>
+    <Style Selector="DataGridRow:selected /template/ Rectangle#BackgroundRectangle">
+      <Setter Property="Fill" Value="#16335A" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="DataGridCell">
+      <Setter Property="FontSize" Value="13" />
+    </Style>
+    <Style Selector="ListBoxItem">
+      <Setter Property="Padding" Value="12,8" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Margin" Value="0,0,0,2" />
+    </Style>
+    <Style Selector="Border.panel">
+      <Setter Property="Background" Value="#0F1C2E" />
+      <Setter Property="BorderBrush" Value="#22364D" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+    </Style>
+    <Style Selector="TextBlock.caption">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#8EA4BC" />
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+    <!-- Title bar: what is open, whether it is saved, and the main actions -->
+    <Border Grid.Row="0" Background="#0F1C2E" BorderBrush="#22364D" BorderThickness="0,0,0,1" Padding="20,14">
+      <Grid ColumnDefinitions="*,Auto,Auto">
+        <StackPanel Spacing="2" VerticalAlignment="Center">
+          <TextBlock Text="{Binding InstanceName}" FontSize="12" Foreground="#8EA4BC" />
+          <TextBlock Text="Data editor" FontSize="20" FontWeight="Bold" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,24,0">
+          <Ellipse Width="9" Height="9" Fill="{Binding SaveStatusColor}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding SaveStatusText}" Foreground="{Binding SaveStatusColor}" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Content="Add row" Command="{Binding AddRowCommand}" MinHeight="36" />
+          <Button Content="Duplicate" Command="{Binding DuplicateRowCommand}" IsEnabled="{Binding SelectedRow, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
+          <Button Content="Remove" Classes="danger" Command="{Binding RemoveRowCommand}" IsEnabled="{Binding SelectedRow, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
+          <Border Width="1" Background="#22364D" Margin="4,6" />
+          <Button Content="Reload" Command="{Binding ReloadCommand}" MinHeight="36" />
+          <Button Content="Save" Classes="primary" Click="OnSaveClick" MinHeight="36" MinWidth="76" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Banners: file changed on disk, and unsaved changes on close -->
+    <StackPanel Grid.Row="1">
+      <Border IsVisible="{Binding ConflictVisible}" Background="#3A2E14" BorderBrush="#8A6A1F" BorderThickness="0,0,0,1" Padding="20,12">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="2">
+            <TextBlock Text="The workbook changed on disk" FontWeight="Bold" Foreground="#F6C76B" />
+            <TextBlock Text="It was saved by someone else, or by Excel, after you opened it. Reload to take that version and lose your edits, or overwrite it with yours."
+                       TextWrapping="Wrap" Foreground="#F3D9A4" FontSize="12.5" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="16,0,0,0">
+            <Button Content="Reload, lose my edits" Command="{Binding ReloadCommand}" />
+            <Button Content="Overwrite with my edits" Classes="danger" Command="{Binding OverwriteAndSaveCommand}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+      <Border IsVisible="{Binding ClosePromptVisible}" Background="#12315A" BorderBrush="#2F6FD0" BorderThickness="0,0,0,1" Padding="20,12">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="2">
+            <TextBlock Text="You have unsaved changes" FontWeight="Bold" Foreground="#9CCBFF" />
+            <TextBlock Text="Save them to the workbook before closing, or discard them." Foreground="#C6DEFA" FontSize="12.5" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="16,0,0,0">
+            <Button Content="Keep editing" Command="{Binding KeepEditingCommand}" />
+            <Button Content="Discard and close" Classes="danger" Command="{Binding DiscardAndCloseCommand}" />
+            <Button Content="Save and close" Classes="primary" Command="{Binding SaveAndCloseCommand}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+    </StackPanel>
+
+    <!-- Testcases | data grid | problems -->
+    <Grid Grid.Row="2" ColumnDefinitions="260,*,330" Margin="16,16,16,8">
+
+      <Border Classes="panel" Grid.Column="0" Padding="12">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Classes="caption" Text="TESTCASES" Margin="4,0,0,8" />
+          <ListBox ItemsSource="{Binding Testcases}" SelectedItem="{Binding SelectedTestcase, Mode=TwoWay}" Background="Transparent">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:TestcaseItem">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Summary}" FontSize="11.5" Foreground="#8EA4BC" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+
+      <Grid Grid.Column="1" RowDefinitions="Auto,*" Margin="12,0">
+        <Grid Grid.Row="0" ColumnDefinitions="260,Auto,*,Auto" Margin="0,0,0,10">
+          <TextBox Grid.Column="0" Text="{Binding FilterText, Mode=TwoWay}" Watermark="Filter rows" MinHeight="36" />
+          <CheckBox Grid.Column="1" Content="Show every column" IsChecked="{Binding ShowAllColumns, Mode=TwoWay}" Margin="16,0,0,0" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="3" Text="{Binding RowCountText}" Foreground="#8EA4BC" VerticalAlignment="Center" />
+        </Grid>
+        <Border Grid.Row="1" Classes="panel" ClipToBounds="True">
+          <DataGrid x:Name="Grid"
+                    ItemsSource="{Binding VisibleRows}"
+                    SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                    AutoGenerateColumns="False"
+                    CanUserSortColumns="False"
+                    CanUserReorderColumns="False"
+                    CanUserResizeColumns="True"
+                    SelectionMode="Single"
+                    GridLinesVisibility="All"
+                    HeadersVisibility="Column"
+                    FrozenColumnCount="1"
+                    RowHeight="36"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    HorizontalGridLinesBrush="#1B2D44"
+                    VerticalGridLinesBrush="#1B2D44" />
+        </Border>
+      </Grid>
+
+      <Border Classes="panel" Grid.Column="2" Padding="14">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,10">
+            <TextBlock Classes="caption" Text="PROBLEMS" />
+            <TextBlock Text="{Binding ProblemSummary}" FontWeight="SemiBold" />
+          </StackPanel>
+          <TextBlock DockPanel.Dock="Top" IsVisible="{Binding HasNoProblems}" Foreground="#39D39B"
+                     Text="The runner will accept this workbook." TextWrapping="Wrap" />
+          <ListBox ItemsSource="{Binding Problems}" SelectedItem="{Binding SelectedProblem, Mode=TwoWay}" Background="Transparent">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:ProblemViewModel">
+                <StackPanel Spacing="5">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Border CornerRadius="10" Padding="8,1" Background="{Binding BadgeBackground}">
+                      <TextBlock Text="{Binding SeverityText}" Foreground="{Binding BadgeForeground}" FontSize="11" FontWeight="Bold" />
+                    </Border>
+                    <TextBlock Text="{Binding Location}" Foreground="#8EA4BC" FontSize="11.5" VerticalAlignment="Center" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="12.5" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+    </Grid>
+
+    <!-- Status line -->
+    <Border Grid.Row="3" Background="#0F1C2E" BorderBrush="#22364D" BorderThickness="0,1,0,0" Padding="20,10">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Text="{Binding StatusMessage}" Foreground="#8EA4BC" TextTrimming="CharacterEllipsis">
+          <TextBlock.Styles>
+            <Style Selector="TextBlock">
+              <Setter Property="Foreground" Value="#8EA4BC" />
+            </Style>
+          </TextBlock.Styles>
+        </TextBlock>
+        <TextBlock Grid.Column="1" Text="{Binding FileName}" Foreground="#8EA4BC" FontSize="12" Margin="16,0,0,0" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>
