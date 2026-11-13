@@ -119,6 +119,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             VisibleRows.Clear();
             ColumnsChanged?.Invoke(this, EventArgs.Empty);
             OnPropertyChanged(nameof(RowCountText));
+            BuildSteps();
             return;
         }
 
@@ -131,6 +132,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         ColumnsChanged?.Invoke(this, EventArgs.Empty);
         ApplyFilter();
         SelectedRow = VisibleRows.FirstOrDefault();
+        BuildSteps();
     }
 
     private void ApplyFilter()
@@ -334,11 +336,10 @@ public sealed partial class DataEditorViewModel : ObservableObject
     {
         var row = item.Problem.Row;
         var onDataSheet = item.Problem.Sheet == _document.Request.SheetName || item.Problem.Sheet == _document.Response.SheetName;
-        if (row is null || !onDataSheet)
+        var onConfig = item.Problem.Sheet == _document.Config.SheetName;
+        if (row is null || (!onDataSheet && !onConfig))
         {
-            ShowStatus(item.Problem.Sheet == _document.Config.SheetName
-                ? "Step problems are fixed in the workbook's config sheet (use the step editor)."
-                : "That problem is about a column, not a row.", isError: false);
+            ShowStatus("That problem is about a column, not a row.", isError: false);
             return;
         }
         var index = WorkbookDocument.EffectiveIndex(row);
@@ -348,6 +349,13 @@ public sealed partial class DataEditorViewModel : ObservableObject
             if (testcase is null) { ShowStatus($"Testcase {index} has no steps, so its rows are not shown here.", isError: false); return; }
             SelectedTestcase = testcase;
         }
+        if (onConfig)
+        {
+            ShowSteps = true;
+            SelectedStep = StepRows.FirstOrDefault(r => r.Row == row);
+            return;
+        }
+        ShowSteps = false;
         FilterText = string.Empty;
         var target = _allRows.FirstOrDefault(r => r.Request == row || r.Response == row);
         if (target is not null) SelectedRow = target;

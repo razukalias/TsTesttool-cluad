@@ -25,7 +25,14 @@ public sealed partial class TestcaseItem : ObservableObject
 
     public int Index { get; }
     public string Name { get; }
-    public IReadOnlyList<string> Steps { get; }
+    public IReadOnlyList<string> Steps { get; private set; }
+
+    public void UpdateSteps(IReadOnlyList<string> steps)
+    {
+        Steps = steps;
+        OnPropertyChanged(nameof(Steps));
+        OnPropertyChanged(nameof(Summary));
+    }
     public string Title => $"{Index} · {Name}";
     public string Summary => $"{RowCount} {(RowCount == 1 ? "row" : "rows")} · {Steps.Count} {(Steps.Count == 1 ? "step" : "steps")}";
 

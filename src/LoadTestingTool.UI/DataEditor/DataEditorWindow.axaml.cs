@@ -47,15 +47,38 @@ public partial class DataEditorWindow : Window
 
     private void AttachCurrent()
     {
-        if (_subscribed is not null) _subscribed.ColumnsChanged -= OnColumnsChanged;
+        if (_subscribed is not null)
+        {
+            _subscribed.ColumnsChanged -= OnColumnsChanged;
+            _subscribed.StepColumnsChanged -= OnStepColumnsChanged;
+            _subscribed.PropertyChanged -= OnEditorPropertyChanged;
+        }
         _subscribed = _shell.Current;
         if (_subscribed is null) return;
         Title = $"Data editor — {_subscribed.InstanceName}";
         _subscribed.ColumnsChanged += OnColumnsChanged;
+        _subscribed.StepColumnsChanged += OnStepColumnsChanged;
+        _subscribed.PropertyChanged += OnEditorPropertyChanged;
         RebuildColumns();
+        RebuildStepColumns();
     }
 
     private void OnColumnsChanged(object? sender, EventArgs e) => RebuildColumns();
+
+    /// <summary>A grid that was hidden forgets its selection; restore it when its tab is shown again.</summary>
+    private void OnEditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(DataEditorViewModel.ShowSteps) || sender is not DataEditorViewModel editor) return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (editor.ShowSteps && editor.SelectedStep is null && editor.StepRows.Count > 0) editor.SelectedStep = editor.StepRows[0];
+            if (!editor.ShowSteps && editor.SelectedRow is null && editor.VisibleRows.Count > 0) editor.SelectedRow = editor.VisibleRows[0];
+            if (this.FindControl<DataGrid>("StepsGrid") is { } steps && editor.SelectedStep is not null && !ReferenceEquals(steps.SelectedItem, editor.SelectedStep)) steps.SelectedItem = editor.SelectedStep;
+            if (this.FindControl<DataGrid>("Grid") is { } data && editor.SelectedRow is not null && !ReferenceEquals(data.SelectedItem, editor.SelectedRow)) data.SelectedItem = editor.SelectedRow;
+        }, DispatcherPriority.Background);
+    }
+
+    private void OnStepColumnsChanged(object? sender, EventArgs e) => RebuildStepColumns();
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {
@@ -84,7 +107,11 @@ public partial class DataEditorWindow : Window
     }
 
     /// <summary>A cell still being typed in has not reached the workbook yet; finish it first.</summary>
-    private void CommitPendingEdit() => this.FindControl<DataGrid>("Grid")?.CommitEdit();
+    private void CommitPendingEdit()
+    {
+        this.FindControl<DataGrid>("Grid")?.CommitEdit();
+        this.FindControl<DataGrid>("StepsGrid")?.CommitEdit();
+    }
 
     private void RebuildColumns()
     {
@@ -102,9 +129,46 @@ public partial class DataEditorWindow : Window
         });
     }
 
-    private static DataGridTextColumn CreateColumn(GridColumn column) => new()
+    private void RebuildStepColumns()
     {
-        Header = CreateHeader(column),
+        var grid = this.FindControl<DataGrid>("StepsGrid");
+        var editor = _shell?.Current;
+        if (grid is null || editor is null) return;
+        grid.Columns.Clear();
+        grid.Columns.Add(CreateColumn(new GridColumn("stepname", ColumnGroup.Id, 0, -1)));
+        foreach (var column in editor.StepColumns)
+            grid.Columns.Add(StepOptions.For(column.Title) is { } options ? CreateChoiceColumn(column, options) : CreateColumn(column, step: true));
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (editor.SelectedStep is null && editor.StepRows.Count > 0) editor.SelectedStep = editor.StepRows[0];
+            if (editor.SelectedStep is not null && !ReferenceEquals(grid.SelectedItem, editor.SelectedStep)) grid.SelectedItem = editor.SelectedStep;
+        });
+    }
+
+    /// <summary>A drop-down for a config column with a fixed set of values.</summary>
+    private static DataGridTemplateColumn CreateChoiceColumn(GridColumn column, IReadOnlyList<string> options) => new()
+    {
+        Header = CreateHeader(column with { Group = ColumnGroup.Id }),
+        MinWidth = 110,
+        Width = DataGridLength.Auto,
+        CanUserSort = false,
+        CellTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<StepRowViewModel>((_, _) =>
+        {
+            var box = new ComboBox
+            {
+                ItemsSource = options,
+                MinWidth = 96,
+                Margin = new Avalonia.Thickness(4, 2),
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+            };
+            box.Bind(ComboBox.SelectedItemProperty, new Binding($"Cells[{column.CellIndex}]") { Mode = BindingMode.TwoWay });
+            return box;
+        })
+    };
+
+    private static DataGridTextColumn CreateColumn(GridColumn column, bool step = false) => new()
+    {
+        Header = CreateHeader(step ? column with { Group = ColumnGroup.Id } : column),
         Binding = new Binding($"Cells[{column.CellIndex}]") { Mode = BindingMode.TwoWay },
         MinWidth = 110,
         MaxWidth = 320,
