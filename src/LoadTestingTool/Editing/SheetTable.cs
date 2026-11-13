@@ -23,6 +23,7 @@ public sealed class SheetTable
     private readonly List<Column> _columns = [];
     private readonly List<TableRow> _rows = [];
     private readonly List<int> _removedSourceRows = [];
+    private readonly List<int> _removedSourceColumns = [];
 
     private SheetTable(string sheetName, int headerRowNumber)
     {
@@ -36,7 +37,7 @@ public sealed class SheetTable
     public int ColumnCount => _columns.Count;
     public IReadOnlyList<string> Headers => _columns.Select(c => c.Header).ToList();
 
-    public bool IsDirty => _removedSourceRows.Count > 0 || _columns.Any(c => c.IsModified) || _rows.Any(r => r.IsModified);
+    public bool IsDirty => _removedSourceRows.Count > 0 || _removedSourceColumns.Count > 0 || _columns.Any(c => c.IsModified) || _rows.Any(r => r.IsModified);
 
     /// <summary>Index of the first column with this header, or -1.</summary>
     public int FindColumn(string header)
@@ -58,6 +59,49 @@ public sealed class SheetTable
         foreach (var row in _rows) row.Resize(_columns.Count);
         return _columns.Count - 1;
     }
+
+    /// <summary>
+    /// Adds an empty column immediately before the column at <paramref name="index"/>. On save a real sheet column is inserted there
+    /// (columns to its right move right; formulas follow). References by header name are unaffected.
+    /// </summary>
+    public int InsertColumnBefore(int index, string header)
+    {
+        var wanted = header.Trim();
+        if (wanted.Length == 0) throw new ArgumentException("A column header cannot be empty.", nameof(header));
+        if (FindColumn(wanted) >= 0) throw new InvalidOperationException($"{SheetName} already has a column '{wanted}'.");
+        if (index < 0 || index > _columns.Count) throw new ArgumentOutOfRangeException(nameof(index));
+        var neighbor = index < _columns.Count ? _columns[index] : null;
+        _columns.Insert(index, new Column(wanted, null, null) { InsertBeforeColumn = neighbor?.SourceColumn ?? neighbor?.InsertBeforeColumn });
+        foreach (var row in _rows) row.InsertValueAt(index);
+        return index;
+    }
+
+    /// <summary>Removes a column. On save its sheet column is emptied (header included), not deleted, so columns to its right keep their place.</summary>
+    public void RemoveColumn(int index)
+    {
+        if (index < 0 || index >= _columns.Count) throw new ArgumentOutOfRangeException(nameof(index));
+        if (_columns[index].SourceColumn is int source) _removedSourceColumns.Add(source);
+        _columns.RemoveAt(index);
+        foreach (var row in _rows) row.RemoveValueAt(index);
+    }
+
+    /// <summary>Changes a column's header. References to the old header (<c>&lt;From_sheet_oldheader_N&gt;</c>) are renamed on save.</summary>
+    public void RenameColumn(int index, string header)
+    {
+        var wanted = header.Trim();
+        if (wanted.Length == 0) throw new ArgumentException("A column header cannot be empty.", nameof(header));
+        var clash = FindColumn(wanted);
+        if (clash >= 0 && clash != index) throw new InvalidOperationException($"{SheetName} already has a column '{wanted}'.");
+        _columns[index].Header = wanted;
+    }
+
+    /// <summary>Headers that were changed since the table was loaded or last saved, old to new.</summary>
+    internal Dictionary<string, string> RenamedHeaders()
+        => _columns.Where(c => c.OriginalHeader is not null && !string.Equals(c.Header, c.OriginalHeader, StringComparison.Ordinal))
+            .ToDictionary(c => c.OriginalHeader!, c => c.Header, StringComparer.OrdinalIgnoreCase);
+
+    internal int PendingColumnInserts => _columns.Count(c => c.SourceColumn is null && c.InsertBeforeColumn is not null);
+    internal bool HasRemovedColumns => _removedSourceColumns.Count > 0;
 
     /// <summary>Appends an empty row. It is written below the last used row when the document is saved.</summary>
     public TableRow AddRow()
@@ -118,7 +162,7 @@ public sealed class SheetTable
 
     /// <summary>Captures the current edits so <see cref="Restore"/> can return to this exact state (used for undo).</summary>
     public SheetSnapshot Snapshot()
-        => new(_columns.Select(c => ((object)c, c.Header)).ToArray(), _rows.Select(r => (r, r.CaptureValues())).ToArray(), _removedSourceRows.ToArray());
+        => new(_columns.Select(c => ((object)c, c.Header)).ToArray(), _rows.Select(r => { var (values, original) = r.Capture(); return (r, values, original); }).ToArray(), _removedSourceRows.ToArray(), _removedSourceColumns.ToArray());
 
     /// <summary>Returns to a state captured by <see cref="Snapshot"/>. Only valid until the table is next saved.</summary>
     public void Restore(SheetSnapshot snapshot)
@@ -131,13 +175,15 @@ public sealed class SheetTable
             _columns.Add(column);
         }
         _rows.Clear();
-        foreach (var (row, values) in snapshot.Rows)
+        foreach (var (row, values, original) in snapshot.Rows)
         {
-            row.RestoreValues(values);
+            row.Restore(values, original);
             _rows.Add(row);
         }
         _removedSourceRows.Clear();
         _removedSourceRows.AddRange(snapshot.RemovedSourceRows);
+        _removedSourceColumns.Clear();
+        _removedSourceColumns.AddRange(snapshot.RemovedSourceColumns);
     }
 
     internal static SheetTable Load(IXLWorksheet sheet)
@@ -162,12 +208,20 @@ public sealed class SheetTable
 
     internal void ApplyTo(IXLWorksheet sheet)
     {
+        foreach (var column in _columns) column.PendingSourceColumn = null;
         var nextRow = Math.Max(sheet.LastRowUsed()?.RowNumber() ?? HeaderRowNumber, HeaderRowNumber) + 1;
-        var nextColumn = (sheet.LastColumnUsed()?.ColumnNumber() ?? 0) + 1;
 
+        // Columns first: empty the removed ones, then open gaps for the inserted ones (right to left), and work out where every column ends up.
+        foreach (var removed in _removedSourceColumns) sheet.Column(removed).Clear(XLClearOptions.Contents);
+        var inserted = _columns.Where(c => c.SourceColumn is null && c.InsertBeforeColumn is not null).OrderBy(c => c.InsertBeforeColumn).ToList();
+        foreach (var position in inserted.Select(c => c.InsertBeforeColumn!.Value).OrderByDescending(x => x)) sheet.Column(position).InsertColumnsBefore(1);
+        for (var k = 0; k < inserted.Count; k++) inserted[k].PendingSourceColumn = inserted[k].InsertBeforeColumn!.Value + k;
+
+        var nextColumn = (sheet.LastColumnUsed()?.ColumnNumber() ?? 0) + 1;
         foreach (var column in _columns)
         {
-            column.PendingSourceColumn = column.SourceColumn ?? nextColumn++;
+            if (column.SourceColumn is int source) column.PendingSourceColumn = source + inserted.Count(c => c.InsertBeforeColumn <= source);
+            else column.PendingSourceColumn ??= nextColumn++;
             if (column.IsModified) sheet.Cell(HeaderRowNumber, column.PendingSourceColumn.Value).Value = column.Header;
         }
 
@@ -204,6 +258,7 @@ public sealed class SheetTable
         foreach (var column in _columns) column.AcceptChanges();
         foreach (var row in _rows) row.AcceptChanges();
         _removedSourceRows.Clear();
+        _removedSourceColumns.Clear();
     }
 
     private static void WriteCell(IXLCell cell, string value, string header)
@@ -246,6 +301,9 @@ public sealed class SheetTable
         public string? OriginalHeader { get; private set; }
         public int? SourceColumn { get; private set; }
         public int? PendingSourceColumn { get; set; }
+
+        /// <summary>For a column inserted before an existing sheet column: that column's number when the table was loaded or last saved.</summary>
+        public int? InsertBeforeColumn { get; init; }
         public bool IsModified => OriginalHeader is null || !string.Equals(Header, OriginalHeader, StringComparison.Ordinal);
 
         public void AcceptChanges()
@@ -260,15 +318,17 @@ public sealed class SheetTable
 /// <summary>An opaque capture of a <see cref="SheetTable"/>'s edits, taken with <see cref="SheetTable.Snapshot"/>.</summary>
 public sealed class SheetSnapshot
 {
-    internal SheetSnapshot((object Column, string Header)[] columns, (TableRow Row, string[] Values)[] rows, int[] removedSourceRows)
+    internal SheetSnapshot((object Column, string Header)[] columns, (TableRow Row, string[] Values, string[]? Original)[] rows, int[] removedSourceRows, int[] removedSourceColumns)
     {
         Columns = columns;
         Rows = rows;
         RemovedSourceRows = removedSourceRows;
+        RemovedSourceColumns = removedSourceColumns;
     }
 
     internal (object Column, string Header)[] Columns { get; }
-    internal (TableRow Row, string[] Values)[] Rows { get; }
+    internal (TableRow Row, string[] Values, string[]? Original)[] Rows { get; }
+    internal int[] RemovedSourceColumns { get; }
     internal int[] RemovedSourceRows { get; }
 }
 
@@ -343,9 +403,36 @@ public sealed class TableRow
         return column < _original.Length ? _original[column] : string.Empty;
     }
 
-    internal string[] CaptureValues() => (string[])_values.Clone();
+    internal (string[] Values, string[]? Original) Capture() => ((string[])_values.Clone(), (string[]?)_original?.Clone());
 
-    internal void RestoreValues(string[] values) => _values = (string[])values.Clone();
+    internal void Restore(string[] values, string[]? original)
+    {
+        _values = (string[])values.Clone();
+        _original = (string[]?)original?.Clone();
+    }
+
+    /// <summary>Makes room for a new, empty column at this position (the saved original stays "empty" there).</summary>
+    internal void InsertValueAt(int index)
+    {
+        var values = _values.ToList();
+        values.Insert(Math.Min(index, values.Count), string.Empty);
+        _values = [.. values];
+        if (_original is null) return;
+        var original = _original.ToList();
+        if (index <= original.Count) original.Insert(index, string.Empty);
+        _original = [.. original];
+    }
+
+    internal void RemoveValueAt(int index)
+    {
+        var values = _values.ToList();
+        if (index < values.Count) values.RemoveAt(index);
+        _values = [.. values];
+        if (_original is null) return;
+        var original = _original.ToList();
+        if (index < original.Count) original.RemoveAt(index);
+        _original = [.. original];
+    }
 
     internal void Resize(int count)
     {

@@ -102,6 +102,16 @@ public sealed class WorkbookDocument
         return (request, response);
     }
 
+    /// <summary>Cells that refer to a column of the request or response sheet by header name, e.g. <c>&lt;From_request_title_4&gt;</c> for "title".</summary>
+    public IReadOnlyList<RowReference> FindColumnReferences(string sheetName, string header)
+        => FindRowReferences().Where(r => r.TargetSheet.Equals(sheetName, StringComparison.OrdinalIgnoreCase) && ReferencedHeader(r).Equals(header.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private static string ReferencedHeader(RowReference reference)
+    {
+        var inner = reference.Token.Trim('<', '>').Split('_');
+        return inner.Length >= 4 ? inner[2] : inner.Length == 3 ? inner[1] : string.Empty;
+    }
+
     /// <summary>Every cell in the workbook that refers to a sheet row by number (&lt;From_sheet_header_N&gt;), read from the last saved file.</summary>
     public IReadOnlyList<RowReference> FindRowReferences()
     {
@@ -183,12 +193,10 @@ public sealed class WorkbookDocument
         Request.ApplyTo(workbook.Worksheet(Request.SheetName));
         Response.ApplyTo(workbook.Worksheet(Response.SheetName));
         var inserted = Request.PendingInserts().Count + Response.PendingInserts().Count;
-        var renumbered = 0;
-        if (inserted > 0)
-        {
-            EnsureRowsCanMove();
-            renumbered = RowInsertion.Apply(workbook, [Request, Response]);
-        }
+        var columns = Request.PendingColumnInserts + Response.PendingColumnInserts + (Request.HasRemovedColumns ? 1 : 0) + (Response.HasRemovedColumns ? 1 : 0);
+        columns += Request.RenamedHeaders().Count + Response.RenamedHeaders().Count > 0 ? 1 : 0;
+        if (inserted > 0) EnsureRowsCanMove();
+        var renumbered = RowInsertion.Apply(workbook, [Request, Response]); // also renames references to renamed columns
 
         var directory = Path.GetDirectoryName(FilePath)!;
         var temp = Path.Combine(directory, $"{Path.GetFileName(FilePath)}.tmp-{Guid.NewGuid():N}");
@@ -216,7 +224,7 @@ public sealed class WorkbookDocument
         Config.AcceptChanges();
         Request.AcceptChanges();
         Response.AcceptChanges();
-        return new SaveResult(true, backup, inserted, renumbered);
+        return new SaveResult(true, backup, inserted, renumbered, columns);
     }
 
     /// <summary>The testcase index the runner uses for a row: its cell value, or its sheet row number when that is not a number.</summary>

@@ -396,12 +396,12 @@ public sealed partial class DataEditorViewModel : ObservableObject
             var keepRow = SelectedRow?.Cells[0];
             var result = _document.Save(options);
             if (result.Saved) { ClearUndoHistory(); _referenceScan = null; }
-            if (result.RowsInserted > 0) ReloadAfterRowsMoved(keepRow);
+            if (result.RequiresReload) ReloadAfterRowsMoved(keepRow);
             ConflictVisible = false;
             IsDirty = _document.IsDirty;
             if (result.BackupPath is not null) LastBackupPath = result.BackupPath;
             Revalidate();
-            var moved = result.RowsInserted == 0 ? string.Empty
+            var moved = result.RowsInserted == 0 ? (result.ReferencesRenumbered > 0 ? $" Updated {result.ReferencesRenumbered} {(result.ReferencesRenumbered == 1 ? "reference" : "references")}." : string.Empty)
                 : $" Inserted {result.RowsInserted / 2} {(result.RowsInserted / 2 == 1 ? "row" : "rows")} in the request and response sheets and renumbered {result.ReferencesRenumbered} {(result.ReferencesRenumbered == 1 ? "reference" : "references")}.";
             ShowStatus(result.Saved
                 ? $"Saved {FileName}.{moved}{(result.BackupPath is null ? string.Empty : $" Backup: {Path.GetFileName(result.BackupPath)}")}"

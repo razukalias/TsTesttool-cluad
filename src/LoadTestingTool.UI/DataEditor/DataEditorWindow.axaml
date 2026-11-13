@@ -202,6 +202,7 @@
           </StackPanel>
           <Button Content="Find &amp; replace" Command="{Binding OpenFindCommand}" Margin="0,0,8,8" MinHeight="36" />
           <Button Content="Add column" Command="{Binding OpenAddColumnCommand}" Margin="0,0,8,8" MinHeight="36" />
+          <Button Content="Rename / remove column" Command="{Binding OpenEditColumnCommand}" ToolTip.Tip="Acts on the column whose cell you last clicked" Margin="0,0,8,8" MinHeight="36" />
           <Button Content="Import CSV…" Command="{Binding ImportCsvFileCommand}" Margin="0,0,8,8" MinHeight="36" />
           <Button Content="Export CSV…" Command="{Binding ExportCsvFileCommand}" Margin="0,0,8,8" MinHeight="36" />
         </WrapPanel>
@@ -225,6 +226,18 @@
             </StackPanel>
           </StackPanel>
         </Border>
+        <Border IsVisible="{Binding EditColumnVisible}" Classes="panel" Padding="14,12">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="caption" Text="{Binding EditColumnTitle, StringFormat='COLUMN · {0}'}" />
+            <WrapPanel Classes="form">
+              <TextBox Text="{Binding EditColumnName, Mode=TwoWay}" MinWidth="320" />
+              <Button Content="Rename" Classes="primary" Command="{Binding ConfirmRenameColumnCommand}" />
+              <Button Content="Remove column" Classes="danger" Command="{Binding ConfirmRemoveColumnCommand}" />
+              <Button Content="Cancel" Command="{Binding CloseEditColumnCommand}" />
+            </WrapPanel>
+            <TextBlock Text="{Binding EditColumnNote}" Foreground="#8EA4BC" FontSize="12" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
         <Border IsVisible="{Binding AddColumnVisible}" Classes="panel" Padding="14,12">
           <StackPanel Spacing="10">
             <TextBlock Classes="caption" Text="NEW DATA COLUMN" />
@@ -233,6 +246,7 @@
               <ComboBox ItemsSource="{x:Static vm:DataEditorViewModel.ColumnKinds}" SelectedItem="{Binding NewColumnKind, Mode=TwoWay}" MinWidth="150" />
               <ComboBox IsVisible="{Binding NewColumnIsExpected}" ItemsSource="{x:Static vm:DataEditorViewModel.AssertionVerbs}" SelectedItem="{Binding NewColumnVerb, Mode=TwoWay}" MinWidth="130" />
               <TextBox Text="{Binding NewColumnName, Mode=TwoWay}" Watermark="{Binding NewColumnHint}" MinWidth="260" />
+              <ComboBox ItemsSource="{Binding PlacementOptions}" SelectedItem="{Binding NewColumnPlacement, Mode=TwoWay}" MinWidth="200" ToolTip.Tip="Before the selected column = before the column whose cell you last clicked (same sheet only)" />
               <Button Content="Add column" Classes="primary" Command="{Binding ConfirmAddColumnCommand}" />
               <Button Content="Cancel" Command="{Binding CancelAddColumnCommand}" />
             </WrapPanel>

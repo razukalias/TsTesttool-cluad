@@ -44,11 +44,12 @@ internal static class RowInsertion
     /// </summary>
     public static int Apply(XLWorkbook workbook, IReadOnlyList<SheetTable> tables)
     {
+        var renames = tables.ToDictionary(t => t.SheetName, t => t.RenamedHeaders(), StringComparer.OrdinalIgnoreCase);
         var inserts = tables.ToDictionary(t => t, t => t.PendingInserts(), ReferenceEqualityComparer.Instance as IEqualityComparer<SheetTable>);
         var positions = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
         foreach (var table in tables)
             if (inserts[table].Count > 0) positions[table.SheetName] = inserts[table].Select(i => i.Before).OrderBy(x => x).ToList();
-        if (positions.Count == 0) return 0;
+        if (positions.Count == 0 && renames.Values.All(r => r.Count == 0)) return 0;
 
         // 1. Rewrite every reference (text only; the cells still sit at their old rows) and remember what each pointed at.
         var checks = new List<(string Sheet, string Header, int OldRow, int NewRow, string Before)>();
@@ -57,9 +58,9 @@ internal static class RowInsertion
             {
                 var text = TextOf(cell);
                 if (text is null || !text.Contains("<From_", StringComparison.OrdinalIgnoreCase)) continue;
-                var updated = Rewrite(text, sheet.Name, positions, (target, header, oldRow, newRow) =>
+                var updated = Rewrite(text, sheet.Name, positions, renames, (target, header, oldRow, newRow, renamed) =>
                 {
-                    if (oldRow != newRow) checks.Add((target, header, oldRow, newRow, ReadCell(workbook, target, header, oldRow)));
+                    if (oldRow != newRow || renamed) checks.Add((target, header, oldRow, newRow, ReadCell(workbook, target, header, oldRow)));
                 });
                 if (updated == text) continue;
                 if (cell.HasRichText) throw new InvalidOperationException($"{sheet.Name}!{cell.Address} holds rich text with a row reference; update it by hand before inserting rows.");
@@ -85,28 +86,31 @@ internal static class RowInsertion
         foreach (var table in tables)
         {
             var sheet = workbook.Worksheets.First(w => w.Name.Equals(table.SheetName, StringComparison.OrdinalIgnoreCase));
-            table.WriteInsertedRows(sheet, inserts[table], text => Rewrite(text, table.SheetName, positions, null));
+            table.WriteInsertedRows(sheet, inserts[table], text => Rewrite(text, table.SheetName, positions, renames, null));
         }
         return checks.Count;
     }
 
-    private static string Rewrite(string text, string cellSheet, Dictionary<string, List<int>> positions, Action<string, string, int, int>? seen)
+    private static string Rewrite(string text, string cellSheet, Dictionary<string, List<int>> positions, Dictionary<string, Dictionary<string, string>> renames, Action<string, string, int, int, bool>? seen)
     {
         int Map(string sheet, int row) => positions.TryGetValue(sheet, out var list) ? row + list.Count(p => p <= row) : row;
+        string Header(string sheet, string header) => renames.TryGetValue(sheet, out var map) && map.TryGetValue(header, out var renamedTo) ? renamedTo : header;
         var result = Full.Replace(text, m =>
         {
             var sheet = m.Groups[1].Value; var header = m.Groups[2].Value; var row = int.Parse(m.Groups[3].Value);
             if (IsRuntimeReference(sheet, header)) return m.Value;
             var mapped = Map(sheet, row);
-            seen?.Invoke(sheet, header, row, mapped);
-            return mapped == row ? m.Value : $"<From_{sheet}_{header}_{mapped}>";
+            var newHeader = Header(sheet, header);
+            seen?.Invoke(sheet, newHeader, row, mapped, newHeader != header);
+            return mapped == row && newHeader == header ? m.Value : $"<From_{sheet}_{newHeader}_{mapped}>";
         });
         return Short.Replace(result, m =>
         {
             var header = m.Groups[1].Value; var row = int.Parse(m.Groups[2].Value);
             var mapped = Map(cellSheet, row);
-            seen?.Invoke(cellSheet, header, row, mapped);
-            return mapped == row ? m.Value : $"<From_{header}_{mapped}>";
+            var newHeader = Header(cellSheet, header);
+            seen?.Invoke(cellSheet, newHeader, row, mapped, newHeader != header);
+            return mapped == row && newHeader == header ? m.Value : $"<From_{newHeader}_{mapped}>";
         });
     }
 
