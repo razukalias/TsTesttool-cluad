@@ -13,6 +13,14 @@ Logs/
 *.xlsm
 *.zip
 
+# ...but keep the workbooks that define the test instances and samples
+!/DataEngine-all-parameters.xlsx
+!/Instances/*/*.xlsx
+!/samples/**/*.xlsx
+
+# Excel lock/temp files stay ignored everywhere
+~$*
+
 # Local IDE/user files
 .vs/
 .vscode/
