@@ -30,6 +30,7 @@ public partial class DataEditorWindow
             if (e.Source is not Button { Tag: string way, DataContext: { } node }) return;
             if (way == "toggle") { if (node is InstanceNode instance) instance.ToggleAll(); }
             else if (way == "run") _ = _shell.RunNodeAsync(node);
+            else if (way == "add") _ = AddChildAsync(tree, node);
             else _shell.MoveNode(node, way == "up" ? -1 : 1);
             e.Handled = true;
         });
@@ -58,17 +59,65 @@ public partial class DataEditorWindow
         {
             case TestcaseItem:
                 menu.Items.Add(Item("Rename", () => BeginTreeRename(tree, node)));
-                menu.Items.Add(Item("Copy testcase…", () => _shell.Current?.OpenCopyTestcaseCommand.Execute(null)));
+                menu.Items.Add(Item("Duplicate testcase…", () => _shell.Current?.OpenCopyTestcaseCommand.Execute(null)));
+                menu.Items.Add(CopyTestcaseMenu((TestcaseItem)node));
+                menu.Items.Add(new Separator());
+                menu.Items.Add(Item("Add step", () => _ = AddChildAsync(tree, node)));
                 menu.Items.Add(new Separator());
                 menu.Items.Add(Item("Delete testcase…", () => _shell.Current?.OpenDeleteTestcaseCommand.Execute(null)));
                 break;
-            case StepNode:
+            case StepNode step:
                 menu.Items.Add(Item("Rename", () => BeginTreeRename(tree, node)));
+                menu.Items.Add(Item("Duplicate step", () => _shell.DuplicateStep(step)));
+                menu.Items.Add(CopyStepMenu(step));
                 menu.Items.Add(new Separator());
                 menu.Items.Add(Item("Remove step", () => _shell.Current?.RemoveStepCommand.Execute(null)));
                 break;
             default:
                 return null;
+        }
+        return menu;
+    }
+
+    private async Task AddChildAsync(TreeView tree, object parent)
+    {
+        object? created = parent switch
+        {
+            InstanceNode instance => await _shell.AddTestcaseAsync(instance),
+            TestcaseItem testcase => _shell.AddStep(testcase),
+            _ => null
+        };
+        if (created is not null) BeginTreeRename(tree, created);
+    }
+
+    /// <summary>Copy testcase to ▸ another instance.</summary>
+    private MenuItem CopyTestcaseMenu(TestcaseItem testcase)
+    {
+        var menu = new MenuItem { Header = "Copy to instance" };
+        var owner = _shell.Instances.FirstOrDefault(i => i.Testcases.Contains(testcase));
+        foreach (var instance in _shell.Instances.Where(i => !ReferenceEquals(i, owner)))
+            menu.Items.Add(Item(instance.Name, () => _ = _shell.CopyTestcaseToAsync(testcase, instance)));
+        if (menu.Items.Count == 0) { menu.Items.Add(new MenuItem { Header = "No other instance", IsEnabled = false }); }
+        return menu;
+    }
+
+    /// <summary>Copy step to ▸ instance ▸ testcase; an instance's testcases are read when its submenu opens.</summary>
+    private MenuItem CopyStepMenu(StepNode step)
+    {
+        var menu = new MenuItem { Header = "Copy to instance" };
+        foreach (var instance in _shell.Instances)
+        {
+            var entry = new MenuItem { Header = instance.Name };
+            entry.Items.Add(new MenuItem { Header = "…", IsEnabled = false });
+            entry.SubmenuOpened += (_, _) =>
+            {
+                _shell.EnsureLoaded(instance);
+                entry.Items.Clear();
+                foreach (var testcase in instance.Testcases.ToList())
+                    entry.Items.Add(Item(testcase.Title, () => _ = _shell.CopyStepToAsync(step, instance, testcase)));
+                if (entry.Items.Count == 0) entry.Items.Add(new MenuItem { Header = instance.HasError ? "Could not be opened" : "No testcases", IsEnabled = false });
+            };
+            menu.Items.Add(entry);
         }
         return menu;
     }

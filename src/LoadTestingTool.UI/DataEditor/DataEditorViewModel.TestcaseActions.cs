@@ -89,9 +89,9 @@ public sealed partial class DataEditorViewModel
     {
         if (SelectedTestcase is not { } testcase) return;
         _testcaseAction = TestcaseAction.Copy;
-        TestcasePanelTitle = $"COPY TESTCASE · {testcase.Title}";
+        TestcasePanelTitle = $"DUPLICATE TESTCASE · {testcase.Title}";
         TestcasePanelName = testcase.Name + " copy";
-        TestcasePanelConfirmText = "Copy";
+        TestcasePanelConfirmText = "Duplicate";
         TestcasePanelNote = $"Copies its {testcase.Steps.Count} {(testcase.Steps.Count == 1 ? "step" : "steps")} (named Name + Copy, with their data columns) and its {testcase.RowCount} data {(testcase.RowCount == 1 ? "row" : "rows")} under the next free testcase number. The copy uses the same template files.";
         OpenTestcasePanel(asksName: true, isDelete: false);
     }

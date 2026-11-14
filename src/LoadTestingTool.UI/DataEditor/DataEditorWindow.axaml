@@ -186,6 +186,7 @@
                   <CheckBox Grid.Column="1" Classes="treeparallel" Content="Parallel" IsChecked="{Binding RunParallel, Mode=TwoWay}" ToolTip.Tip="Run this instance's environments (and testcases) at the same time when started from here" />
                 </Grid>
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Top">
+                  <Button Classes="treemove" Tag="add" Content="＋" FontSize="12" ToolTip.Tip="Add a testcase to this instance" />
                   <Button Classes="treemove" Tag="toggle" Content="⇕" FontSize="12" ToolTip.Tip="Expand or collapse this instance and everything under it" />
                   <Button Classes="treerun" Tag="run" Content="▶" ToolTip.Tip="Run the whole instance" />
                 </StackPanel>
@@ -213,6 +214,7 @@
                   <TextBlock Text="{Binding ResultText}" IsVisible="{Binding HasResults}" Foreground="{Binding ResultColor}" FontSize="11" FontWeight="SemiBold" />
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" VerticalAlignment="Top" IsVisible="{Binding IsNotEditing}">
+                  <Button Classes="treemove" Tag="add" Content="＋" FontSize="12" ToolTip.Tip="Add a step to this testcase" />
                   <Button Classes="treerun" Tag="run" Content="▶" ToolTip.Tip="Run this testcase" />
                   <Button Classes="treemove" Tag="up" Content="▲" ToolTip.Tip="Run earlier" />
                   <Button Classes="treemove" Tag="down" Content="▼" ToolTip.Tip="Run later" />
