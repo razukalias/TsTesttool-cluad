@@ -24,6 +24,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         WorkbookPath = Path.GetFullPath(workbookPath);
         InstanceName = string.IsNullOrWhiteSpace(instanceName) ? Path.GetFileNameWithoutExtension(workbookPath) : instanceName;
         _document = WorkbookDocument.Load(WorkbookPath);
+        StepRows.CollectionChanged += (_, _) => { for (var i = 0; i < StepRows.Count; i++) StepRows[i].Position = i + 1; };
         LoadTestcases(null);
     }
 

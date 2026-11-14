@@ -39,7 +39,7 @@ public sealed partial class DataEditorViewModel
         var step = StepRows.FirstOrDefault(r => string.Equals(r.CurrentName, name, StringComparison.OrdinalIgnoreCase));
         if (step is null) return;
         SelectedStep = step;
-        if (showSettings) ShowSteps = true;
+        if (showSettings) { FocusedStep = step; ShowStepTable = false; ShowSteps = true; }
         else ShowStepData();
     }
 

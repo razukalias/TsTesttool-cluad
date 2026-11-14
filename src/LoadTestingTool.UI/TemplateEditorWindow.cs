@@ -130,6 +130,16 @@ internal sealed class TemplateEditorWindow : Window
         return count;
     }
 
+    internal static string ResolveInside(string templatesFolder, string source)
+    {
+        if (string.IsNullOrWhiteSpace(source)) throw new InvalidDataException("Template source path is required.");
+        var folder = Path.GetFullPath(templatesFolder);
+        var path = Path.GetFullPath(Path.Combine(folder, source.Replace('/', Path.DirectorySeparatorChar)));
+        var root = folder.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException("Template path must remain inside the Templates folder.");
+        return path;
+    }
+
     private string ResolvePath(string source)
     {
         if (string.IsNullOrWhiteSpace(source)) throw new InvalidDataException("Template source path is required.");
@@ -139,7 +149,7 @@ internal sealed class TemplateEditorWindow : Window
         return path;
     }
 
-    private static void ValidateContent(string content, string format)
+    internal static void ValidateContent(string content, string format)
     {
         if (string.IsNullOrWhiteSpace(content)) throw new InvalidDataException("Template content cannot be empty.");
         foreach (Match match in Regex.Matches(content, @"_([\p{L}\p{N}._-]+)_"))
@@ -150,13 +160,13 @@ internal sealed class TemplateEditorWindow : Window
         else if (format.Equals("GraphQL", StringComparison.OrdinalIgnoreCase) && !content.Contains('{')) throw new InvalidDataException("GraphQL template must contain a selection set enclosed by braces.");
     }
 
-    private static int FormatIndex(string path, string stepType)
+    internal static int FormatIndex(string path, string stepType)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
         return ext switch { ".json" => 0, ".xml" => 1, ".sql" => 2, ".graphql" or ".gql" => 3, ".cs" or ".csx" => 4, _ when stepType.Equals("SQL", StringComparison.OrdinalIgnoreCase) => 2, _ when stepType.Equals("GraphQL", StringComparison.OrdinalIgnoreCase) => 3, _ when stepType.Equals("Script", StringComparison.OrdinalIgnoreCase) => 4, _ => 5 };
     }
 
-    private static string DefaultContent(string format) => format switch
+    internal static string DefaultContent(string format) => format switch
     {
         "JSON" => "{\n  \"id\": \"_id_\"\n}",
         "XML" => "<request><id>_id_</id></request>",

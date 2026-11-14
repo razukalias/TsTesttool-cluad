@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using CommunityToolkit.Mvvm.ComponentModel;
 using LoadTestingTool.Editing;
 
 namespace LoadTestingTool.UI.DataEditor;
@@ -8,7 +9,7 @@ namespace LoadTestingTool.UI.DataEditor;
 /// One step of a testcase: a row of the config sheet. Cell 0 is the step name, followed by the other config
 /// columns in sheet order. Editing a cell writes through to the workbook.
 /// </summary>
-public sealed class StepRowViewModel : IFormattedRow
+public sealed partial class StepRowViewModel : ObservableObject, IFormattedRow
 {
     private readonly SheetTable? _table;
     private readonly IReadOnlyList<GridColumn> _columns;
@@ -43,8 +44,58 @@ public sealed class StepRowViewModel : IFormattedRow
     public TableRow Row { get; }
     public ObservableCollection<string> Cells { get; }
 
+    private string _currentName = string.Empty;
+
     /// <summary>The name as last accepted, so a rejected rename can be undone.</summary>
-    public string CurrentName { get; internal set; }
+    public string CurrentName { get => _currentName; internal set => SetProperty(ref _currentName, value); }
+
+    /// <summary>The editor that owns this step; lets the step's form reach template files and the data grid.</summary>
+    public DataEditorViewModel? Editor { get; internal set; }
+
+    /// <summary>Open in the testcase's step list.</summary>
+    [ObservableProperty] private bool _isExpanded;
+
+    /// <summary>1-based place in the testcase.</summary>
+    [ObservableProperty] private int _position;
+
+    /// <summary>The form's content; null while collapsed, so closed steps cost nothing.</summary>
+    public object? ExpandedContent => IsExpanded ? this : null;
+
+    partial void OnIsExpandedChanged(bool value) => OnPropertyChanged(nameof(ExpandedContent));
+
+    /// <summary>The value of a config column by header ("" when the sheet has no such column).</summary>
+    public string Value(string header)
+    {
+        var column = _columns.FirstOrDefault(c => c.Title.Equals(header, StringComparison.OrdinalIgnoreCase));
+        return column is null ? string.Empty : Cells[column.CellIndex] ?? string.Empty;
+    }
+
+    public string TypeText => Value("steptype");
+    public bool IsStepEnabled => Value("enabled").Trim().ToLowerInvariant() is not ("false" or "0" or "no" or "off");
+    public string EnabledText => IsStepEnabled ? "enabled" : "disabled";
+    public string EnabledColor => IsStepEnabled ? "#39D39B" : "#F6C76B";
+
+    /// <summary>One line telling what the step does, for the collapsed list.</summary>
+    public string SummaryText
+    {
+        get
+        {
+            var url = Value("targeturl");
+            var verb = Value("verb");
+            if (url.Length > 0) return verb.Length > 0 ? $"{verb} {url}" : url;
+            var template = Value("templetsource");
+            return template;
+        }
+    }
+
+    private void NotifySummary()
+    {
+        OnPropertyChanged(nameof(TypeText));
+        OnPropertyChanged(nameof(IsStepEnabled));
+        OnPropertyChanged(nameof(EnabledText));
+        OnPropertyChanged(nameof(EnabledColor));
+        OnPropertyChanged(nameof(SummaryText));
+    }
 
     /// <summary>A step added in this session has no sheet row yet; only such steps can still be renamed.</summary>
     public bool IsNew => Row.SourceRow is null;
@@ -65,6 +116,7 @@ public sealed class StepRowViewModel : IFormattedRow
 
     private void OnCellsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        NotifySummary();
         if (_suppress || e.Action != NotifyCollectionChangedAction.Replace) return;
         var index = e.NewStartingIndex;
         if (Cells[index] is null) return; // a drop-down clearing itself because the value is not one of its choices is not an edit

@@ -20,6 +20,38 @@ public sealed partial class DataEditorViewModel
 
     [ObservableProperty] private StepRowViewModel? _selectedStep;
 
+    /// <summary>The one step shown alone as a form (chosen in the tree); null shows the testcase's whole step list.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasFocusedStep), nameof(NoFocusedStep))]
+    private StepRowViewModel? _focusedStep;
+
+    public bool HasFocusedStep => FocusedStep is not null;
+    public bool NoFocusedStep => FocusedStep is null;
+
+    /// <summary>The Steps tab as the original side-by-side table instead of step cards.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowStepCards))]
+    private bool _showStepTable;
+
+    public bool ShowStepCards => !ShowStepTable;
+
+    [RelayCommand]
+    private void ToggleStepTable() => ShowStepTable = !ShowStepTable;
+
+    [RelayCommand]
+    private void ShowAllSteps() => FocusedStep = null;
+
+    [RelayCommand]
+    private void ExpandAllSteps() { foreach (var step in StepRows) step.IsExpanded = true; }
+
+    [RelayCommand]
+    private void CollapseAllSteps() { foreach (var step in StepRows) step.IsExpanded = false; }
+
+    /// <summary>From the tree: clicking a testcase shows all of its steps as a list.</summary>
+    public void ShowTestcaseSteps()
+    {
+        FocusedStep = null;
+        ShowSteps = true;
+    }
+
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowData))]
     private bool _showSteps;
 
@@ -45,6 +77,8 @@ public sealed partial class DataEditorViewModel
 
     private void BuildSteps()
     {
+        var open = StepRows.Where(r => r.IsExpanded).Select(r => r.CurrentName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var focused = FocusedStep?.CurrentName;
         StepRows.Clear();
         SelectedStep = null;
         var columns = new List<GridColumn>();
@@ -56,7 +90,9 @@ public sealed partial class DataEditorViewModel
         StepColumns = columns;
         if (SelectedTestcase is { } testcase)
             foreach (var row in _document.Config.Rows.Where(r => !r.IsBlank && WorkbookDocument.EffectiveIndex(r) == testcase.Index))
-                StepRows.Add(new StepRowViewModel(row, StepColumns, OnStepEdited, _document.Config));
+                StepRows.Add(new StepRowViewModel(row, StepColumns, OnStepEdited, _document.Config) { Editor = this });
+        foreach (var step in StepRows) step.IsExpanded = open.Contains(step.CurrentName);
+        FocusedStep = focused is null ? null : StepRows.FirstOrDefault(r => string.Equals(r.CurrentName, focused, StringComparison.OrdinalIgnoreCase));
         StepColumnsChanged?.Invoke(this, EventArgs.Empty);
         OnPropertyChanged(nameof(StepCountText));
         SelectedStep = StepRows.FirstOrDefault();
@@ -132,7 +168,7 @@ public sealed partial class DataEditorViewModel
         row.Set("steptype", "HTTP");
         row.Set("stage", "Test");
         row.Set("enabled", "True");
-        var step = new StepRowViewModel(row, StepColumns, OnStepEdited, _document.Config);
+        var step = new StepRowViewModel(row, StepColumns, OnStepEdited, _document.Config) { Editor = this, IsExpanded = true };
         StepRows.Add(step);
         SelectedStep = step;
         OnPropertyChanged(nameof(StepCountText));

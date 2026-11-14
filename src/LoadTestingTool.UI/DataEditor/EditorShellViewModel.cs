@@ -140,6 +140,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
             start = start.Editor is not null ? start : Instances.FirstOrDefault(n => n.Editor is not null) ?? start;
         }
         SelectedNode = start.Editor?.SelectedTestcase is { } testcase ? testcase : start;
+        if (Current is { } opened) opened.ShowSteps = false; // the editor opens on the data, not the step list
     }
 
     public ObservableCollection<InstanceNode> Instances { get; } = [];
@@ -294,7 +295,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
                 if (stepOwner?.Editor is not { } stepEditor) return;
                 Current = stepEditor;
                 if (!ReferenceEquals(stepEditor.SelectedTestcase, step.Owner)) stepEditor.SelectedTestcase = step.Owner;
-                stepEditor.SelectStepNamed(step.Name, showSettings: false);
+                stepEditor.SelectStepNamed(step.Name, showSettings: true);
                 break;
             case InstanceNode { Editor: { } editor }:
                 Current = editor;
@@ -307,6 +308,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
                 if (owner?.Editor is not { } ownerEditor) return;
                 Current = ownerEditor;
                 if (!ReferenceEquals(ownerEditor.SelectedTestcase, testcase)) ownerEditor.SelectedTestcase = testcase;
+                ownerEditor.ShowTestcaseSteps();
                 break;
         }
     }

@@ -24,7 +24,7 @@ public class StepNodeTests
     }
 
     [Fact]
-    public void Choosing_a_step_node_narrows_the_data_grid_to_that_step_and_keeps_the_selection()
+    public void Choosing_a_step_node_shows_only_that_step_as_a_form_and_keeps_the_selection()
     {
         using var dir = new TempDir();
         var shell = Shell(dir, out _);
@@ -32,8 +32,8 @@ public class StepNodeTests
         var node = testcase.StepNodes[0];
         shell.SelectedNode = node;
         var vm = shell.Current!;
-        Assert.Equal(node.Name, vm.StepFilter);
-        Assert.False(vm.ShowSteps);
+        Assert.True(vm.ShowSteps);
+        Assert.Equal(node.Name, vm.FocusedStep?.CurrentName);
         Assert.Same(node, shell.SelectedNode);
         Assert.True(shell.StepNodeSelected);
     }
