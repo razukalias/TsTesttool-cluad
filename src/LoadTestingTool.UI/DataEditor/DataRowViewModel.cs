@@ -25,6 +25,9 @@ public sealed partial class StepNode(TestcaseItem owner, string name, int positi
     [ObservableProperty] private bool _isChosen;
     partial void OnIsChosenChanged(bool value) => Owner.StepChosenChanged();
 
+    /// <summary>Steps have no children; present so the tree's expand binding is uniform.</summary>
+    [ObservableProperty] private bool _isExpanded = true;
+
     public TestcaseItem Owner { get; } = owner;
     public string Name { get; } = name;
     public int Position { get; } = position;
@@ -44,6 +47,8 @@ public sealed partial class TestcaseItem : ObservableObject
 
     /// <summary>The steps as children of the testcase in the tree, in run order.</summary>
     public ObservableCollection<StepNode> StepNodes { get; } = [];
+
+    [ObservableProperty] private bool _isExpanded = true;
 
     /// <summary>True while the name is being edited in the tree.</summary>
     [ObservableProperty] private bool _isEditing;

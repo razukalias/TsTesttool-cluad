@@ -48,6 +48,17 @@ public sealed partial class InstanceNode : ObservableObject
 
     [ObservableProperty] private bool _isDirty;
 
+    [ObservableProperty] private bool _isExpanded = true;
+
+    /// <summary>Expands the instance and every testcase under it, or collapses them all, depending on whether everything is already open.</summary>
+    public void ToggleAll() => SetAllExpanded(!(IsExpanded && Testcases.All(t => t.IsExpanded)));
+
+    public void SetAllExpanded(bool expanded)
+    {
+        IsExpanded = expanded;
+        foreach (var testcase in Testcases) testcase.IsExpanded = expanded;
+    }
+
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Subtitle), nameof(CanLoad))]
     private bool _isLoading;
 
@@ -194,6 +205,12 @@ public sealed partial class EditorShellViewModel : ObservableObject
                 }
                 break;
         }
+    }
+
+    /// <summary>Opens or closes every instance and testcase in the tree. Collapsing leaves just the instance rows.</summary>
+    public void SetAllExpanded(bool expanded)
+    {
+        foreach (var instance in Instances) instance.SetAllExpanded(expanded);
     }
 
     /// <summary>Total of testcases ticked across all loaded instances.</summary>

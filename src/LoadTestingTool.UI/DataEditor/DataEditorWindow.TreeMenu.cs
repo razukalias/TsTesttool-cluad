@@ -28,13 +28,16 @@ public partial class DataEditorWindow
         tree.AddHandler(Button.ClickEvent, (_, e) =>
         {
             if (e.Source is not Button { Tag: string way, DataContext: { } node }) return;
-            if (way == "run") _ = _shell.RunNodeAsync(node);
+            if (way == "toggle") { if (node is InstanceNode instance) instance.ToggleAll(); }
+            else if (way == "run") _ = _shell.RunNodeAsync(node);
             else _shell.MoveNode(node, way == "up" ? -1 : 1);
             e.Handled = true;
         });
 
         if (this.FindControl<Button>("RunTickedButton") is { } runTicked)
             runTicked.Click += (_, _) => _ = _shell.RunTickedAsync();
+        if (this.FindControl<Button>("ExpandAllButton") is { } expandAll) expandAll.Click += (_, _) => _shell.SetAllExpanded(true);
+        if (this.FindControl<Button>("CollapseAllButton") is { } collapseAll) collapseAll.Click += (_, _) => _shell.SetAllExpanded(false);
         tree.AddHandler(KeyDownEvent, (_, e) =>
         {
             if (e.Source is not TextBox { DataContext: { } node }) return;
