@@ -104,4 +104,17 @@ public class TransferTests
         editor.UndoCommand.Execute(null);
         Assert.Single(shell.Instances[1].Testcases);
     }
+
+    [Fact(Timeout = 20000)]
+    public async Task Duplicating_the_first_of_several_steps_does_not_hang_and_lands_right_after_it()
+    {
+        using var a = new TempDir(); using var b = new TempDir();
+        var shell = Two(a, b);
+        var testcase = shell.Instances[0].Testcases[0];
+        shell.AddStep(testcase);
+        shell.AddStep(shell.Instances[0].Testcases[0]);
+        var first = shell.Instances[0].Testcases[0].StepNodes[0];
+        await Task.Run(() => shell.DuplicateStep(first));
+        Assert.Equal(["CreateCustomer", "CreateCustomerCopy", "Step2", "Step3"], shell.Instances[0].Testcases[0].StepNodes.Select(n => n.Name));
+    }
 }

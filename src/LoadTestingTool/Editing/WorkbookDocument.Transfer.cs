@@ -51,9 +51,10 @@ public sealed partial class WorkbookDocument
         var position = RowsOf(Config, index).ToList().IndexOf(step);
         if (position < 0) throw new InvalidOperationException("That step is not in the config sheet.");
         var result = CopyStepTo(this, step, index);
-        var copy = RowsOf(Config, index).First(r => string.Equals(r.Get("stepname").Trim(), result.NewName, StringComparison.OrdinalIgnoreCase));
-        while (RowsOf(Config, index).ToList().IndexOf(copy) > position + 1)
-            if (!MoveStep(copy, -1)) break;
+        // MoveStep swaps cell values between neighbouring rows, so walk the row at each position upwards rather than one row object.
+        var steps = RowsOf(Config, index).ToList();
+        for (var at = steps.Count - 1; at > position + 1; at--)
+            if (!MoveStep(steps[at], -1)) break;
         return result;
     }
 
