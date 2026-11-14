@@ -67,6 +67,7 @@ public sealed class StepRowViewModel : IFormattedRow
     {
         if (_suppress || e.Action != NotifyCollectionChangedAction.Replace) return;
         var index = e.NewStartingIndex;
+        if (Cells[index] is null) return; // a drop-down clearing itself because the value is not one of its choices is not an edit
         _edited(this, index, Cells[index] ?? string.Empty);
     }
 }
