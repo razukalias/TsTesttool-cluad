@@ -90,7 +90,12 @@
     </Style>
   </Window.Styles>
 
-  <Grid ColumnDefinitions="300,*">
+  <Grid>
+  <Grid.ColumnDefinitions>
+    <ColumnDefinition Width="300" MinWidth="180" MaxWidth="700" />
+    <ColumnDefinition Width="Auto" />
+    <ColumnDefinition Width="*" MinWidth="500" />
+  </Grid.ColumnDefinitions>
 
     <!-- Instances as parents, their testcases as children -->
     <Border Grid.Column="0" Background="#0C1828" BorderBrush="#22364D" BorderThickness="0,0,1,0" Padding="12,16">
@@ -152,7 +157,9 @@
       </DockPanel>
     </Border>
 
-  <Grid Grid.Column="1" DataContext="{Binding Current}" x:DataType="vm:DataEditorViewModel" RowDefinitions="Auto,Auto,*,Auto">
+  <GridSplitter Grid.Column="1" Width="6" Background="Transparent" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Cursor="SizeWestEast" ToolTip.Tip="Drag to resize" />
+
+  <Grid Grid.Column="2" DataContext="{Binding Current}" x:DataType="vm:DataEditorViewModel" RowDefinitions="Auto,Auto,*,Auto">
 
     <!-- Title bar: what is open, whether it is saved, and the main actions -->
     <Border Grid.Row="0" Background="#0F1C2E" BorderBrush="#22364D" BorderThickness="0,0,0,1" Padding="20,14">
@@ -273,9 +280,15 @@
     </StackPanel>
 
     <!-- Testcases | data grid | problems -->
-    <Grid Grid.Row="2" ColumnDefinitions="*,330" Margin="16,16,16,8">
+    <Grid Grid.Row="2" Margin="16,16,16,8">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" MinWidth="300" />
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="330" MinWidth="200" />
+      </Grid.ColumnDefinitions>
+      <GridSplitter Grid.Column="1" Width="6" Background="Transparent" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Cursor="SizeWestEast" ToolTip.Tip="Drag to resize" />
 
-      <Grid Grid.Column="0" RowDefinitions="Auto,Auto,*" Margin="0,0,12,0">
+      <Grid Grid.Column="0" RowDefinitions="Auto,Auto,*" Margin="0,0,6,0">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
           <StackPanel Orientation="Horizontal" Spacing="6">
             <Button Content="Data" Classes="tab" Classes.active="{Binding ShowData}" Command="{Binding OpenDataTabCommand}" />
@@ -439,7 +452,7 @@
         </Border>
       </Grid>
 
-      <Grid Grid.Column="1" RowDefinitions="*,Auto">
+      <Grid Grid.Column="2" RowDefinitions="*,Auto">
       <Border Classes="panel" Padding="14" IsVisible="{Binding PreviewVisible}">
         <DockPanel>
           <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
