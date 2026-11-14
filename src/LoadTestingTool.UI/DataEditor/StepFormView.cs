@@ -30,15 +30,35 @@ public sealed class StepFormView : UserControl
     private static readonly IBrush Orange = Brush.Parse("#F6A623");
     private static readonly IReadOnlyDictionary<string, string> Labels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["stepname"] = "Name", ["steptype"] = "Type", ["stage"] = "Stage", ["enabled"] = "Enabled", ["verb"] = "Verb",
-        ["targeturl"] = "Target URL", ["templetsource"] = "Template", ["stoponfailure"] = "Stop on failure",
+        ["steptype"] = "Type", ["stage"] = "Stage", ["enabled"] = "Enabled", ["verb"] = "Verb", ["targeturl"] = "Target URL",
+        ["templetsource"] = "Template", ["stoponfailure"] = "Stop on failure", ["contenttype"] = "Content type", ["timeout"] = "Timeout (s)",
+        ["wait"] = "Wait before (ms)", ["expectedstatus"] = "Expected status", ["assert"] = "Assertions", ["ignoreempty"] = "Ignore empty",
+        ["assertonlyresponse"] = "Only response", ["manualtimeoutminutes"] = "Wait limit (min)",
     };
 
     private static readonly string[] Formats = ["JSON", "XML", "SQL", "GraphQL", "C# script", "Plain text"];
+    private static readonly string[] ContentTypeChoices = ["application/json", "application/xml", "text/plain", "application/graphql", "application/x-www-form-urlencoded", "multipart/form-data", "application/octet-stream"];
+    private static readonly HashSet<string> Known = new(["steptype", "stage", "enabled", "stoponfailure", "verb", "targeturl", "contenttype", "templetsource", "expectedstatus", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse", "manualtimeoutminutes", "stepconfig"], StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The fields each step type uses, in the order they are shown.</summary>
+    private static string[] FieldsFor(string type) => type.Trim().ToLowerInvariant() switch
+    {
+        "graphql" or "caseql" => ["steptype", "stage", "enabled", "stoponfailure", "targeturl", "templetsource", "expectedstatus", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
+        "sql" => ["steptype", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
+        "file" => ["steptype", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
+        "script" => ["steptype", "stage", "enabled", "stoponfailure", "timeout", "wait"],
+        "actionmanual" => ["steptype", "stage", "enabled", "stoponfailure", "manualtimeoutminutes"],
+        _ => ["steptype", "stage", "enabled", "stoponfailure", "verb", "targeturl", "contenttype", "templetsource", "expectedstatus", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
+    };
+
+    private static bool UsesTemplate(string type) => type.Trim().ToLowerInvariant() is not ("script" or "actionmanual");
 
     private readonly StepRowViewModel _step;
     private readonly List<Action> _cleanup = [];
-    private readonly int _templateCell;
+    private readonly List<Action> _fieldCleanup = [];
+    private readonly StackPanel _settings = new() { Spacing = 8 };
+    private readonly Border _typeCard = new();
+    private Control? _templatePanel;
     private readonly TextEditor _editor = new();
     private readonly TermHighlighter _highlighter = new();
     private readonly TextBox _search = new() { Watermark = "Search: term1 & term2 …", MinWidth = 90 };
@@ -53,75 +73,167 @@ public sealed class StepFormView : UserControl
     {
         _step = step;
         var editor = step.Editor;
-        var columns = editor?.StepColumns ?? [];
-        _templateCell = columns.FirstOrDefault(c => c.Title.Equals("templetsource", StringComparison.OrdinalIgnoreCase))?.CellIndex ?? -1;
+        BuildSettings();
 
-        var fields = new StackPanel { Spacing = 8 };
-        fields.Children.Add(Text("STEP SETTINGS", 11, Muted, bold: true));
-        fields.Children.Add(Field("Name", 0, null));
-        foreach (var column in columns) fields.Children.Add(Field(Labels.GetValueOrDefault(column.Title, column.Title), column.CellIndex, StepOptions.For(column.Title)));
-        if (editor is not null)
-        {
-            var data = new Button { Content = "Data columns of this step →", Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
-            ToolTip.SetTip(data, "Open the Data tab narrowed to this step's request and response columns");
-            data.Click += (_, _) => editor.SelectStepNamed(step.CurrentName, showSettings: false);
-            fields.Children.Add(data);
-        }
+        var left = new StackPanel { Spacing = 12 };
+        left.Children.Add(CardOf(_settings));
+        _typeCard.Child = null;
+        left.Children.Add(_typeCard);
 
         var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star) { MinWidth = 230 });
-        grid.Children.Add(CardOf(fields));
-        if (_templateCell >= 0 && editor is not null)
+        grid.ColumnDefinitions.Add(new ColumnDefinition(1.25, GridUnitType.Star) { MinWidth = 260 });
+        grid.Children.Add(left);
+        if (editor is not null)
         {
-            grid.ColumnDefinitions.Add(new ColumnDefinition(1.3, GridUnitType.Star) { MinWidth = 250 });
-            var template = BuildTemplatePanel();
-            template.Margin = new Thickness(16, 0, 0, 0);
-            Grid.SetColumn(template, 1);
-            grid.Children.Add(template);
+            grid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star) { MinWidth = 250 });
+            _templatePanel = BuildTemplatePanel();
+            _templatePanel.Margin = new Thickness(16, 0, 0, 0);
+            Grid.SetColumn(_templatePanel, 1);
+            grid.Children.Add(_templatePanel);
         }
         Content = grid;
-        DetachedFromVisualTree += (_, _) => { foreach (var undo in _cleanup) undo(); _cleanup.Clear(); };
+        UpdateTypeParts();
+
+        NotifyCollectionChangedEventHandler follow = (_, e) =>
+        {
+            if (e.Action != NotifyCollectionChangedAction.Replace) return;
+            if (e.NewStartingIndex == _step.CellOf("steptype")) Avalonia.Threading.Dispatcher.UIThread.Post(() => { BuildSettings(); UpdateTypeParts(); });
+            else if (e.NewStartingIndex == _step.CellOf("templetsource") && _step.Editor is not null) LoadTemplate();
+        };
+        _step.Cells.CollectionChanged += follow;
+        _cleanup.Add(() => _step.Cells.CollectionChanged -= follow);
+        DetachedFromVisualTree += (_, _) => { foreach (var undo in _cleanup.Concat(_fieldCleanup)) undo(); _cleanup.Clear(); _fieldCleanup.Clear(); };
     }
 
     // ---- step settings -------------------------------------------------------------------------
 
-    private Control Field(string label, int cell, IReadOnlyList<string>? options)
+    private void BuildSettings()
     {
+        foreach (var undo in _fieldCleanup) undo();
+        _fieldCleanup.Clear();
+        _settings.Children.Clear();
+        var type = _step.TypeText;
+
+        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        head.Children.Add(Text("STEP SETTINGS", 11, Muted, bold: true, vertical: VerticalAlignment.Center));
+        if (StepTypeSection.HasSettings(type))
+        {
+            var wizard = new Button { Content = "Configure…", Classes = { "accent" } };
+            ToolTip.SetTip(wizard, "A guided window with just the settings of this step type");
+            wizard.Click += (_, _) => StepWizardWindow.Open(this, _step);
+            Grid.SetColumn(wizard, 1);
+            head.Children.Add(wizard);
+        }
+        _settings.Children.Add(head);
+        _settings.Children.Add(NameField());
+
+        foreach (var title in FieldsFor(type)) _settings.Children.Add(Field(title));
+        var shown = new HashSet<string>(FieldsFor(type), StringComparer.OrdinalIgnoreCase);
+        var others = (_step.Editor?.StepColumns ?? []).Where(c => !Known.Contains(c.Title) && !shown.Contains(c.Title)).ToList();
+        if (others.Count > 0)
+        {
+            _settings.Children.Add(Text("OTHER COLUMNS", 11, Muted, bold: true));
+            foreach (var column in others) _settings.Children.Add(Field(column.Title));
+        }
+        _settings.Children.Add(RawConfig());
+        if (_step.Editor is { } owner)
+        {
+            var data = new Button { Content = "Data columns of this step →", Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
+            ToolTip.SetTip(data, "Open the Data tab narrowed to this step's request and response columns");
+            data.Click += (_, _) => owner.SelectStepNamed(_step.CurrentName, showSettings: false);
+            _settings.Children.Add(data);
+        }
+    }
+
+    private Control NameField()
+    {
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("100,*") };
+        row.Children.Add(Text("Name", 12, Muted, vertical: VerticalAlignment.Center));
+        var box = new TextBox { Text = _step.Cells[0], HorizontalAlignment = HorizontalAlignment.Stretch };
+        void Commit() { var value = box.Text ?? string.Empty; if (value != _step.Cells[0]) _step.Cells[0] = value; }
+        box.LostFocus += (_, _) => Commit();
+        box.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Commit(); e.Handled = true; } else if (e.Key == Key.Escape) { box.Text = _step.Cells[0]; e.Handled = true; } };
+        NotifyCollectionChangedEventHandler follow = (_, e) => { if (e.Action == NotifyCollectionChangedAction.Replace && e.NewStartingIndex == 0 && box.Text != _step.Cells[0]) box.Text = _step.Cells[0]; };
+        _step.Cells.CollectionChanged += follow;
+        _fieldCleanup.Add(() => _step.Cells.CollectionChanged -= follow);
+        Grid.SetColumn(box, 1);
+        row.Children.Add(box);
+        return row;
+    }
+
+    /// <summary>One config column by header: a check box, a drop-down, or a text box depending on what the column holds.</summary>
+    private Control Field(string title)
+    {
+        var label = Labels.GetValueOrDefault(title, title.StartsWith("header_", StringComparison.OrdinalIgnoreCase) ? "Header " + title[7..] : title);
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("100,*") };
         row.Children.Add(Text(label, 12, Muted, vertical: VerticalAlignment.Center));
         Control input;
-        if (options is not null)
+        var options = title.Equals("contenttype", StringComparison.OrdinalIgnoreCase) ? ContentTypeChoices : StepOptions.For(title)?.ToArray();
+        var current = _step.Value(title);
+        if (title.ToLowerInvariant() is "enabled" or "stoponfailure" or "assert" or "assertonlyresponse" or "ignoreempty")
         {
-            var box = new ComboBox { ItemsSource = options, HorizontalAlignment = HorizontalAlignment.Stretch };
-            box.Bind(ComboBox.SelectedItemProperty, new Binding($"Cells[{cell}]") { Source = _step, Mode = BindingMode.TwoWay });
+            var check = new CheckBox { IsChecked = !(current.Trim().ToLowerInvariant() is "false" or "0" or "no" or "off") && (current.Length > 0 || title is "enabled" or "stoponfailure" or "assert") };
+            check.IsCheckedChanged += (_, _) => _step.Write(title, check.IsChecked == true ? "True" : "False");
+            input = check;
+        }
+        else if (options is not null)
+        {
+            var choices = options.ToList();
+            if (current.Length > 0 && !choices.Contains(current, StringComparer.OrdinalIgnoreCase)) choices.Add(current);
+            var box = new ComboBox { ItemsSource = choices, HorizontalAlignment = HorizontalAlignment.Stretch, SelectedItem = choices.FirstOrDefault(c => string.Equals(c, current, StringComparison.OrdinalIgnoreCase)) };
+            box.SelectionChanged += (_, _) => { if (box.SelectedItem is string chosen && !string.Equals(chosen, _step.Value(title), StringComparison.Ordinal)) _step.Write(title, chosen); };
             input = box;
+            Follow(title, v => { if (v != (box.SelectedItem as string ?? string.Empty)) box.SelectedItem = choices.FirstOrDefault(c => string.Equals(c, v, StringComparison.OrdinalIgnoreCase)); });
         }
         else
         {
-            var box = new TextBox { Text = _step.Cells[cell], HorizontalAlignment = HorizontalAlignment.Stretch };
-            void Commit()
-            {
-                var value = box.Text ?? string.Empty;
-                if (value != _step.Cells[cell]) _step.Cells[cell] = value;
-            }
+            var box = new TextBox { Text = current, HorizontalAlignment = HorizontalAlignment.Stretch };
+            void Commit() { var value = box.Text ?? string.Empty; if (value != _step.Value(title)) _step.Write(title, value); }
             box.LostFocus += (_, _) => Commit();
-            box.KeyDown += (_, e) =>
-            {
-                if (e.Key == Key.Enter) { Commit(); e.Handled = true; }
-                else if (e.Key == Key.Escape) { box.Text = _step.Cells[cell]; e.Handled = true; }
-            };
-            NotifyCollectionChangedEventHandler follow = (_, e) =>
-            {
-                if (e.Action == NotifyCollectionChangedAction.Replace && e.NewStartingIndex == cell && box.Text != _step.Cells[cell]) box.Text = _step.Cells[cell];
-                if (e.Action == NotifyCollectionChangedAction.Replace && e.NewStartingIndex == _templateCell && cell == _templateCell) LoadTemplate();
-            };
-            _step.Cells.CollectionChanged += follow;
-            _cleanup.Add(() => _step.Cells.CollectionChanged -= follow);
+            box.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Commit(); e.Handled = true; } else if (e.Key == Key.Escape) { box.Text = _step.Value(title); e.Handled = true; } };
             input = box;
+            Follow(title, v => { if (box.Text != v) box.Text = v; });
         }
         Grid.SetColumn(input, 1);
         row.Children.Add(input);
         return row;
+    }
+
+    private void Follow(string title, Action<string> apply)
+    {
+        NotifyCollectionChangedEventHandler follow = (_, e) =>
+        {
+            if (e.Action == NotifyCollectionChangedAction.Replace && e.NewStartingIndex == _step.CellOf(title)) apply(_step.Value(title));
+        };
+        _step.Cells.CollectionChanged += follow;
+        _fieldCleanup.Add(() => _step.Cells.CollectionChanged -= follow);
+    }
+
+    /// <summary>The raw StepConfig text, for anything the structured fields do not cover.</summary>
+    private Control RawConfig()
+    {
+        var box = new TextBox { Text = _step.Value("stepconfig"), AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 60, FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontSize = 11 };
+        box.LostFocus += (_, _) => { if ((box.Text ?? string.Empty) != _step.Value("stepconfig")) _step.Write("stepconfig", box.Text ?? string.Empty); };
+        Follow("stepconfig", v => { if (box.Text != v) box.Text = v; });
+        return new Expander { Header = "Raw StepConfig", Content = box, Margin = new Thickness(0, 4, 0, 0) };
+    }
+
+    /// <summary>Shows the type's own settings card and hides the template editor for types that have no template.</summary>
+    private void UpdateTypeParts()
+    {
+        var type = _step.TypeText;
+        var hasSection = StepTypeSection.HasSettings(type) || type.Trim().Equals("ActionManual", StringComparison.OrdinalIgnoreCase);
+        _typeCard.IsVisible = hasSection;
+        if (hasSection)
+        {
+            _typeCard.Child = null;
+            var body = new StackPanel { Spacing = 8 };
+            body.Children.Add(Text($"{type.ToUpperInvariant()} SETTINGS", 11, Muted, bold: true));
+            body.Children.Add(new StepTypeSection(_step));
+            _typeCard.Child = CardOf(body);
+        }
+        if (_templatePanel is not null) _templatePanel.IsVisible = UsesTemplate(type);
+        if (_step.Editor is not null) LoadTemplate();
     }
 
     // ---- template panel ------------------------------------------------------------------------
@@ -187,7 +299,7 @@ public sealed class StepFormView : UserControl
         return CardOf(panel);
     }
 
-    private string Source => _templateCell < 0 ? string.Empty : (_step.Cells[_templateCell] ?? string.Empty).Trim();
+    private string Source => _step.Value("templetsource").Trim();
 
     private void LoadTemplate()
     {

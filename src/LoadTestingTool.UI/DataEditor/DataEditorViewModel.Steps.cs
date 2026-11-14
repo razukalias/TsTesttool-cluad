@@ -100,6 +100,16 @@ public sealed partial class DataEditorViewModel
         RefreshPreview();
     }
 
+    /// <summary>Adds a config column the sheet lacks and sets this step's value in it; the step list is rebuilt around the new column.</summary>
+    internal void SetStepCellAddingColumn(StepRowViewModel step, string header, string value)
+    {
+        Record($"add column {header}");
+        _document.Config.EnsureColumn(header);
+        step.Row.Set(header, value);
+        StepsChanged();
+        BuildSteps();
+    }
+
     private void OnStepEdited(StepRowViewModel step, int cellIndex, string value)
     {
         if (cellIndex == 0 ? value == step.CurrentName : step.Row.GetAt(StepColumns[cellIndex - 1].SheetColumn) == value) return;
