@@ -234,6 +234,9 @@ public class EnvironmentPickerTests
 {
     private sealed class FakeSettings(params string[] environments) : IEnvironmentSettings
     {
+    public string InstancesRoot => System.IO.Path.GetTempPath();
+    public string WorkbookName => "DataEngine.xlsx";
+    public string? RegisterInstance(string name, string? copyFrom) => null;
         public Dictionary<string, string[]> Saved { get; } = new(StringComparer.OrdinalIgnoreCase);
         public int Writes { get; private set; }
         public bool Parallel { get; set; }
@@ -360,6 +363,9 @@ public class SelectionPersistenceTests
 {
     private sealed class Settings : IEnvironmentSettings
     {
+    public string InstancesRoot => System.IO.Path.GetTempPath();
+    public string WorkbookName => "DataEngine.xlsx";
+    public string? RegisterInstance(string name, string? copyFrom) => null;
         public Dictionary<string, (string Testcases, string Steps)> Selection { get; } = new(StringComparer.OrdinalIgnoreCase);
         public int Writes { get; private set; }
         public IReadOnlyList<string> Environments { get; } = [];

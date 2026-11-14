@@ -57,6 +57,11 @@ public partial class DataEditorWindow
         var menu = new ContextMenu();
         switch (node)
         {
+            case InstanceNode instance:
+                menu.Items.Add(Item("Add testcase", () => _ = AddChildAsync(tree, node)));
+                menu.Items.Add(Item("Duplicate instance…", () => _ = DuplicateInstanceAsync(instance)));
+                menu.Items.Add(Item("New instance…", () => _ = NewInstanceAsync()));
+                break;
             case TestcaseItem:
                 menu.Items.Add(Item("Rename", () => BeginTreeRename(tree, node)));
                 menu.Items.Add(Item("Duplicate testcase…", () => _shell.Current?.OpenCopyTestcaseCommand.Execute(null)));

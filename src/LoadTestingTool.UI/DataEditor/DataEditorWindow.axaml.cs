@@ -34,6 +34,7 @@ public partial class DataEditorWindow : Window
         InitCompletion();
         InitTreeMenu();
         InitStepCards();
+        InitInstanceButtons();
         Opened += async (_, _) =>
         {
             await shell.RefreshResultsAsync();

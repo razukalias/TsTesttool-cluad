@@ -13,6 +13,36 @@ public sealed partial class MainWindow
 
         public bool RunParallel => window._config.RunEnvironmentsParallel;
 
+        public string InstancesRoot => Path.GetFullPath(window._config.InstancesRoot);
+        public string WorkbookName => window._config.WorkbookName;
+
+        public string? RegisterInstance(string name, string? copyFrom)
+        {
+            try
+            {
+                window.RegisterCentralInstance(Path.Combine(InstancesRoot, name));
+                if (copyFrom is not null)
+                {
+                    var root = ReadRoot();
+                    var instances = root["Instances"] as JsonObject ?? new JsonObject();
+                    if (instances[copyFrom] is JsonObject source)
+                    {
+                        var copy = JsonNode.Parse(source.ToJsonString()) as JsonObject ?? new JsonObject();
+                        copy["Enabled"] = true;
+                        instances[name] = copy;
+                        root["Instances"] = instances;
+                        Write(root);
+                    }
+                }
+                window.RefreshInstances();
+                return null;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            {
+                return ex.Message;
+            }
+        }
+
         public IReadOnlyList<string> GetSelection(string instanceName)
         {
             var saved = window._instances.FirstOrDefault(x => x.Name == instanceName)?.EnvironmentSelection ?? string.Empty;

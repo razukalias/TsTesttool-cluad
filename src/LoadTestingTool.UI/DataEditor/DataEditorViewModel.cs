@@ -562,6 +562,9 @@ public sealed partial class DataEditorViewModel : ObservableObject
     [RelayCommand]
     private void KeepEditing() => ClosePromptVisible = false;
 
+    /// <summary>Shows a message in the editor's status line.</summary>
+    public void Notify(string message, bool isError) => ShowStatus(message, isError);
+
     private void ShowStatus(string message, bool isError)
     {
         StatusMessage = message;

@@ -27,6 +27,13 @@ public interface IEnvironmentSettings
     /// <summary>Saves which testcases and steps an instance runs. Returns null on success, otherwise why not.</summary>
     string? SaveRunSelection(string instanceName, string testcases, string stepsJson);
 
+    /// <summary>The folder holding every instance folder, and the default workbook file name for a new instance.</summary>
+    string InstancesRoot { get; }
+    string WorkbookName { get; }
+
+    /// <summary>Lists a new instance folder in appsettings.json, copying the settings of <paramref name="copyFrom"/> when given. Returns null on success, otherwise why not.</summary>
+    string? RegisterInstance(string name, string? copyFrom);
+
     /// <summary>Saves the central parallel flag. Returns null on success, otherwise why not.</summary>
     string? SaveRunParallel(bool value);
 }
