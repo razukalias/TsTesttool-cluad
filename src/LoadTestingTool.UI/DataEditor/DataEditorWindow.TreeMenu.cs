@@ -28,10 +28,13 @@ public partial class DataEditorWindow
         tree.AddHandler(Button.ClickEvent, (_, e) =>
         {
             if (e.Source is not Button { Tag: string way, DataContext: { } node }) return;
-            _shell.MoveNode(node, way == "up" ? -1 : 1);
+            if (way == "run") _ = _shell.RunNodeAsync(node);
+            else _shell.MoveNode(node, way == "up" ? -1 : 1);
             e.Handled = true;
         });
 
+        if (this.FindControl<Button>("RunTickedButton") is { } runTicked)
+            runTicked.Click += (_, _) => _ = _shell.RunTickedAsync();
         tree.AddHandler(KeyDownEvent, (_, e) =>
         {
             if (e.Source is not TextBox { DataContext: { } node }) return;

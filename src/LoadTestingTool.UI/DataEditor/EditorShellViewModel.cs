@@ -26,6 +26,18 @@ public sealed partial class InstanceNode : ObservableObject
     public ObservableCollection<TestcaseItem> Testcases => Editor?.Testcases ?? NoTestcases;
     public string DirtyColor => "#F6C76B";
 
+    /// <summary>The instance's tick box: ticked when every testcase is, "some" when part of them are.</summary>
+    public bool? ChosenState
+    {
+        get
+        {
+            var all = Testcases;
+            if (all.Count == 0) return false;
+            return all.All(t => t.ChosenState == true) ? true : all.Any(t => t.IsChosen) ? null : false;
+        }
+        set { foreach (var t in Testcases) t.IsChosen = value == true; }
+    }
+
     public string Subtitle => Error is not null ? "Cannot open: " + Error
         : IsLoading ? "Loading…"
         : Editor is null ? "Not loaded — click to open"
@@ -58,6 +70,7 @@ public sealed partial class InstanceNode : ObservableObject
     {
         Editor = editor;
         editor.PropertyChanged += OnEditorChanged;
+        editor.TickedChanged += (_, _) => OnPropertyChanged(nameof(ChosenState));
         IsDirty = editor.IsDirty;
         NotifyLoadedChanged();
     }
@@ -183,6 +196,46 @@ public sealed partial class EditorShellViewModel : ObservableObject
         }
     }
 
+    /// <summary>Total of testcases ticked across all loaded instances.</summary>
+    public int TickedCount => Instances.Sum(i => i.Editor?.TickedTestcaseCount ?? 0);
+    public bool HasTicked => TickedCount > 0;
+    public string TickedText => TickedCount == 0 ? "nothing ticked" : $"{TickedCount} ticked";
+
+    /// <summary>The ▶ beside an instance, testcase or step: runs just that.</summary>
+    public async Task RunNodeAsync(object node)
+    {
+        switch (node)
+        {
+            case InstanceNode instance:
+                if (instance.CanLoad) await LoadAsync(instance);
+                if (instance.Editor is not { } ie) return;
+                await ie.RunFromTreeAsync(new RunRequest([], [], ie.RowsMode == DataEditorViewModel.RowsModeOptions[0] ? null : ie.RowsMode.ToLowerInvariant(), null), $"all of {instance.Name}");
+                break;
+            case TestcaseItem testcase when EditorOf(testcase) is { } te:
+                await te.RunFromTreeAsync(te.BuildRequest([(testcase, null)]), $"testcase {testcase.Name}");
+                break;
+            case StepNode step when EditorOf(step) is { } se:
+                if (!se.IsStepEnabled(step.Owner.Index, step.Name)) { se.Report($"Step {step.Name} is disabled, so it cannot be run on its own. Enable it on the Steps tab first.", isError: true); return; }
+                await se.RunFromTreeAsync(se.BuildRequest([(step.Owner, [step.Name])]), $"step {step.Name} of {step.Owner.Name}");
+                break;
+        }
+    }
+
+    /// <summary>Runs everything that is ticked, one run per instance.</summary>
+    public async Task RunTickedAsync()
+    {
+        var started = 0;
+        foreach (var instance in Instances.Where(i => i.Editor is not null).ToList())
+        {
+            var editor = instance.Editor!;
+            var (request, label) = editor.BuildTickedRequest();
+            if (request is null) continue;
+            await editor.RunFromTreeAsync(request, label);
+            started++;
+        }
+        if (started == 0) (Current ?? Instances.FirstOrDefault(i => i.Editor is not null)?.Editor)?.Report("Tick at least one testcase or step to run.", isError: true);
+    }
+
     /// <summary>The ▲ ▼ buttons beside a tree item: runs it earlier (-1) or later (+1).</summary>
     public void MoveNode(object node, int direction)
     {
@@ -263,6 +316,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
 
     private void Wire(InstanceNode node)
     {
+        node.Editor!.TickedChanged += (_, _) => { OnPropertyChanged(nameof(TickedCount)); OnPropertyChanged(nameof(HasTicked)); OnPropertyChanged(nameof(TickedText)); };
         node.Editor!.CreateTestcaseHandler = draft => CreateTestcaseHandler?.Invoke(node.Name, draft);
         node.Editor!.CloseRequested += (_, _) => OnEditorClosed();
         node.Editor.HistoryHandler = testcase => HistoryHandler?.Invoke(node.Name, testcase);

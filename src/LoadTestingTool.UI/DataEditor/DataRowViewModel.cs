@@ -21,6 +21,10 @@ public sealed partial class StepNode(TestcaseItem owner, string name, int positi
     public bool IsNotEditing => !IsEditing;
     partial void OnIsEditingChanged(bool value) => OnPropertyChanged(nameof(IsNotEditing));
 
+    /// <summary>Ticked in the tree to be run on its own.</summary>
+    [ObservableProperty] private bool _isChosen;
+    partial void OnIsChosenChanged(bool value) => Owner.StepChosenChanged();
+
     public TestcaseItem Owner { get; } = owner;
     public string Name { get; } = name;
     public int Position { get; } = position;
@@ -47,10 +51,37 @@ public sealed partial class TestcaseItem : ObservableObject
     public bool IsNotEditing => !IsEditing;
     partial void OnIsEditingChanged(bool value) => OnPropertyChanged(nameof(IsNotEditing));
 
+    private bool _syncingChosen;
+
     private void RebuildStepNodes()
     {
-        StepNodes.Clear();
-        for (var i = 0; i < Steps.Count; i++) StepNodes.Add(new StepNode(this, Steps[i], i + 1));
+        var kept = StepNodes.Where(n => n.IsChosen).Select(n => n.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _syncingChosen = true;
+        try
+        {
+            StepNodes.Clear();
+            for (var i = 0; i < Steps.Count; i++) StepNodes.Add(new StepNode(this, Steps[i], i + 1) { IsChosen = kept.Contains(Steps[i]) });
+        }
+        finally { _syncingChosen = false; }
+        OnPropertyChanged(nameof(ChosenState));
+    }
+
+    /// <summary>The testcase's tick box: ticked when every step is, unticked when none is, "some" in between. Setting it ticks or unticks all steps.</summary>
+    public bool? ChosenState
+    {
+        get => StepNodes.Count == 0 ? IsChosen
+            : StepNodes.All(n => n.IsChosen) ? true
+            : StepNodes.Any(n => n.IsChosen) ? null : false;
+        set => IsChosen = value == true;
+    }
+
+    internal void StepChosenChanged()
+    {
+        if (_syncingChosen) return;
+        _syncingChosen = true;
+        try { IsChosen = StepNodes.Any(n => n.IsChosen); }
+        finally { _syncingChosen = false; }
+        OnPropertyChanged(nameof(ChosenState));
     }
 
     public int Index { get; }
@@ -82,7 +113,20 @@ public sealed partial class TestcaseItem : ObservableObject
     /// <summary>Ticked for "Chosen testcases" in the run options.</summary>
     [ObservableProperty] private bool _isChosen;
 
-    partial void OnIsChosenChanged(bool value) => ChosenChanged?.Invoke(this, EventArgs.Empty);
+    partial void OnIsChosenChanged(bool value)
+    {
+        if (!_syncingChosen)
+        {
+            _syncingChosen = true;
+            try { foreach (var step in StepNodes) step.IsChosen = value; }
+            finally { _syncingChosen = false; }
+        }
+        OnPropertyChanged(nameof(ChosenState));
+        ChosenChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>The steps ticked for a run; empty when the testcase is chosen as a whole (or none is ticked).</summary>
+    public IReadOnlyList<string> ChosenSteps => StepNodes.Where(n => n.IsChosen).Select(n => n.Name).ToList();
     internal event EventHandler? ChosenChanged;
 
     public void SetResults(int passed, int failed)

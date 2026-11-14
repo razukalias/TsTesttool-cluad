@@ -51,6 +51,24 @@
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="#8EA4BC" />
     </Style>
+    <Style Selector="Button.treerun">
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="6,2" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#39D39B" />
+    </Style>
+    <Style Selector="Button.treerun:pointerover">
+      <Setter Property="Foreground" Value="#7BF0C4" />
+    </Style>
+    <Style Selector="CheckBox.treecheck">
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Margin" Value="0,0,6,0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
     <Style Selector="Button.treemove:pointerover">
       <Setter Property="Foreground" Value="#FFFFFF" />
     </Style>
@@ -81,39 +99,49 @@
           <TextBlock Classes="caption" Text="INSTANCES" VerticalAlignment="Center" />
           <Button Grid.Column="1" Content="Refresh results" Command="{Binding RefreshResultsCommand}" IsEnabled="{Binding !IsLoadingResults}" MinHeight="28" Padding="10,2" FontSize="12" />
         </Grid>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="6,0,0,10">
+          <Button x:Name="RunTickedButton" Content="▶ Run ticked" IsEnabled="{Binding HasTicked}" MinHeight="28" Padding="10,2" FontSize="12" ToolTip.Tip="Run every ticked instance, testcase or step; each instance is started with its own selection" />
+          <TextBlock Text="{Binding TickedText}" VerticalAlignment="Center" FontSize="11" Foreground="#8EA4BC" />
+        </StackPanel>
         <CheckBox DockPanel.Dock="Bottom" Content="Load instances only when opened" IsChecked="{Binding LazyLoading, Mode=TwoWay}" Margin="6,12,0,0" FontSize="12"
                   ToolTip.Tip="On: a workbook is read the first time you click its instance, so the editor opens quickly with many or large workbooks. Off: every workbook is read when the editor opens." />
         <TreeView x:Name="Tree" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
           <TreeView.DataTemplates>
             <TreeDataTemplate DataType="vm:InstanceNode" ItemsSource="{Binding Testcases}">
-              <Grid ColumnDefinitions="Auto,*" Margin="0,4">
-                <Ellipse Grid.Column="0" Width="8" Height="8" Margin="0,0,8,0" Fill="{Binding DirtyColor}" IsVisible="{Binding IsDirty}" />
-                <StackPanel Grid.Column="1" Spacing="1">
+              <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,4">
+                <CheckBox Classes="treecheck" IsChecked="{Binding ChosenState, Mode=TwoWay}" IsEnabled="{Binding IsLoaded}" ToolTip.Tip="Tick to run this instance's testcases together with the other ticked items" />
+                <Ellipse Grid.Column="1" Width="8" Height="8" Margin="0,0,8,0" Fill="{Binding DirtyColor}" IsVisible="{Binding IsDirty}" />
+                <StackPanel Grid.Column="2" Spacing="1">
                   <TextBlock Text="{Binding Name}" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
                   <TextBlock Text="{Binding Subtitle}" FontSize="11" Foreground="#8EA4BC" TextTrimming="CharacterEllipsis" />
                   <TextBlock Text="{Binding RunSummary}" FontSize="11" Foreground="#6F87A1" TextWrapping="Wrap" />
                 </StackPanel>
+                <Button Grid.Column="3" Classes="treerun" Tag="run" Content="▶" VerticalAlignment="Top" ToolTip.Tip="Run the whole instance" />
               </Grid>
             </TreeDataTemplate>
             <DataTemplate DataType="vm:StepNode">
-              <Grid ColumnDefinitions="*,Auto" Margin="0,1">
-                <TextBlock Text="{Binding Title}" IsVisible="{Binding IsNotEditing}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                <TextBox Classes="treeedit" Text="{Binding EditText, Mode=TwoWay}" IsVisible="{Binding IsEditing}" FontSize="12" MinHeight="24" Padding="4,2" />
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0" IsVisible="{Binding IsNotEditing}">
+              <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,1">
+                <CheckBox Classes="treecheck" IsChecked="{Binding IsChosen, Mode=TwoWay}" ToolTip.Tip="Tick to run this step on its own" />
+                <TextBlock Grid.Column="1" Text="{Binding Title}" IsVisible="{Binding IsNotEditing}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <TextBox Grid.Column="1" Classes="treeedit" Text="{Binding EditText, Mode=TwoWay}" IsVisible="{Binding IsEditing}" FontSize="12" MinHeight="24" Padding="4,2" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" IsVisible="{Binding IsNotEditing}">
+                  <Button Classes="treerun" Tag="run" Content="▶" ToolTip.Tip="Run this step" />
                   <Button Classes="treemove" Tag="up" Content="▲" ToolTip.Tip="Run earlier" />
                   <Button Classes="treemove" Tag="down" Content="▼" ToolTip.Tip="Run later" />
                 </StackPanel>
               </Grid>
             </DataTemplate>
             <TreeDataTemplate DataType="vm:TestcaseItem" ItemsSource="{Binding StepNodes}">
-              <Grid ColumnDefinitions="*,Auto" Margin="0,3">
-                <StackPanel Spacing="1">
+              <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,3">
+                <CheckBox Classes="treecheck" VerticalAlignment="Top" IsChecked="{Binding ChosenState, Mode=TwoWay}" ToolTip.Tip="Tick to run this testcase together with the other ticked items" />
+                <StackPanel Grid.Column="1" Spacing="1">
                   <TextBlock Text="{Binding Title}" IsVisible="{Binding IsNotEditing}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                   <TextBox Classes="treeedit" Text="{Binding EditText, Mode=TwoWay}" IsVisible="{Binding IsEditing}" FontWeight="SemiBold" MinHeight="26" Padding="4,2" />
                   <TextBlock Text="{Binding Summary}" FontSize="11" Foreground="#8EA4BC" />
                   <TextBlock Text="{Binding ResultText}" IsVisible="{Binding HasResults}" Foreground="{Binding ResultColor}" FontSize="11" FontWeight="SemiBold" />
                 </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0" VerticalAlignment="Top" IsVisible="{Binding IsNotEditing}">
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" VerticalAlignment="Top" IsVisible="{Binding IsNotEditing}">
+                  <Button Classes="treerun" Tag="run" Content="▶" ToolTip.Tip="Run this testcase" />
                   <Button Classes="treemove" Tag="up" Content="▲" ToolTip.Tip="Run earlier" />
                   <Button Classes="treemove" Tag="down" Content="▼" ToolTip.Tip="Run later" />
                 </StackPanel>

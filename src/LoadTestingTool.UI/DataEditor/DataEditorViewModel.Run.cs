@@ -8,7 +8,8 @@ namespace LoadTestingTool.UI.DataEditor;
 /// <summary>What to run. Empty <see cref="Testcases"/> means every testcase; empty <see cref="DataIds"/> means every row.</summary>
 /// <param name="RowsMode">"parallel", "sequential", or null to use the instance's own setting.</param>
 /// <param name="TestcasesParallel">Run the chosen testcases at the same time (true) or one after another (false); null keeps the instance setting.</param>
-public sealed record RunRequest(IReadOnlyList<int> Testcases, IReadOnlyList<string> DataIds, string? RowsMode = null, bool? TestcasesParallel = null);
+/// <param name="Steps">Step names to run per testcase index; null runs every enabled step. When given it must list every testcase in <see cref="Testcases"/>.</param>
+public sealed record RunRequest(IReadOnlyList<int> Testcases, IReadOnlyList<string> DataIds, string? RowsMode = null, bool? TestcasesParallel = null, IReadOnlyDictionary<int, IReadOnlyList<string>>? Steps = null);
 
 /// <summary>Asks the host to run part of an instance. Returns null when the run was started, otherwise why it was not.</summary>
 public delegate Task<string?> RunHandler(RunRequest request);
@@ -58,9 +59,51 @@ public sealed partial class DataEditorViewModel
 
     private TestcaseItem Track(TestcaseItem item)
     {
-        item.ChosenChanged += (_, _) => OnPropertyChanged(nameof(RunSummary));
+        item.ChosenChanged += (_, _) => { OnPropertyChanged(nameof(RunSummary)); TickedChanged?.Invoke(this, EventArgs.Empty); };
         return item;
     }
+
+    /// <summary>Raised when a tick box in the tree changed.</summary>
+    public event EventHandler? TickedChanged;
+
+    /// <summary>Testcases (or single steps) ticked in the tree.</summary>
+    public int TickedTestcaseCount => Testcases.Count(t => t.IsChosen);
+
+    private IReadOnlyList<string> EnabledSteps(int testcaseIndex) => _document.Config.Rows
+        .Where(r => !r.IsBlank && LoadTestingTool.Editing.WorkbookDocument.EffectiveIndex(r) == testcaseIndex && !IsOff(r.Get("enabled")))
+        .Select(r => r.Get("stepname").Trim()).Where(n => n.Length > 0).ToList();
+
+    private static bool IsOff(string value) => value.Trim().ToLowerInvariant() is "false" or "0" or "no" or "off";
+
+    /// <summary>A request for the given testcases; steps given per testcase (null = all of its enabled steps). Reading the tree's ticks or one clicked item both go through here.</summary>
+    internal RunRequest BuildRequest(IReadOnlyList<(TestcaseItem Testcase, IReadOnlyList<string>? Steps)> chosen)
+    {
+        var indexes = chosen.Select(c => c.Testcase.Index).ToList();
+        IReadOnlyDictionary<int, IReadOnlyList<string>>? steps = null;
+        if (chosen.Any(c => c.Steps is not null))
+            steps = chosen.ToDictionary(c => c.Testcase.Index, c => c.Steps ?? EnabledSteps(c.Testcase.Index));
+        return new RunRequest(indexes, [], RowsMode == RowsModeOptions[0] ? null : RowsMode.ToLowerInvariant(),
+            indexes.Count > 1 ? TestcaseOrder == TestcaseOrderOptions[1] : null, steps);
+    }
+
+    /// <summary>Runs from the tree: <paramref name="request"/> for the given label, with the same save-first check as the Run button.</summary>
+    internal Task RunFromTreeAsync(RunRequest request, string label) => StartRunAsync(request, label);
+
+    /// <summary>Everything ticked in the tree: whole testcases, or only the ticked steps of a partly ticked one.</summary>
+    internal (RunRequest? Request, string Label) BuildTickedRequest()
+    {
+        var chosen = Testcases.Where(t => t.IsChosen)
+            .Select(t => (t, (IReadOnlyList<string>?)(t.StepNodes.Count > 0 && t.StepNodes.Any(n => !n.IsChosen) ? t.ChosenSteps : null)))
+            .ToList();
+        if (chosen.Count == 0) return (null, string.Empty);
+        var stepCount = chosen.Sum(c => c.Item2?.Count ?? c.t.StepNodes.Count);
+        return (BuildRequest(chosen), $"{stepCount} ticked {(stepCount == 1 ? "step" : "steps")} in {chosen.Count} {(chosen.Count == 1 ? "testcase" : "testcases")}");
+    }
+
+    internal void Report(string message, bool isError) => ShowStatus(message, isError);
+
+    /// <summary>The names of a testcase's steps that run (the enabled ones).</summary>
+    internal bool IsStepEnabled(int testcaseIndex, string stepName) => EnabledSteps(testcaseIndex).Contains(stepName, StringComparer.OrdinalIgnoreCase);
 
     [RelayCommand]
     private void ToggleRunOptions() => RunOptionsVisible = !RunOptionsVisible;

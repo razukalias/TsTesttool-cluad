@@ -1,3 +1,4 @@
+using Avalonia.Headless;
 using ClosedXML.Excel;
 using LoadTestingTool.UI.DataEditor;
 using Xunit;
@@ -133,5 +134,98 @@ public class TreeInlineEditTests
         var last = nodes[^1].Name;
         shell.MoveNode(nodes[^1], -1);
         Assert.Equal(last, vm.SelectedTestcase!.StepNodes[^2].Name);
+    }
+}
+
+public class TreeRunTests
+{
+    private static (EditorShellViewModel Shell, List<RunRequest> Runs) Shell(TempDir dir)
+    {
+        var path = Samples.CreateLarge(dir, rows: 3);
+        using (var workbook = new XLWorkbook(path))
+        {
+            var config = workbook.Worksheet("config");
+            config.Cell(3, 1).Value = 2; config.Cell(3, 2).Value = "Orders"; config.Cell(3, 3).Value = "CreateOrder"; config.Cell(3, 4).Value = "HTTP";
+            config.Cell(3, 5).Value = "order.json"; config.Cell(3, 6).Value = "https://api.example.test/orders"; config.Cell(3, 7).Value = "POST";
+            workbook.Worksheet("request").Cell(1, 8).Value = "CreateOrder.sku";
+            workbook.Worksheet("response").Cell(1, 7).Value = "{eq}CreateOrder.statusCode";
+            workbook.Save();
+        }
+        var shell = new EditorShellViewModel([("Sample", path)]);
+        var runs = new List<RunRequest>();
+        shell.RunHandler = (_, request) => { runs.Add(request); return Task.FromResult<string?>(null); };
+        shell.Instances[0].Editor!.RunHandler = request => { runs.Add(request); return Task.FromResult<string?>(null); };
+        return (shell, runs);
+    }
+
+    [Fact]
+    public async Task The_run_icons_run_exactly_what_they_sit_beside()
+    {
+        using var dir = new TempDir();
+        var (shell, runs) = Shell(dir);
+        var instance = shell.Instances[0];
+        var orders = instance.Testcases.First(t => t.Index == 2);
+
+        await shell.RunNodeAsync(orders);
+        Assert.Equal([2], runs[^1].Testcases);
+        Assert.Null(runs[^1].Steps);
+
+        await shell.RunNodeAsync(orders.StepNodes[0]);
+        Assert.Equal([2], runs[^1].Testcases);
+        Assert.Equal(["CreateOrder"], runs[^1].Steps![2]);
+
+        await shell.RunNodeAsync(instance);
+        Assert.Empty(runs[^1].Testcases);
+    }
+
+    [Fact]
+    public async Task Ticks_combine_across_testcases_and_a_partly_ticked_testcase_runs_only_its_ticked_steps()
+    {
+        using var dir = new TempDir();
+        var (shell, runs) = Shell(dir);
+        var vm = shell.Instances[0].Editor!;
+        var customers = vm.Testcases.First(t => t.Index == 1);
+        vm.SelectedTestcase = customers;
+        vm.AddStepCommand.Execute(null);
+        vm.SaveCommand.Execute(null); // a run reads the saved workbook
+        customers = vm.Testcases.First(t => t.Index == 1);
+        var orders = vm.Testcases.First(t => t.Index == 2);
+
+        Assert.False(shell.HasTicked);
+        orders.ChosenState = true;
+        customers.StepNodes[0].IsChosen = true;
+        Assert.Null(customers.ChosenState);       // some steps ticked
+        Assert.True(orders.ChosenState);
+        Assert.Null(shell.Instances[0].ChosenState);
+        Assert.Equal("2 ticked", shell.TickedText);
+
+        await shell.RunTickedAsync();
+        var request = runs[^1];
+        Assert.Equal([1, 2], request.Testcases);
+        Assert.Equal([customers.StepNodes[0].Name], request.Steps![1]);
+        Assert.Equal(["CreateOrder"], request.Steps[2]);
+
+        shell.Instances[0].ChosenState = false;
+        Assert.False(shell.HasTicked);
+    }
+}
+
+public class TreeShotTests
+{
+    [Avalonia.Headless.XUnit.AvaloniaFact]
+    public void Tree_screenshot()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        var window = DataEditorWindow.Open(path, null);
+        window.Width = 1200; window.Height = 700;
+        window.Show();
+        var vm = window.ViewModel;
+        vm.Testcases[0].StepNodes[0].IsChosen = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var shots = Environment.GetEnvironmentVariable("UI_SCREENSHOT_DIR") ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ui-shots");
+        Directory.CreateDirectory(shots);
+        window.CaptureRenderedFrame()!.Save(System.IO.Path.Combine(shots, "editor-tree.png"));
+        window.Close();
     }
 }

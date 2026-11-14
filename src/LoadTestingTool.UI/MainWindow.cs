@@ -1058,11 +1058,12 @@ public sealed partial class MainWindow : Window
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         var selection = request.Testcases.Count == 0 ? "0" : string.Join(',', request.Testcases.Select(i => i.ToString(inv)));
         var ids = request.DataIds.Count == 0 || request.Testcases.Count != 1 ? "" : $"{request.Testcases[0]}:{string.Join(',', request.DataIds)}";
-        List<(string, string)> overrides = [("--testcases", selection), ("--steps", ""), ("--dataids", ids.Length > 0 ? ids : "0")];
+        var stepsJson = request.Steps is null ? "" : System.Text.Json.JsonSerializer.Serialize(request.Steps.ToDictionary(p => p.Key, p => p.Value.ToArray()));
+        List<(string, string)> overrides = [("--testcases", selection), ("--steps", stepsJson), ("--dataids", ids.Length > 0 ? ids : "0")];
         if (request.RowsMode is { } mode) overrides.Add(("--rows-execution-mode", mode));
         if (request.TestcasesParallel is { } parallel) overrides.Add(("--scenarios-parallel", parallel ? "true" : "false"));
         item.TestcaseSelection = selection;
-        item.StepSelectionJson = "";
+        item.StepSelectionJson = stepsJson;
         item.DataIdSelection = ids;
         try { await LaunchAsync(item, promptForMissingSelection: false, overrides); }
         finally { (item.TestcaseSelection, item.StepSelectionJson, item.DataIdSelection) = (testcases, steps, dataIdSelection); }
