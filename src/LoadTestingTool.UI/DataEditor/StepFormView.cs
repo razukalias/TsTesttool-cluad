@@ -59,6 +59,7 @@ public sealed class StepFormView : UserControl
     private readonly List<Action> _cleanup = [];
     private readonly List<Action> _fieldCleanup = [];
     private readonly StackPanel _settings = new() { Spacing = 8 };
+    private TextBox? _templateBox;
     private readonly Border _typeCard = new();
     private Control? _templatePanel;
     private readonly TextEditor _editor = new();
@@ -199,6 +200,7 @@ public sealed class StepFormView : UserControl
         }
         if (title.Equals("templetsource", StringComparison.OrdinalIgnoreCase) && _step.Editor is not null && input is TextBox templateBox)
         {
+            _templateBox = templateBox;
             var browse = new Button { Content = "Browse…", Margin = new Thickness(6, 0, 0, 0) };
             ToolTip.SetTip(browse, "Pick a template from the Templates folder");
             browse.Click += async (_, _) => await BrowseTemplateAsync(templateBox);
@@ -527,8 +529,15 @@ public sealed class StepFormView : UserControl
         if (_step.Editor is not { } editor) return false;
         try
         {
+            // a name typed into the Template field counts even if the field has not lost focus yet
+            if (_templateBox is { } typed && (typed.Text ?? string.Empty).Trim() is { } pending && pending != _step.Value("templetsource").Trim())
+            {
+                var text0 = _editor.Text ?? string.Empty;
+                _step.Write("templetsource", pending);
+                if (_editor.Text != text0 && text0.Trim().Length > 0) _editor.Text = text0;
+            }
             var text = _editor.Text ?? string.Empty;
-            TemplateEditorWindow.ValidateContent(text, _format.SelectedItem?.ToString() ?? "Plain text");
+            if (text.Trim().Length > 0) TemplateEditorWindow.ValidateContent(text, _format.SelectedItem?.ToString() ?? "Plain text"); // an empty file may be created and filled in later
             var source = Source;
             var created = source.Length == 0;
             if (created) source = NewTemplatePath();
@@ -578,6 +587,8 @@ public sealed class StepFormView : UserControl
     private void SetStatus(string text, bool error, string? color = null)
     {
         _status.Text = text;
+        _status.FontWeight = error ? FontWeight.SemiBold : FontWeight.Normal;
+        _status.FontSize = error ? 12 : 11;
         _status.Foreground = Brush.Parse(color ?? (error ? "#FF7A7A" : "#8EA4BC"));
     }
 

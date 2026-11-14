@@ -205,4 +205,19 @@ public class StepTypeTests
         Assert.Equal("requests/new-customer.json", shell.Current.FocusedStep!.Value("templetsource"));
         window.Close();
     }
+
+    [AvaloniaFact]
+    public void Typing_a_name_and_clicking_save_creates_the_file_even_with_no_content_or_focus_change()
+    {
+        using var dir = new TempDir();
+        var (window, shell, step) = Open(dir);
+        var form = window.GetVisualDescendants().OfType<StepFormView>().Single();
+        var field = form.GetVisualDescendants().OfType<TextBox>().First(t => t.Text == "create.json");
+        field.Text = "test.json";           // typed, focus not left yet
+        form.TemplateText = "";             // nothing written in the editor either
+        Assert.True(form.SaveTemplate());
+        Assert.True(File.Exists(System.IO.Path.Combine(shell.Current!.TemplatesFolder, "test.json")));
+        Assert.Equal("test.json", shell.Current.FocusedStep!.Value("templetsource"));
+        window.Close();
+    }
 }
