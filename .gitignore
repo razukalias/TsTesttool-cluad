@@ -40,3 +40,6 @@ appsettings.local.json
 # Per-instance local run-selection preferences
 **/.run-selection.json
 **/.run-selection.json.tmp
+
+# Output of publish.ps1
+/publish/

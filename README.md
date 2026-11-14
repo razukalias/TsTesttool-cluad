@@ -45,6 +45,17 @@ The app starts in this editor (the original dashboard is no longer shown; start 
 
 ## Running
 
+### Build into one folder (UI, Runner, Instances)
+
+```powershell
+.\publish.ps1                       # -> publish\UI, publish\Runner, publish\Instances, publish\appsettings.json
+.\publish.ps1 -WithSampleInstances  # also copy the repo's sample instances (never over existing ones)
+.\publish.ps1 -Output D:\TestTool   # another folder
+.\publish.ps1 -SelfContained        # bundle the .NET runtime
+```
+
+Run it again after changes: `UI` and `Runner` are replaced, `Instances` and `appsettings.json` are kept. Start with `publish\Start.cmd`.
+
 The dashboard starts the runner for you. Directly:
 
 ```
