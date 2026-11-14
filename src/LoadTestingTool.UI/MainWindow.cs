@@ -713,7 +713,7 @@ public sealed partial class MainWindow : Window
     private void OpenSpreadsheetForInstance(InstanceInfo item)
     {
         _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item);
-        OpenSpreadsheetPreview();
+        OpenDataEditor();
     }
 
     private void EditStepForInstance(InstanceInfo item)
