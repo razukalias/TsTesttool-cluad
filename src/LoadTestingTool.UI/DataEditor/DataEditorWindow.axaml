@@ -175,7 +175,7 @@
         <TreeView x:Name="Tree" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
           <TreeView.DataTemplates>
             <TreeDataTemplate DataType="vm:InstanceNode" ItemsSource="{Binding Testcases}">
-              <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,4">
+              <Grid ColumnDefinitions="Auto,Auto,*,Auto" RowDefinitions="Auto,Auto,Auto" Margin="0,4">
                 <CheckBox Classes="treecheck" IsChecked="{Binding ChosenState, Mode=TwoWay}" IsEnabled="{Binding IsLoaded}" ToolTip.Tip="Tick to run this instance's testcases together with the other ticked items" />
                 <Ellipse Grid.Column="1" Width="8" Height="8" Margin="0,0,8,0" Fill="{Binding DirtyColor}" IsVisible="{Binding IsDirty}" />
                 <StackPanel Grid.Column="2" Spacing="1">
