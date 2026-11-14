@@ -133,6 +133,76 @@ public sealed partial class EditorShellViewModel : ObservableObject
     /// <summary>True when a testcase (not an instance) is selected in the tree, so the testcase menu applies.</summary>
     public bool TestcaseNodeSelected => SelectedNode is TestcaseItem or StepNode;
 
+    private DataEditorViewModel? EditorOf(object node) => node switch
+    {
+        TestcaseItem t => Instances.FirstOrDefault(n => n.Testcases.Contains(t))?.Editor,
+        StepNode st => Instances.FirstOrDefault(n => n.Testcases.Contains(st.Owner))?.Editor,
+        _ => null
+    };
+
+    /// <summary>Starts editing a testcase's or step's name in place in the tree.</summary>
+    public void BeginRename(object node)
+    {
+        switch (node)
+        {
+            case TestcaseItem t: t.EditText = t.Name; t.IsEditing = true; break;
+            case StepNode s: s.EditText = s.Name; s.IsEditing = true; break;
+        }
+    }
+
+    public void CancelRename(object node)
+    {
+        if (node is TestcaseItem t) t.IsEditing = false;
+        else if (node is StepNode s) s.IsEditing = false;
+    }
+
+    /// <summary>Applies the typed name. Does nothing if it was already committed or cancelled.</summary>
+    public void CommitRename(object node)
+    {
+        switch (node)
+        {
+            case TestcaseItem { IsEditing: true } t:
+                t.IsEditing = false;
+                if (EditorOf(t) is { } te)
+                {
+                    SelectedNode = t;
+                    te.RenameSelectedTestcase(t.EditText);
+                }
+                break;
+            case StepNode { IsEditing: true } s:
+                s.IsEditing = false;
+                if (EditorOf(s) is { } se)
+                {
+                    Current = se;
+                    if (!ReferenceEquals(se.SelectedTestcase, s.Owner)) se.SelectedTestcase = s.Owner;
+                    se.RenameStepNamed(s.Name, s.EditText);
+                    var renamed = s.Owner.StepNodes.FirstOrDefault(n => string.Equals(n.Name, s.EditText.Trim(), StringComparison.OrdinalIgnoreCase));
+                    if (renamed is not null) SelectedNode = renamed;
+                }
+                break;
+        }
+    }
+
+    /// <summary>The ▲ ▼ buttons beside a tree item: runs it earlier (-1) or later (+1).</summary>
+    public void MoveNode(object node, int direction)
+    {
+        switch (node)
+        {
+            case TestcaseItem t when EditorOf(t) is { } te:
+                Current = te;
+                if (!ReferenceEquals(te.SelectedTestcase, t)) te.SelectedTestcase = t;
+                (direction < 0 ? te.MoveTestcaseUpCommand : te.MoveTestcaseDownCommand).Execute(null);
+                break;
+            case StepNode s when EditorOf(s) is { } se:
+                Current = se;
+                if (!ReferenceEquals(se.SelectedTestcase, s.Owner)) se.SelectedTestcase = s.Owner;
+                var wasSelected = ReferenceEquals(SelectedNode, s);
+                se.MoveStepNamed(s.Name, direction);
+                if (wasSelected && s.Owner.StepNodes.FirstOrDefault(n => string.Equals(n.Name, s.Name, StringComparison.OrdinalIgnoreCase)) is { } again) SelectedNode = again;
+                break;
+        }
+    }
+
     /// <summary>True when a step is selected in the tree, so the step menu applies.</summary>
     public bool StepNodeSelected => SelectedNode is StepNode;
 

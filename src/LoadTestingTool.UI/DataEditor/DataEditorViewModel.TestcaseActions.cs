@@ -43,6 +43,35 @@ public sealed partial class DataEditorViewModel
         else ShowStepData();
     }
 
+    /// <summary>Renames the selected testcase to the text typed in the tree.</summary>
+    public void RenameSelectedTestcase(string name)
+    {
+        if (SelectedTestcase is not { } testcase || name.Trim() == testcase.Name) return;
+        _testcaseAction = TestcaseAction.Rename;
+        TestcasePanelName = name;
+        ConfirmTestcaseAction();
+    }
+
+    /// <summary>Renames the step called <paramref name="current"/> in the selected testcase to the text typed in the tree.</summary>
+    public void RenameStepNamed(string current, string name)
+    {
+        var step = StepRows.FirstOrDefault(r => string.Equals(r.CurrentName, current, StringComparison.OrdinalIgnoreCase));
+        if (step is null || name.Trim() == step.CurrentName) return;
+        SelectedStep = step;
+        _testcaseAction = TestcaseAction.RenameStep;
+        TestcasePanelName = name;
+        ConfirmTestcaseAction();
+    }
+
+    /// <summary>Moves the step called <paramref name="name"/> one place earlier or later.</summary>
+    public void MoveStepNamed(string name, int direction)
+    {
+        var step = StepRows.FirstOrDefault(r => string.Equals(r.CurrentName, name, StringComparison.OrdinalIgnoreCase));
+        if (step is null) return;
+        SelectedStep = step;
+        MoveStep(direction);
+    }
+
     [RelayCommand]
     private void OpenRenameStep()
     {
@@ -98,6 +127,7 @@ public sealed partial class DataEditorViewModel
         if (action == TestcaseAction.RenameStep)
         {
             if (SelectedStep is not { } step) return;
+            if (name.Length == 0) { _testcaseAction = TestcaseAction.None; ShowStatus("A step name cannot be empty.", isError: true); return; }
             TestcasePanelVisible = false;
             _testcaseAction = TestcaseAction.None;
             OnStepEdited(step, 0, name);

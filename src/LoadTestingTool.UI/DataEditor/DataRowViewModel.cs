@@ -14,8 +14,13 @@ public enum ColumnGroup { Id, Request, Response }
 public sealed record GridColumn(string Title, ColumnGroup Group, int CellIndex, int SheetColumn);
 
 /// <summary>One step under a testcase in the tree.</summary>
-public sealed class StepNode(TestcaseItem owner, string name, int position)
+public sealed partial class StepNode(TestcaseItem owner, string name, int position) : ObservableObject
 {
+    [ObservableProperty] private bool _isEditing;
+    [ObservableProperty] private string _editText = name;
+    public bool IsNotEditing => !IsEditing;
+    partial void OnIsEditingChanged(bool value) => OnPropertyChanged(nameof(IsNotEditing));
+
     public TestcaseItem Owner { get; } = owner;
     public string Name { get; } = name;
     public int Position { get; } = position;
@@ -35,6 +40,12 @@ public sealed partial class TestcaseItem : ObservableObject
 
     /// <summary>The steps as children of the testcase in the tree, in run order.</summary>
     public ObservableCollection<StepNode> StepNodes { get; } = [];
+
+    /// <summary>True while the name is being edited in the tree.</summary>
+    [ObservableProperty] private bool _isEditing;
+    [ObservableProperty] private string _editText = string.Empty;
+    public bool IsNotEditing => !IsEditing;
+    partial void OnIsEditingChanged(bool value) => OnPropertyChanged(nameof(IsNotEditing));
 
     private void RebuildStepNodes()
     {

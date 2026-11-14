@@ -43,6 +43,17 @@
       <Setter Property="IsExpanded" Value="True" />
       <Setter Property="Padding" Value="4,2" />
     </Style>
+    <Style Selector="Button.treemove">
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="5,2" />
+      <Setter Property="FontSize" Value="9" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#8EA4BC" />
+    </Style>
+    <Style Selector="Button.treemove:pointerover">
+      <Setter Property="Foreground" Value="#FFFFFF" />
+    </Style>
     <Style Selector="ListBoxItem">
       <Setter Property="Padding" Value="12,8" />
       <Setter Property="CornerRadius" Value="8" />
@@ -73,21 +84,6 @@
         <CheckBox DockPanel.Dock="Bottom" Content="Load instances only when opened" IsChecked="{Binding LazyLoading, Mode=TwoWay}" Margin="6,12,0,0" FontSize="12"
                   ToolTip.Tip="On: a workbook is read the first time you click its instance, so the editor opens quickly with many or large workbooks. Off: every workbook is read when the editor opens." />
         <TreeView x:Name="Tree" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
-          <TreeView.ContextMenu>
-            <ContextMenu>
-              <MenuItem Header="Rename testcase…" Command="{Binding Current.OpenRenameTestcaseCommand}" IsEnabled="{Binding TestcaseNodeSelected}" />
-              <MenuItem Header="Copy testcase…" Command="{Binding Current.OpenCopyTestcaseCommand}" IsEnabled="{Binding TestcaseNodeSelected}" />
-              <MenuItem Header="Move up (runs earlier)" Command="{Binding Current.MoveTestcaseUpCommand}" IsEnabled="{Binding TestcaseNodeSelected}" />
-              <MenuItem Header="Move down (runs later)" Command="{Binding Current.MoveTestcaseDownCommand}" IsEnabled="{Binding TestcaseNodeSelected}" />
-              <Separator />
-              <MenuItem Header="Delete testcase…" Command="{Binding Current.OpenDeleteTestcaseCommand}" IsEnabled="{Binding TestcaseNodeSelected}" />
-              <Separator />
-              <MenuItem Header="Rename step…" Command="{Binding Current.OpenRenameStepCommand}" IsEnabled="{Binding StepNodeSelected}" />
-              <MenuItem Header="Move step up (runs earlier)" Command="{Binding Current.MoveStepUpCommand}" IsEnabled="{Binding StepNodeSelected}" />
-              <MenuItem Header="Move step down (runs later)" Command="{Binding Current.MoveStepDownCommand}" IsEnabled="{Binding StepNodeSelected}" />
-              <MenuItem Header="Remove step" Command="{Binding Current.RemoveStepCommand}" IsEnabled="{Binding StepNodeSelected}" />
-            </ContextMenu>
-          </TreeView.ContextMenu>
           <TreeView.DataTemplates>
             <TreeDataTemplate DataType="vm:InstanceNode" ItemsSource="{Binding Testcases}">
               <Grid ColumnDefinitions="Auto,*" Margin="0,4">
@@ -100,14 +96,28 @@
               </Grid>
             </TreeDataTemplate>
             <DataTemplate DataType="vm:StepNode">
-              <TextBlock Text="{Binding Title}" FontSize="12" Margin="0,2" TextTrimming="CharacterEllipsis" />
+              <Grid ColumnDefinitions="*,Auto" Margin="0,1">
+                <TextBlock Text="{Binding Title}" IsVisible="{Binding IsNotEditing}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <TextBox Classes="treeedit" Text="{Binding EditText, Mode=TwoWay}" IsVisible="{Binding IsEditing}" FontSize="12" MinHeight="24" Padding="4,2" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0" IsVisible="{Binding IsNotEditing}">
+                  <Button Classes="treemove" Tag="up" Content="▲" ToolTip.Tip="Run earlier" />
+                  <Button Classes="treemove" Tag="down" Content="▼" ToolTip.Tip="Run later" />
+                </StackPanel>
+              </Grid>
             </DataTemplate>
             <TreeDataTemplate DataType="vm:TestcaseItem" ItemsSource="{Binding StepNodes}">
-              <StackPanel Spacing="1" Margin="0,3">
-                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                <TextBlock Text="{Binding Summary}" FontSize="11" Foreground="#8EA4BC" />
-                <TextBlock Text="{Binding ResultText}" IsVisible="{Binding HasResults}" Foreground="{Binding ResultColor}" FontSize="11" FontWeight="SemiBold" />
-              </StackPanel>
+              <Grid ColumnDefinitions="*,Auto" Margin="0,3">
+                <StackPanel Spacing="1">
+                  <TextBlock Text="{Binding Title}" IsVisible="{Binding IsNotEditing}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                  <TextBox Classes="treeedit" Text="{Binding EditText, Mode=TwoWay}" IsVisible="{Binding IsEditing}" FontWeight="SemiBold" MinHeight="26" Padding="4,2" />
+                  <TextBlock Text="{Binding Summary}" FontSize="11" Foreground="#8EA4BC" />
+                  <TextBlock Text="{Binding ResultText}" IsVisible="{Binding HasResults}" Foreground="{Binding ResultColor}" FontSize="11" FontWeight="SemiBold" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0" VerticalAlignment="Top" IsVisible="{Binding IsNotEditing}">
+                  <Button Classes="treemove" Tag="up" Content="▲" ToolTip.Tip="Run earlier" />
+                  <Button Classes="treemove" Tag="down" Content="▼" ToolTip.Tip="Run later" />
+                </StackPanel>
+              </Grid>
             </TreeDataTemplate>
           </TreeView.DataTemplates>
         </TreeView>
