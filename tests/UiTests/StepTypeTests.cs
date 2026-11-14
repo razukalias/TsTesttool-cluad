@@ -220,4 +220,18 @@ public class StepTypeTests
         Assert.Equal("test.json", shell.Current.FocusedStep!.Value("templetsource"));
         window.Close();
     }
+
+    [AvaloniaFact]
+    public void Saving_the_workbook_also_creates_a_template_that_was_only_named()
+    {
+        using var dir = new TempDir();
+        var (window, shell, step) = Open(dir);
+        step.Write("templetsource", "named-only.json");
+        Pump();
+        var editor = shell.Current!;
+        Assert.False(File.Exists(System.IO.Path.Combine(editor.TemplatesFolder, "named-only.json")));
+        editor.SaveCommand.Execute(null);
+        Assert.True(File.Exists(System.IO.Path.Combine(editor.TemplatesFolder, "named-only.json")));
+        window.Close();
+    }
 }

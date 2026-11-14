@@ -105,6 +105,16 @@ public sealed class StepFormView : UserControl
         };
         _step.Cells.CollectionChanged += follow;
         _cleanup.Add(() => _step.Cells.CollectionChanged -= follow);
+        if (editor is not null)
+        {
+            // saving the workbook also writes a template that was named or edited here but not saved yet
+            Action withWorkbook = () =>
+            {
+                if (_templatePanel?.IsVisible == true && Source.Length > 0 && (_isNew || (_editor.Text ?? string.Empty) != _loaded)) Save();
+            };
+            editor.SavingWorkbook += withWorkbook;
+            _cleanup.Add(() => editor.SavingWorkbook -= withWorkbook);
+        }
         DetachedFromVisualTree += (_, _) => { foreach (var undo in _cleanup.Concat(_fieldCleanup)) undo(); _cleanup.Clear(); _fieldCleanup.Clear(); };
     }
 
@@ -430,7 +440,7 @@ public sealed class StepFormView : UserControl
 
         var validate = new Button { Content = "Validate" };
         validate.Click += (_, _) => Validate();
-        var save = new Button { Content = "Save", Classes = { "accent" } };
+        var save = new Button { Content = "Save template", Classes = { "accent" } };
         ToolTip.SetTip(save, "Writes the template file now (Ctrl+S). The workbook is saved separately.");
         save.Click += (_, _) => Save();
 
@@ -489,7 +499,7 @@ public sealed class StepFormView : UserControl
                     _loaded = string.Empty;
                     _isNew = true;
                     _editor.Text = TemplateEditorWindow.DefaultContent(_format.SelectedItem?.ToString() ?? "Plain text");
-                    SetStatus("New file: it will be created when you save.", false);
+                    SetStatus("New file: not created yet. Click Save template (or save the workbook) to create it.", false, "#F6C76B");
                 }
             }
             catch (Exception ex) { _editor.Text = string.Empty; SetStatus(ex.Message, true); }
@@ -503,7 +513,7 @@ public sealed class StepFormView : UserControl
         var changed = (_editor.Text ?? string.Empty) != _loaded;
         if (changed) SetStatus("● Unsaved template changes", false, "#F6C76B");
         else if (Source.Length == 0) SetStatus($"No template yet. Write one here and Save to create Templates/{NewTemplatePath()}.", false);
-        else if (_isNew) SetStatus("New file: it will be created when you save.", false);
+        else if (_isNew) SetStatus("New file: not created yet. Click Save template (or save the workbook) to create it.", false);
         else SetStatus("", false);
     }
 

@@ -57,6 +57,9 @@ public sealed partial class DataEditorViewModel : ObservableObject
     /// <summary>Raised after the set of grid columns changed, so the view can rebuild them.</summary>
     public event EventHandler? ColumnsChanged;
 
+    /// <summary>Raised just before the workbook is written, so open template editors can write their files in the same click.</summary>
+    public event Action? SavingWorkbook;
+
     /// <summary>Raised when the window should close (after saving or discarding).</summary>
     public event EventHandler? CloseRequested;
 
@@ -487,6 +490,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         try
         {
             var keepRow = SelectedRow?.Cells[0];
+            SavingWorkbook?.Invoke(); // open step forms write their template files too
             RemoveLegacyColumns();
             var result = _document.Save(options);
             if (result.Saved) { ClearUndoHistory(); _referenceScan = null; }
