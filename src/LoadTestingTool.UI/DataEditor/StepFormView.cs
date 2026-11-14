@@ -202,15 +202,74 @@ public sealed class StepFormView : UserControl
             var browse = new Button { Content = "Browse…", Margin = new Thickness(6, 0, 0, 0) };
             ToolTip.SetTip(browse, "Pick a template from the Templates folder");
             browse.Click += async (_, _) => await BrowseTemplateAsync(templateBox);
-            var pair = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            var create = new Button { Content = "New…", Margin = new Thickness(6, 0, 0, 0) };
+            ToolTip.SetTip(create, "Create a new template and choose its name");
+            create.Click += async (_, _) => await NewTemplateAsync(templateBox);
+            var pair = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto") };
             pair.Children.Add(templateBox);
             Grid.SetColumn(browse, 1);
             pair.Children.Add(browse);
+            Grid.SetColumn(create, 2);
+            pair.Children.Add(create);
             input = pair;
         }
         Grid.SetColumn(input, 1);
         row.Children.Add(input);
         return row;
+    }
+
+    /// <summary>Asks for a name (a folder like requests/create.json is fine), points the step at it and opens the editor ready to write it.</summary>
+    private async Task NewTemplateAsync(TextBox box)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner || _step.Editor is not { } editor) return;
+        var extension = NewTemplatePath()[(NewTemplatePath().LastIndexOf('.'))..];
+        var suggestion = Source.Length > 0 ? Source : NewTemplatePath();
+        var name = await AskNameAsync(owner, suggestion, extension);
+        if (name is null) return;
+        try { TemplateEditorWindow.ResolveInside(editor.TemplatesFolder, name); }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException) { SetStatus(ex.Message, true); return; }
+        box.Text = name;
+        _step.Write("templetsource", name);
+        SetStatus(File.Exists(Path.Combine(editor.TemplatesFolder, name)) ? $"{name} already exists and is now this step's template." : $"New template {name}: write it, then Save to create the file.", false, "#39D39B");
+    }
+
+    private static async Task<string?> AskNameAsync(Window owner, string suggestion, string extension)
+    {
+        var input = new TextBox { Text = suggestion, MinWidth = 340 };
+        var error = new TextBlock { FontSize = 11, Foreground = Brush.Parse("#FF7A7A") };
+        var ok = new Button { Content = "Create", Classes = { "accent" } };
+        var cancel = new Button { Content = "Cancel", Margin = new Thickness(0, 0, 8, 0) };
+        var dialog = new Window
+        {
+            Title = "New template", SizeToContent = SizeToContent.WidthAndHeight, WindowStartupLocation = WindowStartupLocation.CenterOwner, CanResize = false, Background = Brush.Parse("#0B1626"),
+            Content = new StackPanel
+            {
+                Margin = new Thickness(20), Spacing = 8,
+                Children =
+                {
+                    Text("Template name", 14, Brush.Parse("#E3EDF9"), bold: true),
+                    Text("Relative to the Templates folder. Use a folder to organise, for example requests/create.json. A missing extension is added.", 11, Muted),
+                    input, error,
+                    new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Children = { cancel, ok } }
+                }
+            }
+        };
+        string? result = null;
+        void Accept()
+        {
+            var name = (input.Text ?? string.Empty).Trim().Replace('\\', '/').TrimStart('/');
+            if (name.Length == 0 || name.EndsWith('/') || name.Split('/').Any(part => part is "" or "." or ".."))
+            { error.Text = "Enter a file name, optionally inside folders."; return; }
+            if (name.IndexOfAny(Path.GetInvalidPathChars()) >= 0) { error.Text = "That name has characters a file cannot have."; return; }
+            if (!Path.HasExtension(name)) name += extension;
+            result = name;
+            dialog.Close();
+        }
+        ok.Click += (_, _) => Accept();
+        cancel.Click += (_, _) => dialog.Close();
+        input.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Accept(); e.Handled = true; } };
+        await dialog.ShowDialog(owner);
+        return result;
     }
 
     /// <summary>Opens the picker in the Templates folder; a file from elsewhere is copied into it so the runner can find it.</summary>

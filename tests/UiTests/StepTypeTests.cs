@@ -125,7 +125,7 @@ public class StepTypeTests
         using var dir = new TempDir();
         var path = Samples.CreateLarge(dir, rows: 3);
         var doc = LoadTestingTool.Editing.WorkbookDocument.Load(path);
-        foreach (var header in new[] { "Threads", "Iterations", "Output Variable", "Environments" }) doc.Config.EnsureColumn(header);
+        foreach (var header in new[] { "Threads", "Iterations", "Output Variable", "Environments", "ThreadIntervalMs", "IterationIntervalMs" }) doc.Config.EnsureColumn(header);
         doc.Save();
         var vm = new DataEditorViewModel(path);
         Assert.False(vm.IsDirty);
@@ -188,6 +188,21 @@ public class StepTypeTests
         var updated = shell.Current!.FocusedStep!.Value("templetsource");
         Assert.EndsWith(".sql", updated);
         Assert.True(File.Exists(System.IO.Path.Combine(shell.Current.TemplatesFolder, updated)));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_template_named_in_the_field_is_created_in_that_folder_on_save()
+    {
+        using var dir = new TempDir();
+        var (window, shell, step) = Open(dir);
+        step.Write("templetsource", "requests/new-customer.json");
+        Pump();
+        var form = window.GetVisualDescendants().OfType<StepFormView>().Single();
+        form.TemplateText = "{\"id\": 1}";
+        Assert.True(form.SaveTemplate());
+        Assert.True(File.Exists(System.IO.Path.Combine(shell.Current!.TemplatesFolder, "requests", "new-customer.json")));
+        Assert.Equal("requests/new-customer.json", shell.Current.FocusedStep!.Value("templetsource"));
         window.Close();
     }
 }
