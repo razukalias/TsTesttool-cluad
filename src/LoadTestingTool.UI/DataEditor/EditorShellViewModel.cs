@@ -48,6 +48,20 @@ public sealed partial class InstanceNode : ObservableObject
 
     [ObservableProperty] private bool _isDirty;
 
+    /// <summary>How this instance's data rows run when started from the tree: the instance's own setting, parallel or sequential.</summary>
+    public string RowsMode
+    {
+        get => Editor?.RowsMode ?? DataEditorViewModel.RowsModeOptions[0];
+        set { if (Editor is not null && value is not null) Editor.RowsMode = value; }
+    }
+
+    /// <summary>Whether several testcases run one after another or at the same time.</summary>
+    public string TestcaseOrder
+    {
+        get => Editor?.TestcaseOrder ?? DataEditorViewModel.TestcaseOrderOptions[0];
+        set { if (Editor is not null && value is not null) Editor.TestcaseOrder = value; }
+    }
+
     [ObservableProperty] private bool _isExpanded = true;
 
     /// <summary>Expands the instance and every testcase under it, or collapses them all, depending on whether everything is already open.</summary>
@@ -106,6 +120,8 @@ public sealed partial class InstanceNode : ObservableObject
         if (e.PropertyName == nameof(DataEditorViewModel.SelectedTestcase)) SelectedTestcaseChanged?.Invoke(this, EventArgs.Empty);
         if (e.PropertyName == nameof(DataEditorViewModel.IsDirty)) IsDirty = Editor!.IsDirty;
         else if (e.PropertyName == nameof(DataEditorViewModel.RunSummaryText)) OnPropertyChanged(nameof(RunSummary));
+        else if (e.PropertyName == nameof(DataEditorViewModel.RowsMode)) OnPropertyChanged(nameof(RowsMode));
+        else if (e.PropertyName == nameof(DataEditorViewModel.TestcaseOrder)) OnPropertyChanged(nameof(TestcaseOrder));
     }
 }
 
@@ -213,6 +229,40 @@ public sealed partial class EditorShellViewModel : ObservableObject
         foreach (var instance in Instances) instance.SetAllExpanded(expanded);
     }
 
+    private string? _allRows, _allOrder;
+
+    private static string? Common(IEnumerable<string> values)
+    {
+        var distinct = values.Distinct().Take(2).ToList();
+        return distinct.Count == 1 ? distinct[0] : null;
+    }
+
+    /// <summary>Rows mode for every instance at once; null while instances differ.</summary>
+    public string? AllRowsMode
+    {
+        get => Common(Instances.Where(i => i.Editor is not null).Select(i => i.RowsMode));
+        set
+        {
+            if (value is null) return;
+            _allRows = value;
+            foreach (var instance in Instances) instance.RowsMode = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Testcase order for every instance at once; null while instances differ.</summary>
+    public string? AllTestcaseOrder
+    {
+        get => Common(Instances.Where(i => i.Editor is not null).Select(i => i.TestcaseOrder));
+        set
+        {
+            if (value is null) return;
+            _allOrder = value;
+            foreach (var instance in Instances) instance.TestcaseOrder = value;
+            OnPropertyChanged();
+        }
+    }
+
     /// <summary>Total of testcases ticked across all loaded instances.</summary>
     public int TickedCount => Instances.Sum(i => i.Editor?.TickedTestcaseCount ?? 0);
     public bool HasTicked => TickedCount > 0;
@@ -226,7 +276,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
             case InstanceNode instance:
                 if (instance.CanLoad) await LoadAsync(instance);
                 if (instance.Editor is not { } ie) return;
-                await ie.RunFromTreeAsync(new RunRequest([], [], ie.RowsMode == DataEditorViewModel.RowsModeOptions[0] ? null : ie.RowsMode.ToLowerInvariant(), null), $"all of {instance.Name}");
+                await ie.RunFromTreeAsync(new RunRequest([], [], ie.RowsMode == DataEditorViewModel.RowsModeOptions[0] ? null : ie.RowsMode.ToLowerInvariant(), ie.TestcaseOrder == DataEditorViewModel.TestcaseOrderOptions[1]), $"all of {instance.Name}");
                 break;
             case TestcaseItem testcase when EditorOf(testcase) is { } te:
                 await te.RunFromTreeAsync(te.BuildRequest([(testcase, null)]), $"testcase {testcase.Name}");
@@ -333,6 +383,13 @@ public sealed partial class EditorShellViewModel : ObservableObject
 
     private void Wire(InstanceNode node)
     {
+        if (_allRows is not null) node.RowsMode = _allRows;
+        if (_allOrder is not null) node.TestcaseOrder = _allOrder;
+        node.Editor!.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(DataEditorViewModel.RowsMode)) OnPropertyChanged(nameof(AllRowsMode));
+            else if (e.PropertyName == nameof(DataEditorViewModel.TestcaseOrder)) OnPropertyChanged(nameof(AllTestcaseOrder));
+        };
         node.Editor!.TickedChanged += (_, _) => { OnPropertyChanged(nameof(TickedCount)); OnPropertyChanged(nameof(HasTicked)); OnPropertyChanged(nameof(TickedText)); };
         node.Editor!.CreateTestcaseHandler = draft => CreateTestcaseHandler?.Invoke(node.Name, draft);
         node.Editor!.CloseRequested += (_, _) => OnEditorClosed();

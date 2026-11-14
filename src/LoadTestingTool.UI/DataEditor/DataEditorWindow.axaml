@@ -51,6 +51,13 @@
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="#8EA4BC" />
     </Style>
+    <Style Selector="ComboBox.treemode">
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="8,2" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
     <Style Selector="Button.treerun">
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="MinHeight" Value="0" />
@@ -110,12 +117,19 @@
           <Button x:Name="CollapseAllButton" Content="⊟" Classes="treemove" FontSize="14" ToolTip.Tip="Collapse everything to the instance rows" />
           <TextBlock Text="{Binding TickedText}" VerticalAlignment="Center" FontSize="11" Foreground="#8EA4BC" />
         </StackPanel>
+        <StackPanel DockPanel.Dock="Top" Margin="6,0,0,10" Spacing="4">
+          <TextBlock Classes="caption" Text="RUN ALL INSTANCES" />
+          <Grid ColumnDefinitions="*,6,*">
+            <ComboBox Classes="treemode" ItemsSource="{x:Static vm:DataEditorViewModel.RowsModeOptions}" SelectedItem="{Binding AllRowsMode, Mode=TwoWay}" PlaceholderText="Rows: mixed" ToolTip.Tip="Set how data rows run for every instance at once" />
+            <ComboBox Grid.Column="2" Classes="treemode" ItemsSource="{x:Static vm:DataEditorViewModel.TestcaseOrderOptions}" SelectedItem="{Binding AllTestcaseOrder, Mode=TwoWay}" PlaceholderText="Testcases: mixed" ToolTip.Tip="Set whether testcases run one after another or at the same time, for every instance at once" />
+          </Grid>
+        </StackPanel>
         <CheckBox DockPanel.Dock="Bottom" Content="Load instances only when opened" IsChecked="{Binding LazyLoading, Mode=TwoWay}" Margin="6,12,0,0" FontSize="12"
                   ToolTip.Tip="On: a workbook is read the first time you click its instance, so the editor opens quickly with many or large workbooks. Off: every workbook is read when the editor opens." />
         <TreeView x:Name="Tree" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
           <TreeView.DataTemplates>
             <TreeDataTemplate DataType="vm:InstanceNode" ItemsSource="{Binding Testcases}">
-              <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,4">
+              <Grid ColumnDefinitions="Auto,Auto,*,Auto" RowDefinitions="Auto,Auto" Margin="0,4">
                 <CheckBox Classes="treecheck" IsChecked="{Binding ChosenState, Mode=TwoWay}" IsEnabled="{Binding IsLoaded}" ToolTip.Tip="Tick to run this instance's testcases together with the other ticked items" />
                 <Ellipse Grid.Column="1" Width="8" Height="8" Margin="0,0,8,0" Fill="{Binding DirtyColor}" IsVisible="{Binding IsDirty}" />
                 <StackPanel Grid.Column="2" Spacing="1">
@@ -123,6 +137,10 @@
                   <TextBlock Text="{Binding Subtitle}" FontSize="11" Foreground="#8EA4BC" TextTrimming="CharacterEllipsis" />
                   <TextBlock Text="{Binding RunSummary}" FontSize="11" Foreground="#6F87A1" TextWrapping="Wrap" />
                 </StackPanel>
+                <Grid Grid.Row="1" Grid.ColumnSpan="4" ColumnDefinitions="*,6,*" Margin="0,6,0,2" IsVisible="{Binding IsLoaded}">
+                    <ComboBox Classes="treemode" ItemsSource="{x:Static vm:DataEditorViewModel.RowsModeOptions}" SelectedItem="{Binding RowsMode, Mode=TwoWay}" ToolTip.Tip="How this instance's data rows run: as the instance is set up, in parallel, or one by one" />
+                    <ComboBox Grid.Column="2" Classes="treemode" ItemsSource="{x:Static vm:DataEditorViewModel.TestcaseOrderOptions}" SelectedItem="{Binding TestcaseOrder, Mode=TwoWay}" ToolTip.Tip="When several testcases run together: one after another, or at the same time" />
+                  </Grid>
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Top">
                   <Button Classes="treemove" Tag="toggle" Content="⇕" FontSize="12" ToolTip.Tip="Expand or collapse this instance and everything under it" />
                   <Button Classes="treerun" Tag="run" Content="▶" ToolTip.Tip="Run the whole instance" />
