@@ -118,4 +118,76 @@ public class StepTypeTests
         window.CaptureRenderedFrame()!.Save(System.IO.Path.Combine(shots, "step-multipart.png"));
         window.Close();
     }
+
+    [Fact]
+    public void Old_global_columns_are_hidden_and_opening_leaves_the_workbook_unchanged_until_saved()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        var doc = LoadTestingTool.Editing.WorkbookDocument.Load(path);
+        foreach (var header in new[] { "Threads", "Iterations", "Output Variable", "Environments" }) doc.Config.EnsureColumn(header);
+        doc.Save();
+        var vm = new DataEditorViewModel(path);
+        Assert.False(vm.IsDirty);
+        Assert.DoesNotContain(vm.StepColumns, c => LegacyColumns.IsLegacy(c.Title));
+        vm.StepRows[0].Cells[vm.StepRows[0].CellOf("verb")] = "PUT";
+        vm.SaveCommand.Execute(null);
+        var saved = LoadTestingTool.Editing.WorkbookDocument.Load(path);
+        Assert.DoesNotContain(saved.Config.Headers, h => LegacyColumns.IsLegacy(h));
+    }
+
+    [AvaloniaFact]
+    public void Headers_with_a_value_show_and_empty_ones_hide_until_added()
+    {
+        using var dir = new TempDir();
+        var (window, shell, step) = Open(dir);
+        shell.AddStep(shell.Instances[0].Testcases[0]);
+        var editor = shell.Current!;
+        editor.StepRows[0].Write("header_Authorization", "Bearer x");
+        Pump();
+        editor = shell.Current!;
+        var first = editor.StepRows[0];
+        editor.ShowAllStepsCommand.Execute(null);
+        editor.StepRows[0].IsExpanded = true;
+        editor.StepRows[1].IsExpanded = true;
+        Pump();
+        var forms = window.GetVisualDescendants().OfType<StepFormView>().ToList();
+        Assert.Equal(2, forms.Count);
+        Assert.Contains("Authorization", Labels(forms[0]));
+        Assert.DoesNotContain("Authorization", Labels(forms[1]));
+        Assert.Equal("", editor.StepRows[1].Value("header_Authorization"));
+        // adding it to the second step writes into its own, empty cell
+        var add = forms[1].GetVisualDescendants().OfType<Button>().First(b => b.Content as string == "＋ Add");
+        forms[1].GetVisualDescendants().OfType<AutoCompleteBox>().First().Text = "authorization";
+        forms[1].GetVisualDescendants().OfType<TextBox>().First(t => t.Watermark == "Value").Text = "Bearer y";
+        add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Pump();
+        Assert.Equal("Bearer y", shell.Current!.StepRows[1].Value("header_Authorization"));
+        Assert.Equal("Bearer x", shell.Current!.StepRows[0].Value("header_Authorization"));
+        Assert.DoesNotContain(shell.Current!.Document.Config.Headers, h => h.Equals("header_authorization", StringComparison.Ordinal));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Sql_and_non_http_steps_show_no_headers_and_every_type_keeps_an_editable_template()
+    {
+        using var dir = new TempDir();
+        var (window, shell, step) = Open(dir);
+        step.Write("steptype", "SQL");
+        Pump();
+        var form = window.GetVisualDescendants().OfType<StepFormView>().Single();
+        Assert.DoesNotContain("HEADERS", Labels(form));
+        Assert.Contains("TEMPLATE · create.json", Labels(form));
+        shell.Current!.FocusedStep!.Write("templetsource", "");
+        Pump();
+        form = window.GetVisualDescendants().OfType<StepFormView>().Single();
+        Assert.False(form.GetVisualDescendants().OfType<AvaloniaEdit.TextEditor>().Single().IsReadOnly);
+        form.TemplateText = "select 1";
+        Assert.True(form.SaveTemplate());
+        Pump();
+        var updated = shell.Current!.FocusedStep!.Value("templetsource");
+        Assert.EndsWith(".sql", updated);
+        Assert.True(File.Exists(System.IO.Path.Combine(shell.Current.TemplatesFolder, updated)));
+        window.Close();
+    }
 }

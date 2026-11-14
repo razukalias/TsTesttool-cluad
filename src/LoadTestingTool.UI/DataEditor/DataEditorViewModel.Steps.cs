@@ -85,7 +85,7 @@ public sealed partial class DataEditorViewModel
         for (var i = 0; i < _document.Config.ColumnCount; i++)
         {
             var header = _document.Config.Headers[i];
-            if (!StepReservedColumns.Contains(header)) columns.Add(new GridColumn(header, ColumnGroup.Request, columns.Count + 1, i));
+            if (!StepReservedColumns.Contains(header) && !LegacyColumns.IsLegacy(header)) columns.Add(new GridColumn(header, ColumnGroup.Request, columns.Count + 1, i));
         }
         StepColumns = columns;
         if (SelectedTestcase is { } testcase)

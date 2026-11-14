@@ -6,6 +6,7 @@ using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using AvaloniaEdit;
 using AvaloniaEdit.Document;
 using AvaloniaEdit.Rendering;
@@ -46,12 +47,13 @@ public sealed class StepFormView : UserControl
         "graphql" or "caseql" => ["steptype", "stage", "enabled", "stoponfailure", "targeturl", "templetsource", "expectedstatus", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
         "sql" => ["steptype", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
         "file" => ["steptype", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
-        "script" => ["steptype", "stage", "enabled", "stoponfailure", "timeout", "wait"],
+        "script" => ["steptype", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait"],
         "actionmanual" => ["steptype", "stage", "enabled", "stoponfailure", "manualtimeoutminutes"],
         _ => ["steptype", "stage", "enabled", "stoponfailure", "verb", "targeturl", "contenttype", "templetsource", "expectedstatus", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
     };
 
-    private static bool UsesTemplate(string type) => type.Trim().ToLowerInvariant() is not ("script" or "actionmanual");
+    private static bool UsesTemplate(string type) => !type.Trim().Equals("ActionManual", StringComparison.OrdinalIgnoreCase);
+    private static bool UsesHeaders(string type) => type.Trim().ToLowerInvariant() is not ("sql" or "file" or "script" or "actionmanual");
 
     private readonly StepRowViewModel _step;
     private readonly List<Action> _cleanup = [];
@@ -129,12 +131,13 @@ public sealed class StepFormView : UserControl
 
         foreach (var title in FieldsFor(type)) _settings.Children.Add(Field(title));
         var shown = new HashSet<string>(FieldsFor(type), StringComparer.OrdinalIgnoreCase);
-        var others = (_step.Editor?.StepColumns ?? []).Where(c => !Known.Contains(c.Title) && !shown.Contains(c.Title)).ToList();
+        var others = (_step.Editor?.StepColumns ?? []).Where(c => !Known.Contains(c.Title) && !shown.Contains(c.Title) && !c.Title.StartsWith("header_", StringComparison.OrdinalIgnoreCase) && !LegacyColumns.IsLegacy(c.Title)).ToList();
         if (others.Count > 0)
         {
             _settings.Children.Add(Text("OTHER COLUMNS", 11, Muted, bold: true));
             foreach (var column in others) _settings.Children.Add(Field(column.Title));
         }
+        if (UsesHeaders(type)) _settings.Children.Add(HeadersSection());
         _settings.Children.Add(RawConfig());
         if (_step.Editor is { } owner)
         {
@@ -194,9 +197,106 @@ public sealed class StepFormView : UserControl
             input = box;
             Follow(title, v => { if (box.Text != v) box.Text = v; });
         }
+        if (title.Equals("templetsource", StringComparison.OrdinalIgnoreCase) && _step.Editor is not null && input is TextBox templateBox)
+        {
+            var browse = new Button { Content = "Browse…", Margin = new Thickness(6, 0, 0, 0) };
+            ToolTip.SetTip(browse, "Pick a template from the Templates folder");
+            browse.Click += async (_, _) => await BrowseTemplateAsync(templateBox);
+            var pair = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            pair.Children.Add(templateBox);
+            Grid.SetColumn(browse, 1);
+            pair.Children.Add(browse);
+            input = pair;
+        }
         Grid.SetColumn(input, 1);
         row.Children.Add(input);
         return row;
+    }
+
+    /// <summary>Opens the picker in the Templates folder; a file from elsewhere is copied into it so the runner can find it.</summary>
+    private async Task BrowseTemplateAsync(TextBox box)
+    {
+        if (TopLevel.GetTopLevel(this) is not { } top || _step.Editor is not { } editor) return;
+        try
+        {
+            var folder = editor.TemplatesFolder;
+            Directory.CreateDirectory(folder);
+            var start = await top.StorageProvider.TryGetFolderFromPathAsync(folder);
+            var picked = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "Choose a template", SuggestedStartLocation = start, AllowMultiple = false });
+            if (picked.Count == 0 || picked[0].TryGetLocalPath() is not { } path) return;
+            var relative = Path.GetRelativePath(folder, path);
+            var note = string.Empty;
+            if (relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative))
+            {
+                var name = Path.GetFileName(path);
+                var target = Path.Combine(folder, name);
+                for (var n = 2; File.Exists(target); n++) target = Path.Combine(folder, $"{Path.GetFileNameWithoutExtension(name)}{n}{Path.GetExtension(name)}");
+                File.Copy(path, target);
+                relative = Path.GetFileName(target);
+                note = $"Copied into the Templates folder as {relative}.";
+            }
+            relative = relative.Replace('\\', '/');
+            box.Text = relative;
+            _step.Write("templetsource", relative);
+            if (note.Length > 0) SetStatus(note, false, "#39D39B");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { SetStatus(ex.Message, true); }
+    }
+
+    /// <summary>The HTTP headers this step sends: those with a value in its row. Empty ones stay hidden until added.</summary>
+    private Control HeadersSection()
+    {
+        var panel = new StackPanel { Spacing = 8, Margin = new Thickness(0, 4, 0, 0) };
+        panel.Children.Add(Text("HEADERS", 11, Muted, bold: true));
+        var headers = (_step.Editor?.StepColumns ?? []).Where(c => c.Title.StartsWith("header_", StringComparison.OrdinalIgnoreCase)).ToList();
+        foreach (var column in headers.Where(c => _step.Value(c.Title).Trim().Length > 0))
+        {
+            var title = column.Title;
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("100,*,Auto") };
+            row.Children.Add(Text(title[7..], 12, Muted, vertical: VerticalAlignment.Center));
+            var box = new TextBox { Text = _step.Value(title), HorizontalAlignment = HorizontalAlignment.Stretch };
+            void Commit()
+            {
+                var value = box.Text ?? string.Empty;
+                if (value == _step.Value(title)) return;
+                _step.Write(title, value);
+                if (value.Trim().Length == 0) Avalonia.Threading.Dispatcher.UIThread.Post(BuildSettings);
+            }
+            box.LostFocus += (_, _) => Commit();
+            box.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Commit(); e.Handled = true; } };
+            Follow(title, v => { if (box.Text != v) box.Text = v; });
+            var remove = new Button { Content = "✕", Margin = new Thickness(6, 0, 0, 0) };
+            ToolTip.SetTip(remove, "Remove this header from the step (the value is cleared; the column stays for other steps)");
+            remove.Click += (_, _) => { _step.Write(title, string.Empty); Avalonia.Threading.Dispatcher.UIThread.Post(BuildSettings); };
+            Grid.SetColumn(box, 1); row.Children.Add(box);
+            Grid.SetColumn(remove, 2); row.Children.Add(remove);
+            panel.Children.Add(row);
+        }
+        if (!headers.Any(c => _step.Value(c.Title).Trim().Length > 0)) panel.Children.Add(Text("No headers on this step.", 11, Muted));
+
+        var unused = headers.Where(c => _step.Value(c.Title).Trim().Length == 0).Select(c => c.Title[7..]).ToList();
+        var name = new AutoCompleteBox { ItemsSource = unused, MinimumPrefixLength = 0, Watermark = "Header name", HorizontalAlignment = HorizontalAlignment.Stretch };
+        name.GotFocus += (_, _) => { if (unused.Count > 0) name.IsDropDownOpen = true; };
+        var value = new TextBox { Watermark = "Value", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var add = new Button { Content = "＋ Add", Margin = new Thickness(6, 0, 0, 0) };
+        var message = Text("", 11, Brush.Parse("#FF7A7A"));
+        message.TextWrapping = TextWrapping.Wrap;
+        add.Click += (_, _) =>
+        {
+            var wanted = (name.Text ?? string.Empty).Trim();
+            if (wanted.StartsWith("header_", StringComparison.OrdinalIgnoreCase)) wanted = wanted[7..];
+            if (wanted.Length == 0 || wanted.Any(char.IsWhiteSpace) || wanted.Contains(':')) { message.Text = "Enter a header name without spaces, for example Authorization."; return; }
+            if ((value.Text ?? string.Empty).Trim().Length == 0) { message.Text = "Enter a value: a header without a value is not sent."; return; }
+            var existing = headers.FirstOrDefault(c => c.Title[7..].Equals(wanted, StringComparison.OrdinalIgnoreCase))?.Title;
+            _step.Write(existing ?? "header_" + wanted, value.Text!);
+            Avalonia.Threading.Dispatcher.UIThread.Post(BuildSettings);
+        };
+        var addRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,Auto") };
+        value.Margin = new Thickness(6, 0, 0, 0);
+        addRow.Children.Add(name); Grid.SetColumn(value, 1); addRow.Children.Add(value); Grid.SetColumn(add, 2); addRow.Children.Add(add);
+        panel.Children.Add(addRow);
+        panel.Children.Add(message);
+        return panel;
     }
 
     private void Follow(string title, Action<string> apply)
@@ -314,8 +414,8 @@ public sealed class StepFormView : UserControl
             {
                 _loaded = string.Empty;
                 _editor.Text = string.Empty;
-                _editor.IsReadOnly = true;
-                SetStatus("No template file set. Enter a path in the Template field, for example requests/create.json.", false);
+                _editor.IsReadOnly = false;
+                SetStatus($"No template yet. Write one here and Save to create Templates/{NewTemplatePath()}.", false);
                 return;
             }
             _editor.IsReadOnly = false;
@@ -331,7 +431,7 @@ public sealed class StepFormView : UserControl
                     SetStatus("New file: it will be created when you save.", false);
                 }
             }
-            catch (Exception ex) { _editor.IsReadOnly = true; _editor.Text = string.Empty; SetStatus(ex.Message, true); }
+            catch (Exception ex) { _editor.Text = string.Empty; SetStatus(ex.Message, true); }
         }
         finally { _loading = false; }
         UpdateSearch();
@@ -339,9 +439,9 @@ public sealed class StepFormView : UserControl
 
     private void UpdateDirty()
     {
-        if (_editor.IsReadOnly) return;
         var changed = (_editor.Text ?? string.Empty) != _loaded;
         if (changed) SetStatus("● Unsaved template changes", false, "#F6C76B");
+        else if (Source.Length == 0) SetStatus($"No template yet. Write one here and Save to create Templates/{NewTemplatePath()}.", false);
         else if (_isNew) SetStatus("New file: it will be created when you save.", false);
         else SetStatus("", false);
     }
@@ -353,19 +453,33 @@ public sealed class StepFormView : UserControl
     }
 
     /// <summary>Validates and writes the file. The workbook is not touched; a new file only needs its path in the Template field.</summary>
+    /// <summary>The file a template with no path gets: the step's name plus an extension for the chosen format.</summary>
+    private string NewTemplatePath()
+    {
+        var extension = (_format.SelectedItem?.ToString() ?? "Plain text") switch { "JSON" => "json", "XML" => "xml", "SQL" => "sql", "GraphQL" => "graphql", "C# script" => "cs", _ => "txt" };
+        var name = string.Concat(_step.CurrentName.Select(c => Path.GetInvalidFileNameChars().Contains(c) || char.IsWhiteSpace(c) ? '_' : c));
+        return $"{(name.Length == 0 ? "template" : name)}.{extension}";
+    }
+
+    public bool SaveTemplate() => Save();
+
     internal bool Save()
     {
-        if (_editor.IsReadOnly || _step.Editor is not { } editor) return false;
+        if (_step.Editor is not { } editor) return false;
         try
         {
             var text = _editor.Text ?? string.Empty;
             TemplateEditorWindow.ValidateContent(text, _format.SelectedItem?.ToString() ?? "Plain text");
-            var path = TemplateEditorWindow.ResolveInside(editor.TemplatesFolder, Source);
+            var source = Source;
+            var created = source.Length == 0;
+            if (created) source = NewTemplatePath();
+            var path = TemplateEditorWindow.ResolveInside(editor.TemplatesFolder, source);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, text);
             _loaded = text;
             _isNew = false;
-            SetStatus($"Saved {Source}", false, "#39D39B");
+            if (created) _step.Write("templetsource", source); // the cell change reloads this panel from the file just written
+            SetStatus(created ? $"Created Templates/{source} and set it as this step's template." : $"Saved {source}", false, "#39D39B");
             editor.RefreshPreview();
             return true;
         }

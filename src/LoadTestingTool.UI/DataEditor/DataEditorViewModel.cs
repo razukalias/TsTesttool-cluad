@@ -28,6 +28,20 @@ public sealed partial class DataEditorViewModel : ObservableObject
         LoadTestcases(null);
     }
 
+    /// <summary>Drops config columns that steps no longer use (see <see cref="LegacyColumns"/>). Done when saving, so opening a workbook never changes it.</summary>
+    private List<string> RemoveLegacyColumns()
+    {
+        var removed = new List<string>();
+        for (var i = _document.Config.ColumnCount - 1; i >= 0; i--)
+        {
+            var header = _document.Config.Headers[i];
+            if (!LegacyColumns.IsLegacy(header)) continue;
+            _document.Config.RemoveColumn(i);
+            removed.Insert(0, header);
+        }
+        return removed;
+    }
+
     public string WorkbookPath { get; }
     public string InstanceName { get; }
     public string FileName => Path.GetFileName(WorkbookPath);
@@ -473,6 +487,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         try
         {
             var keepRow = SelectedRow?.Cells[0];
+            RemoveLegacyColumns();
             var result = _document.Save(options);
             if (result.Saved) { ClearUndoHistory(); _referenceScan = null; }
             if (result.RequiresReload) ReloadAfterRowsMoved(keepRow);
