@@ -11,6 +11,11 @@ public sealed partial class InstanceNode
 
     public ObservableCollection<EnvironmentChoice> EnvironmentChoices { get; } = [];
 
+    /// <summary>This instance's row-execution overrides (empty box = inherits the global value); null without central settings.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasExecution))] private ExecutionSettings? _execution;
+
+    public bool HasExecution => Execution is not null;
+
     public bool HasEnvironments => EnvironmentChoices.Count > 0;
 
     /// <summary>Environments to run in when started from the tree. Unlike the choice of environments, the runner has only one central parallel flag, so a per-instance change applies to runs started from the editor.</summary>

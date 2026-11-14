@@ -24,6 +24,7 @@ public sealed partial class EditorShellViewModel
             node.LoadEnvironments(settings);
             node.EnvironmentsChanged += OnInstanceEnvironmentsChanged;
             node.EnvironmentProblem += OnEnvironmentProblem;
+            AttachExecution(node);
         }
         Load(node);
         RebuildGlobalEnvironments();

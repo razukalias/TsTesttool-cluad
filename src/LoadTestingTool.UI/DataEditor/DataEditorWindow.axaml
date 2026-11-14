@@ -155,6 +155,21 @@
             <CheckBox Grid.Column="1" Classes="treeparallel" Content="Parallel" IsChecked="{Binding GlobalRunParallel, Mode=TwoWay}" ToolTip.Tip="Run environments (and testcases) at the same time, for every instance. This is the central setting the runner uses." />
           </Grid>
         </StackPanel>
+        <StackPanel DockPanel.Dock="Top" Margin="6,0,0,10" Spacing="4" IsVisible="{Binding HasExecution}">
+          <TextBlock Classes="caption" Text="ROW EXECUTION · ALL INSTANCES" />
+          <Button x:Name="GlobalExecutionButton" Classes="treeenv" ToolTip.Tip="Parallel or sequential, max parallel rows, iterations and intervals for every instance (saved to appsettings.json)">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <TextBlock Text="Rows" Foreground="#8EA4BC" Margin="0,0,6,0" />
+              <TextBlock Grid.Column="1" Text="{Binding Execution.Summary}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="2" Text="▾" Margin="6,0,0,0" Foreground="#8EA4BC" />
+            </Grid>
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedLeft">
+                <vm:ExecutionPanel DataContext="{Binding Execution}" />
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+        </StackPanel>
         <CheckBox DockPanel.Dock="Bottom" Content="Load instances only when opened" IsChecked="{Binding LazyLoading, Mode=TwoWay}" Margin="6,12,0,0" FontSize="12"
                   ToolTip.Tip="On: a workbook is read the first time you click its instance, so the editor opens quickly with many or large workbooks. Off: every workbook is read when the editor opens." />
         <TreeView x:Name="Tree" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
@@ -189,6 +204,18 @@
                   </Button>
                   <CheckBox Grid.Column="1" Classes="treeparallel" Content="Parallel" IsChecked="{Binding RunParallel, Mode=TwoWay}" ToolTip.Tip="Run this instance's environments (and testcases) at the same time when started from here" />
                 </Grid>
+                <Button Grid.Row="2" Grid.ColumnSpan="4" Classes="treeenv" Margin="0,0,0,2" IsVisible="{Binding HasExecution}" ToolTip.Tip="Row execution for this instance. Empty boxes use the global value.">
+                  <Grid ColumnDefinitions="Auto,*,Auto">
+                    <TextBlock Text="Rows" Foreground="#8EA4BC" Margin="0,0,6,0" />
+                    <TextBlock Grid.Column="1" Text="{Binding Execution.Summary}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2" Text="▾" Margin="6,0,0,0" Foreground="#8EA4BC" />
+                  </Grid>
+                  <Button.Flyout>
+                    <Flyout Placement="BottomEdgeAlignedLeft">
+                      <vm:ExecutionPanel DataContext="{Binding Execution}" />
+                    </Flyout>
+                  </Button.Flyout>
+                </Button>
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Top">
                   <Button Classes="treemove" Tag="add" Content="＋" FontSize="12" ToolTip.Tip="Add a testcase to this instance" />
                   <Button Classes="treemove" Tag="toggle" Content="⇕" FontSize="12" ToolTip.Tip="Expand or collapse this instance and everything under it" />

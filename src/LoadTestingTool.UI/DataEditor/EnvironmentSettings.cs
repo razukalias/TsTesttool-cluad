@@ -36,6 +36,16 @@ public interface IEnvironmentSettings
 
     /// <summary>Saves the central parallel flag. Returns null on success, otherwise why not.</summary>
     string? SaveRunParallel(bool value);
+
+    /// <summary>The row-execution settings. For <c>null</c> (global) the effective root values with defaults; for an instance only what it overrides (null = inherits the global value).</summary>
+    ExecutionValues GetExecution(string? instance) => ExecutionValues.Defaults;
+
+    /// <summary>
+    /// Saves one execution setting (key: RowsExecutionMode, MaxParallelRows, Iterations, ParallelRowStartIntervalMs, IterationIntervalMs).
+    /// For an instance a null value removes the override. For the global scope the value goes to the root of appsettings.json and every instance override of that key is removed.
+    /// Returns null on success, otherwise why not.
+    /// </summary>
+    string? SaveExecution(string? instance, string key, string? value) => "Execution settings are not available here.";
 }
 
 /// <summary>One environment with a tick box, in an instance's or the global environment drop-down.</summary>

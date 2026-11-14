@@ -26,6 +26,7 @@ public sealed partial class EditorShellViewModel
             }
             foreach (var instance in Instances.Where(i => i.Editor is not null)) AttachSelection(instance);
             RebuildGlobalEnvironments();
+            LoadExecution();
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasEnvironments));
         }

@@ -142,6 +142,138 @@ public sealed partial class MainWindow
             }
         }
 
+        public DataEditor.ExecutionValues GetExecution(string? instance)
+        {
+            var config = window._config;
+            if (instance is null)
+                return new DataEditor.ExecutionValues(NormalizeRowsExecutionMode(config.RowsExecutionMode), Math.Clamp(config.MaxParallelRows, 1, 100), Math.Max(1, config.Iterations),
+                    Math.Max(0, config.ParallelRowStartIntervalMs), Math.Max(0, config.IterationIntervalMs));
+            try
+            {
+                if (ReadRoot()["Instances"] is not JsonObject instances || instances[instance] is not JsonObject own) return DataEditor.ExecutionValues.None;
+                int? Number(params string[] names)
+                {
+                    foreach (var name in names)
+                        if (own[name] is { } node && int.TryParse(node.ToString(), out var value)) return value;
+                    return null;
+                }
+                var mode = own["RowsExecutionMode"]?.ToString() ?? own["ExecutionMode"]?.ToString();
+                return new DataEditor.ExecutionValues(string.IsNullOrWhiteSpace(mode) ? null : NormalizeRowsExecutionMode(mode), Number("MaxParallelRows", "MaxConcurrentRows"), Number("Iterations"),
+                    Number("ParallelRowStartIntervalMs", "ThreadIntervalMs"), Number("IterationIntervalMs"));
+            }
+            catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException) { return DataEditor.ExecutionValues.None; }
+        }
+
+        public string? SaveExecution(string? instance, string key, string? value)
+        {
+            if (value is not null)
+            {
+                var invalid = DataEditor.ExecutionKeys.Validate(key, value, out var normalized);
+                if (invalid is not null) return invalid;
+                value = normalized;
+            }
+            else if (instance is null) return "A global value cannot be empty.";
+            try
+            {
+                var root = ReadRoot();
+                var instances = root["Instances"] as JsonObject ?? new JsonObject();
+                // Older files used these names for the same settings; remove them so the saved value is the one that is read.
+                string[] aliases = key switch
+                {
+                    DataEditor.ExecutionKeys.MaxRows => ["MaxConcurrentRows"],
+                    DataEditor.ExecutionKeys.StartInterval => ["ThreadIntervalMs"],
+                    DataEditor.ExecutionKeys.Mode => ["ExecutionMode"],
+                    _ => []
+                };
+                JsonNode? Typed() => key == DataEditor.ExecutionKeys.Mode ? JsonValue.Create(value) : JsonValue.Create(int.Parse(value!));
+                if (instance is null)
+                {
+                    root[key] = Typed();
+                    foreach (var pair in instances)
+                        if (pair.Value is JsonObject configured)
+                        {
+                            configured.Remove(key);
+                            foreach (var alias in aliases) configured.Remove(alias);
+                        }
+                }
+                else
+                {
+                    var own = instances[instance] as JsonObject ?? new JsonObject();
+                    foreach (var alias in aliases) own.Remove(alias);
+                    if (value is null) own.Remove(key); else own[key] = Typed();
+                    instances[instance] = own;
+                    root["Instances"] = instances;
+                }
+                Write(root);
+                ApplyExecution(instance, key, value);
+                window.UiLog($"Row execution setting saved from the data editor. scope={instance ?? "global"}; {key}={value ?? "(inherit)"}");
+                return null;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            {
+                window.UiLog($"Could not save the row execution setting: {ex}");
+                return $"Could not save {key} to {Path.GetFileName(window._config.SettingsFile)}: {ex.Message}";
+            }
+        }
+
+        // Keeps the dashboard's in-memory settings in step with the file, so runs started afterwards use the new values.
+        private void ApplyExecution(string? instance, string key, string? value)
+        {
+            var config = window._config;
+            if (instance is null)
+            {
+                switch (key)
+                {
+                    case DataEditor.ExecutionKeys.Mode: config.RowsExecutionMode = value!; break;
+                    case DataEditor.ExecutionKeys.MaxRows: config.MaxParallelRows = int.Parse(value!); break;
+                    case DataEditor.ExecutionKeys.Iterations: config.Iterations = int.Parse(value!); break;
+                    case DataEditor.ExecutionKeys.StartInterval: config.ParallelRowStartIntervalMs = int.Parse(value!); break;
+                    case DataEditor.ExecutionKeys.IterationInterval: config.IterationIntervalMs = int.Parse(value!); break;
+                }
+                foreach (var central in config.Instances.Values) ClearOverride(central, key);
+            }
+            else if (config.Instances.TryGetValue(instance, out var central))
+            {
+                if (value is null) ClearOverride(central, key); else SetOverride(central, key, value);
+            }
+            foreach (var item in window._instances.Where(i => instance is null || i.Name == instance))
+            {
+                config.Instances.TryGetValue(item.Name, out var central);
+                switch (key)
+                {
+                    case DataEditor.ExecutionKeys.Mode: item.RowsExecutionMode = NormalizeRowsExecutionMode(central?.RowsExecutionMode ?? central?.ExecutionMode ?? config.RowsExecutionMode); break;
+                    case DataEditor.ExecutionKeys.MaxRows: item.MaxParallelRows = Math.Clamp(central?.MaxParallelRows ?? central?.MaxConcurrentRows ?? config.MaxParallelRows, 1, 100); break;
+                    case DataEditor.ExecutionKeys.Iterations: item.Iterations = Math.Max(1, central?.Iterations ?? config.Iterations); break;
+                    case DataEditor.ExecutionKeys.StartInterval: item.ParallelRowStartIntervalMs = Math.Max(0, central?.ParallelRowStartIntervalMs ?? central?.ThreadIntervalMs ?? config.ParallelRowStartIntervalMs); break;
+                    case DataEditor.ExecutionKeys.IterationInterval: item.IterationIntervalMs = Math.Max(0, central?.IterationIntervalMs ?? config.IterationIntervalMs); break;
+                }
+            }
+        }
+
+        private static void ClearOverride(UiInstanceDefinition central, string key)
+        {
+            switch (key)
+            {
+                case DataEditor.ExecutionKeys.Mode: central.RowsExecutionMode = null; central.ExecutionMode = null; break;
+                case DataEditor.ExecutionKeys.MaxRows: central.MaxParallelRows = null; central.MaxConcurrentRows = null; break;
+                case DataEditor.ExecutionKeys.Iterations: central.Iterations = null; break;
+                case DataEditor.ExecutionKeys.StartInterval: central.ParallelRowStartIntervalMs = null; central.ThreadIntervalMs = null; break;
+                case DataEditor.ExecutionKeys.IterationInterval: central.IterationIntervalMs = null; break;
+            }
+        }
+
+        private static void SetOverride(UiInstanceDefinition central, string key, string value)
+        {
+            switch (key)
+            {
+                case DataEditor.ExecutionKeys.Mode: central.RowsExecutionMode = value; central.ExecutionMode = null; break;
+                case DataEditor.ExecutionKeys.MaxRows: central.MaxParallelRows = int.Parse(value); central.MaxConcurrentRows = null; break;
+                case DataEditor.ExecutionKeys.Iterations: central.Iterations = int.Parse(value); break;
+                case DataEditor.ExecutionKeys.StartInterval: central.ParallelRowStartIntervalMs = int.Parse(value); central.ThreadIntervalMs = null; break;
+                case DataEditor.ExecutionKeys.IterationInterval: central.IterationIntervalMs = int.Parse(value); break;
+            }
+        }
+
         private JsonObject ReadRoot()
             => (File.Exists(window._config.SettingsFile) ? JsonNode.Parse(File.ReadAllText(window._config.SettingsFile)) as JsonObject : null) ?? new JsonObject();
 
