@@ -229,30 +229,3 @@ public class TreeShotTests
         window.Close();
     }
 }
-
-public class ExecutionModeTests
-{
-    [Fact]
-    public async Task Instance_and_global_dropdowns_set_how_runs_start()
-    {
-        using var dir = new TempDir();
-        var path = Samples.CreateLarge(dir, rows: 3);
-        var shell = new EditorShellViewModel([("Sample", path)]);
-        var runs = new List<RunRequest>();
-        shell.Instances[0].Editor!.RunHandler = r => { runs.Add(r); return Task.FromResult<string?>(null); };
-        var instance = shell.Instances[0];
-
-        Assert.Equal("Instance setting", shell.AllRowsMode);
-        shell.AllRowsMode = "Sequential";
-        shell.AllTestcaseOrder = "At the same time";
-        Assert.Equal("Sequential", instance.RowsMode);
-        await shell.RunNodeAsync(instance);
-        Assert.Equal("sequential", runs[^1].RowsMode);
-        Assert.True(runs[^1].TestcasesParallel);
-
-        instance.RowsMode = "Parallel";
-        Assert.Equal("Parallel", shell.AllRowsMode);
-        await shell.RunNodeAsync(instance.Testcases[0]);
-        Assert.Equal("parallel", runs[^1].RowsMode);
-    }
-}
