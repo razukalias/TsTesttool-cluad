@@ -81,10 +81,18 @@ public sealed class App : Application
                 var historyIndex = Array.FindIndex(args, x => x.Equals("--history", StringComparison.OrdinalIgnoreCase));
                 desktop.MainWindow = historyIndex >= 0 && historyIndex + 1 < args.Length
                     ? new HistoryWorkspaceWindow(args[historyIndex + 1], ArgAfter(args, "--history-instance"), ArgAfter(args, "--history-testcase"))
-                    : new MainWindow();
+                    : StartupWindow(args);
             }
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>The new data editor is the application; the original dashboard only opens with --dashboard.</summary>
+    private static Avalonia.Controls.Window StartupWindow(string[] args)
+    {
+        var dashboard = new MainWindow();
+        if (args.Any(x => x.Equals("--dashboard", StringComparison.OrdinalIgnoreCase))) return dashboard;
+        return (Avalonia.Controls.Window?)dashboard.CreateStandaloneEditor() ?? dashboard;
     }
 
     private static string? ArgAfter(string[] args, string name)

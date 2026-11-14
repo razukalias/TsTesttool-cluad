@@ -33,7 +33,7 @@ dotnet test
 
 ## The data editor
 
-Opened from the dashboard (**Edit data** on the Artifacts tab, or **✎ Edit dataset** on an instance row). Every instance is a parent node with its testcases beneath it.
+The app starts in this editor (the original dashboard is no longer shown; start the app with `--dashboard` to get it back). Running tests, results and history work from the editor itself. Every instance is a parent node with its testcases beneath it.
 
 - **Edit:** a grid of request and expected-value columns per testcase; add, duplicate, remove rows; add columns; edit steps on the Steps tab; Excel-style copy/paste, fill down, find & replace; undo/redo.
 - **Safe saving:** backup before every save, atomic replace, detection of changes made elsewhere, validation that mirrors what the runner requires. Rows never move, so absolute-row references in formulas stay valid.

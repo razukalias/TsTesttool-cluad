@@ -969,9 +969,21 @@ public sealed partial class MainWindow
     private void OpenDataEditor()
     {
         if (_selectedInstance is null) { _details.Text = "Select an instance first."; return; }
+        CreateDataEditor()?.Show(this);
+    }
+
+    /// <summary>The data editor as the application's only window: the dashboard is built but never shown, and still runs tests and tracks results for the editor.</summary>
+    internal DataEditor.DataEditorWindow? CreateStandaloneEditor()
+    {
+        _selectedInstance ??= _instances.FirstOrDefault();
+        return _selectedInstance is null ? null : CreateDataEditor();
+    }
+
+    private DataEditor.DataEditorWindow? CreateDataEditor()
+    {
         try
         {
-            var editor = DataEditor.DataEditorWindow.Open(_instances.Select(x => (x.Name, x.WorkbookPath)), _selectedInstance.WorkbookPath);
+            var editor = DataEditor.DataEditorWindow.Open(_instances.Select(x => (x.Name, x.WorkbookPath)), _selectedInstance!.WorkbookPath);
             editor.Shell.RunHandler = RunFromEditorAsync;
             editor.Shell.HistoryHandler = LaunchHistoryWorkspace;
             editor.Shell.CreateTestcaseHandler = (name, draft) => { if (_instances.FirstOrDefault(x => x.Name == name) is { } target) CreateTestcaseForInstance(target, draft); };
@@ -981,11 +993,12 @@ public sealed partial class MainWindow
                 RefreshInstances();
                 _details.Text = $"Workbook saved. Backup created: {Path.GetFileName(editor.Shell.LastBackupPath)}";
             };
-            editor.Show(this);
+            return editor;
         }
         catch (Exception ex)
         {
             _details.Text = $"Cannot open the data editor: {ex.Message}";
+            return null;
         }
     }
 
