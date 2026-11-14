@@ -51,6 +51,21 @@
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="#8EA4BC" />
     </Style>
+    <Style Selector="Button.treeenv">
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Padding" Value="8,2" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="CheckBox.treeparallel">
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="Margin" Value="8,0,0,0" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
     <Style Selector="Button.treerun">
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="MinHeight" Value="0" />
@@ -110,6 +125,30 @@
           <Button x:Name="CollapseAllButton" Content="⊟" Classes="treemove" FontSize="14" ToolTip.Tip="Collapse everything to the instance rows" />
           <TextBlock Text="{Binding TickedText}" VerticalAlignment="Center" FontSize="11" Foreground="#8EA4BC" />
         </StackPanel>
+        <StackPanel DockPanel.Dock="Top" Margin="6,0,0,10" Spacing="4" IsVisible="{Binding HasEnvironments}">
+          <TextBlock Classes="caption" Text="ENVIRONMENTS · ALL INSTANCES" />
+          <Grid ColumnDefinitions="*,Auto">
+            <Button Classes="treeenv" ToolTip.Tip="Set the environments of every instance at once (saved to appsettings.json)">
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <TextBlock Text="Env" Foreground="#8EA4BC" Margin="0,0,6,0" />
+                <TextBlock Grid.Column="1" Text="{Binding GlobalEnvironmentsText}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="2" Text="▾" Margin="6,0,0,0" Foreground="#8EA4BC" />
+              </Grid>
+              <Button.Flyout>
+                <Flyout Placement="BottomEdgeAlignedLeft">
+                  <ItemsControl ItemsSource="{Binding GlobalEnvironmentChoices}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="vm:EnvironmentChoice">
+                        <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChosen, Mode=TwoWay}" Margin="2" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Flyout>
+              </Button.Flyout>
+            </Button>
+            <CheckBox Grid.Column="1" Classes="treeparallel" Content="Parallel" IsChecked="{Binding GlobalRunParallel, Mode=TwoWay}" ToolTip.Tip="Run environments (and testcases) at the same time, for every instance. This is the central setting the runner uses." />
+          </Grid>
+        </StackPanel>
         <CheckBox DockPanel.Dock="Bottom" Content="Load instances only when opened" IsChecked="{Binding LazyLoading, Mode=TwoWay}" Margin="6,12,0,0" FontSize="12"
                   ToolTip.Tip="On: a workbook is read the first time you click its instance, so the editor opens quickly with many or large workbooks. Off: every workbook is read when the editor opens." />
         <TreeView x:Name="Tree" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
@@ -123,6 +162,27 @@
                   <TextBlock Text="{Binding Subtitle}" FontSize="11" Foreground="#8EA4BC" TextTrimming="CharacterEllipsis" />
                   <TextBlock Text="{Binding RunSummary}" FontSize="11" Foreground="#6F87A1" TextWrapping="Wrap" />
                 </StackPanel>
+                <Grid Grid.Row="1" Grid.ColumnSpan="4" ColumnDefinitions="*,Auto" Margin="0,6,0,2" IsVisible="{Binding HasEnvironments}">
+                  <Button Classes="treeenv" ToolTip.Tip="Environments this instance runs in (saved to appsettings.json)">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                      <TextBlock Text="Env" Foreground="#8EA4BC" Margin="0,0,6,0" />
+                      <TextBlock Grid.Column="1" Text="{Binding EnvironmentsText}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Grid.Column="2" Text="▾" Margin="6,0,0,0" Foreground="#8EA4BC" />
+                    </Grid>
+                    <Button.Flyout>
+                      <Flyout Placement="BottomEdgeAlignedLeft">
+                        <ItemsControl ItemsSource="{Binding EnvironmentChoices}">
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:EnvironmentChoice">
+                              <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChosen, Mode=TwoWay}" Margin="2" />
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </Flyout>
+                    </Button.Flyout>
+                  </Button>
+                  <CheckBox Grid.Column="1" Classes="treeparallel" Content="Parallel" IsChecked="{Binding RunParallel, Mode=TwoWay}" ToolTip.Tip="Run this instance's environments (and testcases) at the same time when started from here" />
+                </Grid>
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Top">
                   <Button Classes="treemove" Tag="toggle" Content="⇕" FontSize="12" ToolTip.Tip="Expand or collapse this instance and everything under it" />
                   <Button Classes="treerun" Tag="run" Content="▶" ToolTip.Tip="Run the whole instance" />

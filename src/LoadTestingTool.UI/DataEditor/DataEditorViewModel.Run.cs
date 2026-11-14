@@ -76,28 +76,28 @@ public sealed partial class DataEditorViewModel
     private static bool IsOff(string value) => value.Trim().ToLowerInvariant() is "false" or "0" or "no" or "off";
 
     /// <summary>A request for the given testcases; steps given per testcase (null = all of its enabled steps). Reading the tree's ticks or one clicked item both go through here.</summary>
-    internal RunRequest BuildRequest(IReadOnlyList<(TestcaseItem Testcase, IReadOnlyList<string>? Steps)> chosen)
+    internal RunRequest BuildRequest(IReadOnlyList<(TestcaseItem Testcase, IReadOnlyList<string>? Steps)> chosen, bool? parallel = null)
     {
         var indexes = chosen.Select(c => c.Testcase.Index).ToList();
         IReadOnlyDictionary<int, IReadOnlyList<string>>? steps = null;
         if (chosen.Any(c => c.Steps is not null))
             steps = chosen.ToDictionary(c => c.Testcase.Index, c => c.Steps ?? EnabledSteps(c.Testcase.Index));
         return new RunRequest(indexes, [], RowsMode == RowsModeOptions[0] ? null : RowsMode.ToLowerInvariant(),
-            indexes.Count > 1 ? TestcaseOrder == TestcaseOrderOptions[1] : null, steps);
+            parallel ?? (indexes.Count > 1 ? TestcaseOrder == TestcaseOrderOptions[1] : null), steps);
     }
 
     /// <summary>Runs from the tree: <paramref name="request"/> for the given label, with the same save-first check as the Run button.</summary>
     internal Task RunFromTreeAsync(RunRequest request, string label) => StartRunAsync(request, label);
 
     /// <summary>Everything ticked in the tree: whole testcases, or only the ticked steps of a partly ticked one.</summary>
-    internal (RunRequest? Request, string Label) BuildTickedRequest()
+    internal (RunRequest? Request, string Label) BuildTickedRequest(bool? parallel = null)
     {
         var chosen = Testcases.Where(t => t.IsChosen)
             .Select(t => (t, (IReadOnlyList<string>?)(t.StepNodes.Count > 0 && t.StepNodes.Any(n => !n.IsChosen) ? t.ChosenSteps : null)))
             .ToList();
         if (chosen.Count == 0) return (null, string.Empty);
         var stepCount = chosen.Sum(c => c.Item2?.Count ?? c.t.StepNodes.Count);
-        return (BuildRequest(chosen), $"{stepCount} ticked {(stepCount == 1 ? "step" : "steps")} in {chosen.Count} {(chosen.Count == 1 ? "testcase" : "testcases")}");
+        return (BuildRequest(chosen, parallel), $"{stepCount} ticked {(stepCount == 1 ? "step" : "steps")} in {chosen.Count} {(chosen.Count == 1 ? "testcase" : "testcases")}");
     }
 
     internal void Report(string message, bool isError) => ShowStatus(message, isError);

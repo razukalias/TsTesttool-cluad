@@ -985,6 +985,7 @@ public sealed partial class MainWindow
         {
             var editor = DataEditor.DataEditorWindow.Open(_instances.Select(x => (x.Name, x.WorkbookPath)), _selectedInstance!.WorkbookPath);
             editor.Shell.RunHandler = RunFromEditorAsync;
+            editor.Shell.EnvironmentSettings = new EditorEnvironmentSettings(this);
             editor.Shell.HistoryHandler = LaunchHistoryWorkspace;
             editor.Shell.CreateTestcaseHandler = (name, draft) => { if (_instances.FirstOrDefault(x => x.Name == name) is { } target) CreateTestcaseForInstance(target, draft); };
             editor.Closed += (_, _) =>

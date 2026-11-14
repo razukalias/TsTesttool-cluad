@@ -229,3 +229,120 @@ public class TreeShotTests
         window.Close();
     }
 }
+
+public class EnvironmentPickerTests
+{
+    private sealed class FakeSettings(params string[] environments) : IEnvironmentSettings
+    {
+        public Dictionary<string, string[]> Saved { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public int Writes { get; private set; }
+        public bool Parallel { get; set; }
+        public IReadOnlyList<string> Environments { get; } = environments;
+        public IReadOnlyList<string> GetSelection(string instanceName) => Saved.GetValueOrDefault(instanceName) ?? [];
+        public bool RunParallel => Parallel;
+        public string? SaveSelections(IReadOnlyDictionary<string, IReadOnlyList<string>> selections)
+        {
+            Writes++;
+            foreach (var (name, list) in selections) Saved[name] = list.ToArray();
+            return null;
+        }
+        public string? SaveRunParallel(bool value) { Parallel = value; return null; }
+    }
+
+    private static (EditorShellViewModel Shell, FakeSettings Settings, List<RunRequest> Runs) Setup(TempDir a, TempDir b)
+    {
+        var shell = new EditorShellViewModel([("One", Samples.CreateLarge(a, rows: 2)), ("Two", Samples.CreateLarge(b, rows: 2))]);
+        var runs = new List<RunRequest>();
+        foreach (var node in shell.Instances) node.Editor!.RunHandler = r => { runs.Add(r); return Task.FromResult<string?>(null); };
+        var settings = new FakeSettings("local", "development", "staging", "production");
+        shell.EnvironmentSettings = settings;
+        return (shell, settings, runs);
+    }
+
+    [Fact]
+    public void An_instance_without_a_saved_selection_runs_in_all_environments()
+    {
+        using var a = new TempDir(); using var b = new TempDir();
+        var (shell, _, _) = Setup(a, b);
+        Assert.True(shell.HasEnvironments);
+        Assert.Equal("All environments", shell.Instances[0].EnvironmentsText);
+        Assert.Equal("All environments", shell.GlobalEnvironmentsText);
+    }
+
+    [Fact]
+    public void Ticking_environments_in_one_instance_saves_only_that_instance()
+    {
+        using var a = new TempDir(); using var b = new TempDir();
+        var (shell, settings, _) = Setup(a, b);
+        var one = shell.Instances[0];
+        one.EnvironmentChoices.First(c => c.Name == "production").IsChosen = false;
+        one.EnvironmentChoices.First(c => c.Name == "staging").IsChosen = false;
+        Assert.Equal(["local", "development"], settings.Saved["One"]);
+        Assert.False(settings.Saved.ContainsKey("Two"));
+        Assert.Equal("local, development", one.EnvironmentsText);
+        Assert.Equal("Mixed", shell.GlobalEnvironmentsText);
+    }
+
+    [Fact]
+    public void The_last_environment_cannot_be_unticked()
+    {
+        using var a = new TempDir(); using var b = new TempDir();
+        var (shell, settings, _) = Setup(a, b);
+        var one = shell.Instances[0];
+        foreach (var c in one.EnvironmentChoices.Skip(1).ToList()) c.IsChosen = false;
+        one.EnvironmentChoices[0].IsChosen = false;
+        Assert.Equal(["local"], settings.Saved["One"]);
+        Assert.True(one.EnvironmentChoices[0].IsChosen);
+    }
+
+    [Fact]
+    public void The_global_drop_down_sets_every_instance_in_one_write()
+    {
+        using var a = new TempDir(); using var b = new TempDir();
+        var (shell, settings, _) = Setup(a, b);
+        shell.GlobalEnvironmentChoices.First(c => c.Name == "production").IsChosen = false;
+        Assert.Equal(1, settings.Writes);
+        Assert.Equal(["local", "development", "staging"], settings.Saved["One"]);
+        Assert.Equal(["local", "development", "staging"], settings.Saved["Two"]);
+        Assert.Equal("local, development, staging", shell.GlobalEnvironmentsText);
+        Assert.Equal("local, development, staging", shell.Instances[1].EnvironmentsText);
+    }
+
+    [Avalonia.Headless.XUnit.AvaloniaFact]
+    public void Environment_pickers_screenshot()
+    {
+        using var a = new TempDir();
+        var window = DataEditorWindow.Open(Samples.CreateLarge(a, rows: 2), null);
+        window.Width = 1200; window.Height = 700;
+        window.Shell.EnvironmentSettings = new FakeSettings("local", "development", "staging", "production");
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var button = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<Avalonia.Controls.Button>().First(x => x.Classes.Contains("treeenv"));
+        button.Flyout!.ShowAt(button);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var shots = Environment.GetEnvironmentVariable("UI_SCREENSHOT_DIR") ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ui-shots");
+        Directory.CreateDirectory(shots);
+        window.CaptureRenderedFrame()!.Save(System.IO.Path.Combine(shots, "editor-environments.png"));
+        window.Close();
+    }
+
+    [Fact]
+    public async Task Parallel_is_saved_globally_and_each_instance_can_differ_for_its_own_runs()
+    {
+        using var a = new TempDir(); using var b = new TempDir();
+        var (shell, settings, runs) = Setup(a, b);
+        shell.GlobalRunParallel = true;
+        Assert.True(settings.Parallel);
+        Assert.All(shell.Instances, i => Assert.True(i.RunParallel));
+
+        shell.Instances[1].RunParallel = false;
+        Assert.False(shell.GlobalRunParallel);
+
+        await shell.RunNodeAsync(shell.Instances[0]);
+        Assert.True(runs[^1].TestcasesParallel);
+        await shell.RunNodeAsync(shell.Instances[1]);
+        Assert.False(runs[^1].TestcasesParallel);
+        await shell.RunNodeAsync(shell.Instances[0].Testcases[0]);
+        Assert.True(runs[^1].TestcasesParallel);
+    }
+}

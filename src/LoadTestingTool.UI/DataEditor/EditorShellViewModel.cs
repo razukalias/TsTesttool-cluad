@@ -226,17 +226,20 @@ public sealed partial class EditorShellViewModel : ObservableObject
             case InstanceNode instance:
                 if (instance.CanLoad) await LoadAsync(instance);
                 if (instance.Editor is not { } ie) return;
-                await ie.RunFromTreeAsync(new RunRequest([], [], ie.RowsMode == DataEditorViewModel.RowsModeOptions[0] ? null : ie.RowsMode.ToLowerInvariant(), null), $"all of {instance.Name}");
+                await ie.RunFromTreeAsync(new RunRequest([], [], ie.RowsMode == DataEditorViewModel.RowsModeOptions[0] ? null : ie.RowsMode.ToLowerInvariant(), HasEnvironments ? instance.RunParallel : null), $"all of {instance.Name}");
                 break;
             case TestcaseItem testcase when EditorOf(testcase) is { } te:
-                await te.RunFromTreeAsync(te.BuildRequest([(testcase, null)]), $"testcase {testcase.Name}");
+                await te.RunFromTreeAsync(te.BuildRequest([(testcase, null)], ParallelFor(testcase)), $"testcase {testcase.Name}");
                 break;
             case StepNode step when EditorOf(step) is { } se:
                 if (!se.IsStepEnabled(step.Owner.Index, step.Name)) { se.Report($"Step {step.Name} is disabled, so it cannot be run on its own. Enable it on the Steps tab first.", isError: true); return; }
-                await se.RunFromTreeAsync(se.BuildRequest([(step.Owner, [step.Name])]), $"step {step.Name} of {step.Owner.Name}");
+                await se.RunFromTreeAsync(se.BuildRequest([(step.Owner, [step.Name])], ParallelFor(step.Owner)), $"step {step.Name} of {step.Owner.Name}");
                 break;
         }
     }
+
+    private bool? ParallelFor(TestcaseItem testcase)
+        => HasEnvironments ? Instances.FirstOrDefault(i => i.Testcases.Contains(testcase))?.RunParallel : null;
 
     /// <summary>Runs everything that is ticked, one run per instance.</summary>
     public async Task RunTickedAsync()
@@ -245,7 +248,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
         foreach (var instance in Instances.Where(i => i.Editor is not null).ToList())
         {
             var editor = instance.Editor!;
-            var (request, label) = editor.BuildTickedRequest();
+            var (request, label) = editor.BuildTickedRequest(HasEnvironments ? instance.RunParallel : null);
             if (request is null) continue;
             await editor.RunFromTreeAsync(request, label);
             started++;
