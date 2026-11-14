@@ -247,6 +247,15 @@ public class EnvironmentPickerTests
             return null;
         }
         public string? SaveRunParallel(bool value) { Parallel = value; return null; }
+        public Dictionary<string, (string Testcases, string Steps)> Selection { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public int SelectionWrites { get; private set; }
+        public (string Testcases, string Steps) GetRunSelection(string instanceName) => Selection.GetValueOrDefault(instanceName, ("0", string.Empty));
+        public string? SaveRunSelection(string instanceName, string testcases, string stepsJson)
+        {
+            SelectionWrites++;
+            Selection[instanceName] = (testcases, stepsJson);
+            return null;
+        }
     }
 
     private static (EditorShellViewModel Shell, FakeSettings Settings, List<RunRequest> Runs) Setup(TempDir a, TempDir b)
@@ -344,5 +353,112 @@ public class EnvironmentPickerTests
         Assert.False(runs[^1].TestcasesParallel);
         await shell.RunNodeAsync(shell.Instances[0].Testcases[0]);
         Assert.True(runs[^1].TestcasesParallel);
+    }
+}
+
+public class SelectionPersistenceTests
+{
+    private sealed class Settings : IEnvironmentSettings
+    {
+        public Dictionary<string, (string Testcases, string Steps)> Selection { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public int Writes { get; private set; }
+        public IReadOnlyList<string> Environments { get; } = [];
+        public IReadOnlyList<string> GetSelection(string instanceName) => [];
+        public bool RunParallel => false;
+        public string? SaveSelections(IReadOnlyDictionary<string, IReadOnlyList<string>> selections) => null;
+        public string? SaveRunParallel(bool value) => null;
+        public (string Testcases, string Steps) GetRunSelection(string instanceName) => Selection.GetValueOrDefault(instanceName, ("0", string.Empty));
+        public string? SaveRunSelection(string instanceName, string testcases, string stepsJson)
+        {
+            Writes++;
+            Selection[instanceName] = (testcases, stepsJson);
+            return null;
+        }
+    }
+
+    // Testcase 1 "Customers" (CreateCustomer) and testcase 2 "Orders" (CreateOrder); testcase 1 gets a second step.
+    private static (EditorShellViewModel Shell, Settings Settings) Open(TempDir dir, Action<Settings>? seed = null)
+    {
+        var path = Samples.CreateLarge(dir, rows: 3);
+        using (var workbook = new XLWorkbook(path))
+        {
+            var config = workbook.Worksheet("config");
+            config.Cell(3, 1).Value = 2; config.Cell(3, 2).Value = "Orders"; config.Cell(3, 3).Value = "CreateOrder"; config.Cell(3, 4).Value = "HTTP";
+            config.Cell(3, 5).Value = "order.json"; config.Cell(3, 6).Value = "https://api.example.test/orders"; config.Cell(3, 7).Value = "POST";
+            workbook.Worksheet("request").Cell(1, 8).Value = "CreateOrder.sku";
+            workbook.Worksheet("response").Cell(1, 7).Value = "{eq}CreateOrder.statusCode";
+            workbook.Save();
+        }
+        var settings = new Settings();
+        seed?.Invoke(settings);
+        var shell = new EditorShellViewModel([("Sample", path)]) { EnvironmentSettings = settings };
+        return (shell, settings);
+    }
+
+    [Fact]
+    public void Saved_selection_is_ticked_when_the_editor_opens()
+    {
+        using var dir = new TempDir();
+        var (shell, settings) = Open(dir, s => s.Selection["Sample"] = ("2", string.Empty));
+        var testcases = shell.Instances[0].Testcases;
+        Assert.False(testcases.First(t => t.Index == 1).IsChosen);
+        Assert.True(testcases.First(t => t.Index == 2).IsChosen);
+        Assert.True(testcases.First(t => t.Index == 2).StepNodes.All(n => n.IsChosen));
+        Assert.Equal(0, settings.Writes); // loading does not write back
+    }
+
+    [Fact]
+    public void Everything_is_ticked_for_the_default_selection()
+    {
+        using var dir = new TempDir();
+        var (shell, _) = Open(dir);
+        Assert.All(shell.Instances[0].Testcases, t => Assert.True(t.IsChosen));
+        Assert.Equal(2, shell.TickedCount);
+    }
+
+    [Fact]
+    public void Unticking_a_testcase_saves_the_remaining_ones()
+    {
+        using var dir = new TempDir();
+        var (shell, settings) = Open(dir);
+        shell.Instances[0].Testcases.First(t => t.Index == 1).ChosenState = false;
+        Assert.Equal(("2", string.Empty), settings.Selection["Sample"]);
+        shell.Instances[0].Testcases.First(t => t.Index == 1).ChosenState = true;
+        Assert.Equal(("0", string.Empty), settings.Selection["Sample"]); // everything again
+    }
+
+    [Fact]
+    public void Unticking_a_step_saves_the_step_list()
+    {
+        using var dir = new TempDir();
+        var (shell, settings) = Open(dir);
+        var vm = shell.Instances[0].Editor!;
+        vm.SelectedTestcase = vm.Testcases.First(t => t.Index == 1);
+        vm.AddStepCommand.Execute(null);
+        var customers = vm.Testcases.First(t => t.Index == 1);
+        var writes = settings.Writes;
+        customers.StepNodes[^1].IsChosen = false;
+        Assert.Equal(writes + 1, settings.Writes);
+        var saved = settings.Selection["Sample"];
+        Assert.Equal("0", saved.Testcases);
+        var steps = System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, string[]>>(saved.Steps)!;
+        Assert.Equal(["CreateCustomer"], steps[1]);
+        Assert.Equal(["CreateOrder"], steps[2]);
+    }
+
+    [Fact]
+    public void The_instance_checkbox_saves_once_and_nothing_ticked_keeps_the_last_selection()
+    {
+        using var dir = new TempDir();
+        var (shell, settings) = Open(dir, s => s.Selection["Sample"] = ("1", string.Empty));
+        var instance = shell.Instances[0];
+        instance.ChosenState = true;
+        Assert.Equal(1, settings.Writes);
+        Assert.Equal("0", settings.Selection["Sample"].Testcases);
+
+        instance.ChosenState = false;
+        Assert.Equal(1, settings.Writes);              // nothing to save for an empty selection
+        Assert.Equal("0", settings.Selection["Sample"].Testcases);
+        Assert.False(shell.HasTicked);
     }
 }

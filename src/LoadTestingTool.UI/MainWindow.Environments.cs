@@ -50,6 +50,45 @@ public sealed partial class MainWindow
             }
         }
 
+        public (string Testcases, string Steps) GetRunSelection(string instanceName)
+        {
+            var item = window._instances.FirstOrDefault(x => x.Name == instanceName);
+            return (item?.TestcaseSelection ?? string.Empty, item?.StepSelectionJson ?? string.Empty);
+        }
+
+        public string? SaveRunSelection(string instanceName, string testcases, string stepsJson)
+        {
+            try
+            {
+                var root = ReadRoot();
+                var instances = root["Instances"] as JsonObject ?? new JsonObject();
+                var instance = instances[instanceName] as JsonObject ?? new JsonObject();
+                instance["TestcaseSelection"] = testcases;
+                instance["StepSelection"] = stepsJson;
+                instances[instanceName] = instance;
+                root["Instances"] = instances;
+                Write(root);
+                if (window._config.Instances.TryGetValue(instanceName, out var central))
+                {
+                    central.TestcaseSelection = testcases;
+                    central.StepSelection = stepsJson;
+                }
+                if (window._instances.FirstOrDefault(x => x.Name == instanceName) is { } item)
+                {
+                    item.TestcaseSelection = testcases;
+                    item.StepSelectionJson = stepsJson;
+                    item.HasAppliedSelection = true;
+                }
+                window.UiLog($"Run selection saved from the data editor. instance={instanceName}; testcases={testcases}; steps={stepsJson}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                window.UiLog($"Could not save the run selection: {ex}");
+                return $"Could not save the selection to {Path.GetFileName(window._config.SettingsFile)}: {ex.Message}";
+            }
+        }
+
         public string? SaveRunParallel(bool value)
         {
             try

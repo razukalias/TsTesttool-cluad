@@ -35,7 +35,11 @@ public sealed partial class InstanceNode : ObservableObject
             if (all.Count == 0) return false;
             return all.All(t => t.ChosenState == true) ? true : all.Any(t => t.IsChosen) ? null : false;
         }
-        set { foreach (var t in Testcases) t.IsChosen = value == true; }
+        set
+        {
+            using (Editor?.BatchSelection())
+                foreach (var t in Testcases) t.IsChosen = value == true;
+        }
     }
 
     public string Subtitle => Error is not null ? "Cannot open: " + Error
@@ -336,6 +340,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
 
     private void Wire(InstanceNode node)
     {
+        AttachSelection(node);
         node.Editor!.TickedChanged += (_, _) => { OnPropertyChanged(nameof(TickedCount)); OnPropertyChanged(nameof(HasTicked)); OnPropertyChanged(nameof(TickedText)); };
         node.Editor!.CreateTestcaseHandler = draft => CreateTestcaseHandler?.Invoke(node.Name, draft);
         node.Editor!.CloseRequested += (_, _) => OnEditorClosed();

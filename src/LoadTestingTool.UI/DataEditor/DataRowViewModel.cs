@@ -61,11 +61,12 @@ public sealed partial class TestcaseItem : ObservableObject
     private void RebuildStepNodes()
     {
         var kept = StepNodes.Where(n => n.IsChosen).Select(n => n.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var known = StepNodes.Select(n => n.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         _syncingChosen = true;
         try
         {
             StepNodes.Clear();
-            for (var i = 0; i < Steps.Count; i++) StepNodes.Add(new StepNode(this, Steps[i], i + 1) { IsChosen = kept.Contains(Steps[i]) });
+            for (var i = 0; i < Steps.Count; i++) StepNodes.Add(new StepNode(this, Steps[i], i + 1) { IsChosen = kept.Contains(Steps[i]) || (IsChosen && !known.Contains(Steps[i])) });
         }
         finally { _syncingChosen = false; }
         OnPropertyChanged(nameof(ChosenState));
@@ -87,7 +88,11 @@ public sealed partial class TestcaseItem : ObservableObject
         try { IsChosen = StepNodes.Any(n => n.IsChosen); }
         finally { _syncingChosen = false; }
         OnPropertyChanged(nameof(ChosenState));
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>Raised once after the ticked testcase or steps changed, however many boxes that took.</summary>
+    internal event EventHandler? SelectionChanged;
 
     public int Index { get; }
     public string Name { get; }
@@ -128,6 +133,20 @@ public sealed partial class TestcaseItem : ObservableObject
         }
         OnPropertyChanged(nameof(ChosenState));
         ChosenChanged?.Invoke(this, EventArgs.Empty);
+        if (!_syncingChosen) SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Ticks a testcase and exactly the given steps (all when null) without raising any change.</summary>
+    internal void SetSelectionSilently(bool chosen, IReadOnlySet<string>? steps)
+    {
+        _syncingChosen = true;
+        try
+        {
+            foreach (var step in StepNodes) step.IsChosen = chosen && (steps is null || steps.Contains(step.Name));
+            IsChosen = chosen;
+        }
+        finally { _syncingChosen = false; }
+        OnPropertyChanged(nameof(ChosenState));
     }
 
     /// <summary>The steps ticked for a run; empty when the testcase is chosen as a whole (or none is ticked).</summary>

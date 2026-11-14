@@ -21,6 +21,12 @@ public interface IEnvironmentSettings
     /// <summary>Saves the chosen environments of one or more instances in one write. Returns null on success, otherwise why not.</summary>
     string? SaveSelections(IReadOnlyDictionary<string, IReadOnlyList<string>> selections);
 
+    /// <summary>The instance's saved testcase selection ("0" or empty = all; otherwise "1,3-5") and step selection (empty = every enabled step, else {"1":["Step"]}).</summary>
+    (string Testcases, string Steps) GetRunSelection(string instanceName);
+
+    /// <summary>Saves which testcases and steps an instance runs. Returns null on success, otherwise why not.</summary>
+    string? SaveRunSelection(string instanceName, string testcases, string stepsJson);
+
     /// <summary>Saves the central parallel flag. Returns null on success, otherwise why not.</summary>
     string? SaveRunParallel(bool value);
 }

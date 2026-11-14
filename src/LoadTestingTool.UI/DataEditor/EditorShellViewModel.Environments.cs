@@ -24,10 +24,20 @@ public sealed partial class EditorShellViewModel
                 instance.EnvironmentsChanged += OnInstanceEnvironmentsChanged;
                 instance.EnvironmentProblem += OnEnvironmentProblem;
             }
+            foreach (var instance in Instances.Where(i => i.Editor is not null)) AttachSelection(instance);
             RebuildGlobalEnvironments();
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasEnvironments));
         }
+    }
+
+    /// <summary>Loads an instance's saved testcase/step selection into its tick boxes and saves later changes back.</summary>
+    private void AttachSelection(InstanceNode node)
+    {
+        if (node.Editor is not { } editor || _environmentSettings is not { } settings) return;
+        editor.SelectionSaver = (testcases, steps) => settings.SaveRunSelection(node.Name, testcases, steps);
+        var (savedTestcases, savedSteps) = settings.GetRunSelection(node.Name);
+        editor.ApplySavedSelection(savedTestcases, savedSteps);
     }
 
     public ObservableCollection<EnvironmentChoice> GlobalEnvironmentChoices { get; } = [];

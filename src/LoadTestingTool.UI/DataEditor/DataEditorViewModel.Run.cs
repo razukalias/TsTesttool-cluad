@@ -60,7 +60,106 @@ public sealed partial class DataEditorViewModel
     private TestcaseItem Track(TestcaseItem item)
     {
         item.ChosenChanged += (_, _) => { OnPropertyChanged(nameof(RunSummary)); TickedChanged?.Invoke(this, EventArgs.Empty); };
+        item.SelectionChanged += (_, _) => OnSelectionChanged();
         return item;
+    }
+
+    // ---- Selection saved to the central settings ---------------------------------------------
+
+    /// <summary>Saves the ticked testcases and steps (testcases, steps JSON); returns why it could not. Set by the shell.</summary>
+    internal Func<string, string, string?>? SelectionSaver { get; set; }
+
+    private int _selectionBatch;
+    private bool _selectionPending, _applyingSelection;
+
+    /// <summary>Groups several tick changes into one save.</summary>
+    internal IDisposable BatchSelection()
+    {
+        _selectionBatch++;
+        return new SelectionBatch(this);
+    }
+
+    private sealed class SelectionBatch(DataEditorViewModel owner) : IDisposable
+    {
+        private bool _done;
+        public void Dispose()
+        {
+            if (_done) return;
+            _done = true;
+            owner._selectionBatch--;
+            if (owner._selectionBatch == 0 && owner._selectionPending) owner.SaveSelection();
+        }
+    }
+
+    private void OnSelectionChanged()
+    {
+        TickedChanged?.Invoke(this, EventArgs.Empty);
+        if (_applyingSelection || SelectionSaver is null) return;
+        _selectionPending = true;
+        if (_selectionBatch == 0) SaveSelection();
+    }
+
+    private void SaveSelection()
+    {
+        _selectionPending = false;
+        if (SelectionSaver is null) return;
+        var (testcases, steps) = BuildSelectionSetting();
+        if (testcases is null) { ShowStatus("Nothing is ticked, so the saved selection stays as it was. Tick at least one testcase or step.", isError: false); return; }
+        var problem = SelectionSaver(testcases, steps);
+        if (problem is not null) ShowStatus(problem, isError: true);
+    }
+
+    /// <summary>
+    /// What the ticks mean in the central settings: the testcase expression ("0" = all) and the step JSON
+    /// (empty = every enabled step). Testcases without an enabled ticked step are left out. Null testcases = nothing to run.
+    /// </summary>
+    private (string? Testcases, string Steps) BuildSelectionSetting()
+    {
+        var chosen = new List<(TestcaseItem Testcase, List<string> Steps, bool All)>();
+        foreach (var testcase in Testcases)
+        {
+            var enabled = EnabledSteps(testcase.Index);
+            var ticked = testcase.StepNodes.Count == 0
+                ? (testcase.IsChosen ? enabled.ToList() : [])
+                : testcase.StepNodes.Where(n => n.IsChosen && enabled.Contains(n.Name, StringComparer.OrdinalIgnoreCase)).Select(n => n.Name).ToList();
+            if (ticked.Count > 0) chosen.Add((testcase, ticked, ticked.Count == enabled.Count));
+        }
+        if (chosen.Count == 0) return (null, string.Empty);
+        var everyTestcase = chosen.Count == Testcases.Count(t => EnabledSteps(t.Index).Count > 0);
+        var testcases = everyTestcase ? "0" : string.Join(',', chosen.Select(c => c.Testcase.Index.ToString(CultureInfo.InvariantCulture)));
+        var steps = chosen.All(c => c.All)
+            ? string.Empty
+            : System.Text.Json.JsonSerializer.Serialize(chosen.ToDictionary(c => c.Testcase.Index, c => c.Steps.ToArray()));
+        return (testcases, steps);
+    }
+
+    /// <summary>Ticks what the central settings select, without saving it back.</summary>
+    internal void ApplySavedSelection(string testcases, string stepsJson)
+    {
+        _applyingSelection = true;
+        try
+        {
+            IReadOnlyList<int> indexes;
+            try { indexes = new LoadTestingTool.Validation.TestcaseSelectionParser().Parse(testcases, Testcases.Select(t => t.Index)); }
+            catch (Exception ex) when (ex is FormatException or InvalidOperationException) { indexes = Testcases.Select(t => t.Index).ToList(); }
+            Dictionary<int, string[]>? steps = null;
+            if (!string.IsNullOrWhiteSpace(stepsJson))
+            {
+                try { steps = System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, string[]>>(stepsJson); }
+                catch (System.Text.Json.JsonException) { }
+            }
+            foreach (var testcase in Testcases)
+            {
+                var picked = indexes.Contains(testcase.Index);
+                IReadOnlySet<string>? names = steps is not null && steps.TryGetValue(testcase.Index, out var listed)
+                    ? new HashSet<string>(listed, StringComparer.OrdinalIgnoreCase)
+                    : null;
+                testcase.SetSelectionSilently(picked, names);
+            }
+        }
+        finally { _applyingSelection = false; }
+        TickedChanged?.Invoke(this, EventArgs.Empty);
+        OnPropertyChanged(nameof(RunSummary));
     }
 
     /// <summary>Raised when a tick box in the tree changed.</summary>
@@ -93,7 +192,8 @@ public sealed partial class DataEditorViewModel
     internal (RunRequest? Request, string Label) BuildTickedRequest(bool? parallel = null)
     {
         var chosen = Testcases.Where(t => t.IsChosen)
-            .Select(t => (t, (IReadOnlyList<string>?)(t.StepNodes.Count > 0 && t.StepNodes.Any(n => !n.IsChosen) ? t.ChosenSteps : null)))
+            .Select(t => (t, (IReadOnlyList<string>?)(t.StepNodes.Count > 0 && t.StepNodes.Any(n => !n.IsChosen) ? t.ChosenSteps.Where(n => IsStepEnabled(t.Index, n)).ToList() : null)))
+            .Where(c => c.Item2 is null || c.Item2.Count > 0)
             .ToList();
         if (chosen.Count == 0) return (null, string.Empty);
         var stepCount = chosen.Sum(c => c.Item2?.Count ?? c.t.StepNodes.Count);
