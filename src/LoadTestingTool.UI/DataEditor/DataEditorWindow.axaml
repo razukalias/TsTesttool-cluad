@@ -81,6 +81,11 @@
               <MenuItem Header="Move down (runs later)" Command="{Binding Current.MoveTestcaseDownCommand}" IsEnabled="{Binding TestcaseNodeSelected}" />
               <Separator />
               <MenuItem Header="Delete testcase…" Command="{Binding Current.OpenDeleteTestcaseCommand}" IsEnabled="{Binding TestcaseNodeSelected}" />
+              <Separator />
+              <MenuItem Header="Rename step…" Command="{Binding Current.OpenRenameStepCommand}" IsEnabled="{Binding StepNodeSelected}" />
+              <MenuItem Header="Move step up (runs earlier)" Command="{Binding Current.MoveStepUpCommand}" IsEnabled="{Binding StepNodeSelected}" />
+              <MenuItem Header="Move step down (runs later)" Command="{Binding Current.MoveStepDownCommand}" IsEnabled="{Binding StepNodeSelected}" />
+              <MenuItem Header="Remove step" Command="{Binding Current.RemoveStepCommand}" IsEnabled="{Binding StepNodeSelected}" />
             </ContextMenu>
           </TreeView.ContextMenu>
           <TreeView.DataTemplates>
@@ -94,13 +99,16 @@
                 </StackPanel>
               </Grid>
             </TreeDataTemplate>
-            <DataTemplate DataType="vm:TestcaseItem">
+            <DataTemplate DataType="vm:StepNode">
+              <TextBlock Text="{Binding Title}" FontSize="12" Margin="0,2" TextTrimming="CharacterEllipsis" />
+            </DataTemplate>
+            <TreeDataTemplate DataType="vm:TestcaseItem" ItemsSource="{Binding StepNodes}">
               <StackPanel Spacing="1" Margin="0,3">
                 <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                 <TextBlock Text="{Binding Summary}" FontSize="11" Foreground="#8EA4BC" />
                 <TextBlock Text="{Binding ResultText}" IsVisible="{Binding HasResults}" Foreground="{Binding ResultColor}" FontSize="11" FontWeight="SemiBold" />
               </StackPanel>
-            </DataTemplate>
+            </TreeDataTemplate>
           </TreeView.DataTemplates>
         </TreeView>
       </DockPanel>

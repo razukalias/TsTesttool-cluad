@@ -9,7 +9,7 @@ namespace LoadTestingTool.UI.DataEditor;
 // Every action is an in-memory edit (one undo step) and is saved with the rest.
 public sealed partial class DataEditorViewModel
 {
-    private enum TestcaseAction { None, Rename, Copy, Delete }
+    private enum TestcaseAction { None, Rename, Copy, Delete, RenameStep }
 
     private TestcaseAction _testcaseAction;
 
@@ -30,6 +30,28 @@ public sealed partial class DataEditorViewModel
         TestcasePanelName = testcase.Name;
         TestcasePanelConfirmText = "Rename";
         TestcasePanelNote = "Changes the name on every row of this testcase in the config, request and response sheets.";
+        OpenTestcasePanel(asksName: true, isDelete: false);
+    }
+
+    /// <summary>Selects a step by name (from the tree); shows its data columns, or its settings on the Steps tab.</summary>
+    public void SelectStepNamed(string name, bool showSettings)
+    {
+        var step = StepRows.FirstOrDefault(r => string.Equals(r.CurrentName, name, StringComparison.OrdinalIgnoreCase));
+        if (step is null) return;
+        SelectedStep = step;
+        if (showSettings) ShowSteps = true;
+        else ShowStepData();
+    }
+
+    [RelayCommand]
+    private void OpenRenameStep()
+    {
+        if (SelectedStep is not { } step) return;
+        _testcaseAction = TestcaseAction.RenameStep;
+        TestcasePanelTitle = $"RENAME STEP · {step.CurrentName}";
+        TestcasePanelName = step.CurrentName;
+        TestcasePanelConfirmText = "Rename";
+        TestcasePanelNote = "Renames the step and its request and response data columns, and updates references to it (dontrun, extractvariable, runtime references).";
         OpenTestcasePanel(asksName: true, isDelete: false);
     }
 
@@ -73,6 +95,15 @@ public sealed partial class DataEditorViewModel
         var index = testcase.Index;
         var action = _testcaseAction;
         var name = TestcasePanelName.Trim();
+        if (action == TestcaseAction.RenameStep)
+        {
+            if (SelectedStep is not { } step) return;
+            TestcasePanelVisible = false;
+            _testcaseAction = TestcaseAction.None;
+            OnStepEdited(step, 0, name);
+            if (!ReferenceEquals(step.CurrentName, name) && step.CurrentName == name) step.SetCellSilently(0, name);
+            return;
+        }
         Record($"{action.ToString().ToLowerInvariant()} testcase {testcase.Title}");
         try
         {

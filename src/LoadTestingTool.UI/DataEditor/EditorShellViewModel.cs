@@ -131,13 +131,24 @@ public sealed partial class EditorShellViewModel : ObservableObject
     public IReadOnlyList<string> SavedWorkbookPaths => Instances.Where(i => i.Editor?.LastBackupPath is not null).Select(i => i.Path).ToList();
 
     /// <summary>True when a testcase (not an instance) is selected in the tree, so the testcase menu applies.</summary>
-    public bool TestcaseNodeSelected => SelectedNode is TestcaseItem;
+    public bool TestcaseNodeSelected => SelectedNode is TestcaseItem or StepNode;
+
+    /// <summary>True when a step is selected in the tree, so the step menu applies.</summary>
+    public bool StepNodeSelected => SelectedNode is StepNode;
 
     partial void OnSelectedNodeChanged(object? value)
     {
         OnPropertyChanged(nameof(TestcaseNodeSelected));
+        OnPropertyChanged(nameof(StepNodeSelected));
         switch (value)
         {
+            case StepNode step:
+                var stepOwner = Instances.FirstOrDefault(n => n.Testcases.Contains(step.Owner));
+                if (stepOwner?.Editor is not { } stepEditor) return;
+                Current = stepEditor;
+                if (!ReferenceEquals(stepEditor.SelectedTestcase, step.Owner)) stepEditor.SelectedTestcase = step.Owner;
+                stepEditor.SelectStepNamed(step.Name, showSettings: false);
+                break;
             case InstanceNode { Editor: { } editor }:
                 Current = editor;
                 break;
@@ -187,7 +198,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
         node.Editor.HistoryHandler = testcase => HistoryHandler?.Invoke(node.Name, testcase);
         node.SelectedTestcaseChanged += (_, _) =>
         {
-            if (ReferenceEquals(Current, node.Editor) && node.Editor!.SelectedTestcase is { } chosen && !ReferenceEquals(SelectedNode, chosen)) SelectedNode = chosen;
+            if (ReferenceEquals(Current, node.Editor) && node.Editor!.SelectedTestcase is { } chosen2 && !ReferenceEquals(SelectedNode, chosen2) && !(SelectedNode is StepNode sn && ReferenceEquals(sn.Owner, chosen2))) SelectedNode = chosen2;
         };
         node.Editor.RunHandler = request => RunHandler is { } run ? run(node.Name, request) : Task.FromResult<string?>("Running is not available here.");
     }

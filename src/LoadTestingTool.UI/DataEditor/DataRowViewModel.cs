@@ -13,6 +13,15 @@ public enum ColumnGroup { Id, Request, Response }
 /// <param name="SheetColumn">Position of the column in its <see cref="SheetTable"/>.</param>
 public sealed record GridColumn(string Title, ColumnGroup Group, int CellIndex, int SheetColumn);
 
+/// <summary>One step under a testcase in the tree.</summary>
+public sealed class StepNode(TestcaseItem owner, string name, int position)
+{
+    public TestcaseItem Owner { get; } = owner;
+    public string Name { get; } = name;
+    public int Position { get; } = position;
+    public string Title => $"{Position} · {Name}";
+}
+
 public sealed partial class TestcaseItem : ObservableObject
 {
     public TestcaseItem(TestcaseInfo info, int rowCount)
@@ -21,6 +30,16 @@ public sealed partial class TestcaseItem : ObservableObject
         Name = info.Name;
         Steps = info.Steps;
         _rowCount = rowCount;
+        RebuildStepNodes();
+    }
+
+    /// <summary>The steps as children of the testcase in the tree, in run order.</summary>
+    public ObservableCollection<StepNode> StepNodes { get; } = [];
+
+    private void RebuildStepNodes()
+    {
+        StepNodes.Clear();
+        for (var i = 0; i < Steps.Count; i++) StepNodes.Add(new StepNode(this, Steps[i], i + 1));
     }
 
     public int Index { get; }
@@ -30,6 +49,7 @@ public sealed partial class TestcaseItem : ObservableObject
     public void UpdateSteps(IReadOnlyList<string> steps)
     {
         Steps = steps;
+        if (!StepNodes.Select(n => n.Name).SequenceEqual(steps)) RebuildStepNodes();
         OnPropertyChanged(nameof(Steps));
         OnPropertyChanged(nameof(Summary));
     }
