@@ -6,6 +6,47 @@ namespace LoadTestingTool.UI;
 // Lets the data editor choose environments and the parallel flag in the same central settings file the dashboard and runner use.
 public sealed partial class MainWindow
 {
+    // Hosts the dashboard's detail tabs in the editor and keeps them on the instance selected there.
+    private sealed class EditorRunDetails(MainWindow window) : DataEditor.IRunDetails
+    {
+        public Avalonia.Controls.TabControl TakeTabs()
+        {
+            if (window._detailTabs.Parent is Avalonia.Controls.Panel panel) panel.Children.Remove(window._detailTabs);
+            else if (window._detailTabs.Parent is Avalonia.Controls.ContentControl holder) holder.Content = null;
+            return window._detailTabs;
+        }
+
+        public void Show(string instanceName)
+        {
+            var item = window._instances.FirstOrDefault(x => x.Name == instanceName);
+            if (item is null) return;
+            window.LoadLastRun(item);
+            window._selectedInstance = item;
+            window.ShowDetails(item);
+        }
+    }
+
+    // With no run in this session, replays the newest saved run so the views show its last results.
+    private void LoadLastRun(InstanceInfo item)
+    {
+        if (item.Process is { HasExited: false } || !string.IsNullOrWhiteSpace(item.CurrentRunFolder) || item.Requests.Count > 0 || item.EventLinePositions.Count > 0) return;
+        try
+        {
+            var newest = new[] { item.ResultsFolder, item.LogsFolder }
+                .Where(Directory.Exists)
+                .SelectMany(folder => Directory.GetFiles(folder, "events_*.ndjson", SearchOption.AllDirectories))
+                .Select(file => new FileInfo(file))
+                .OrderByDescending(file => file.LastWriteTimeUtc)
+                .FirstOrDefault();
+            if (newest is null) return;
+            var name = Path.GetFileNameWithoutExtension(newest.Name)["events_".Length..];
+            item.CurrentRunId = name.Length >= 25 ? name[..25] : name;
+            item.CurrentRunFolder = newest.DirectoryName ?? string.Empty;
+            UiLog($"Loading the last saved run for the editor. instance={item.Name}; runId={item.CurrentRunId}; folder={item.CurrentRunFolder}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { UiLog($"Could not find the last run of {item.Name}: {ex.Message}"); }
+    }
+
     private sealed class EditorEnvironmentSettings(MainWindow window) : DataEditor.IEnvironmentSettings
     {
         public IReadOnlyList<string> Environments

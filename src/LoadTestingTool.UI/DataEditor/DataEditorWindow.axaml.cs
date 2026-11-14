@@ -24,6 +24,8 @@ public partial class DataEditorWindow : Window
         shell.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(EditorShellViewModel.Current)) AttachCurrent();
+            if (e.PropertyName == nameof(EditorShellViewModel.RunDetails)) AttachRunDetails();
+            if (e.PropertyName == nameof(EditorShellViewModel.SelectedNode)) shell.ShowRunDetails();
         };
         shell.CloseRequested += (_, _) =>
         {
@@ -44,6 +46,25 @@ public partial class DataEditorWindow : Window
             _resultsTimer.Start();
         };
         Closed += (_, _) => _resultsTimer?.Stop();
+    }
+
+    private bool _runDetailsAttached;
+
+    /// <summary>Puts the dashboard's run views beside the workbook panel (problems, preview) as extra tabs.</summary>
+    private void AttachRunDetails()
+    {
+        if (_runDetailsAttached || _shell.RunDetails is not { } details) return;
+        _runDetailsAttached = true;
+        var tabs = details.TakeTabs();
+        var host = this.FindControl<Border>("RightHost")!;
+        var side = this.FindControl<Grid>("WorkbookSide")!;
+        host.Child = null;
+        var items = new List<object> { new TabItem { Header = "Workbook", Content = side } };
+        if (tabs.ItemsSource is not null) items.AddRange(tabs.ItemsSource.Cast<object>());
+        tabs.ItemsSource = items;
+        tabs.SelectedIndex = 0;
+        host.Child = tabs;
+        _shell.ShowRunDetails();
     }
 
     public EditorShellViewModel Shell => _shell;

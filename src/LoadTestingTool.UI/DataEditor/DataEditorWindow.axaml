@@ -384,7 +384,7 @@
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*" MinWidth="300" />
         <ColumnDefinition Width="Auto" />
-        <ColumnDefinition Width="330" MinWidth="200" />
+        <ColumnDefinition Width="460" MinWidth="240" />
       </Grid.ColumnDefinitions>
       <GridSplitter Grid.Column="1" Width="6" Background="Transparent" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Cursor="SizeWestEast" ToolTip.Tip="Drag to resize" />
 
@@ -587,7 +587,8 @@
         </Border>
       </Grid>
 
-      <Grid Grid.Column="2" RowDefinitions="*,Auto">
+      <Border x:Name="RightHost" Grid.Column="2">
+      <Grid x:Name="WorkbookSide" RowDefinitions="*,Auto">
       <Border Classes="panel" Padding="14" IsVisible="{Binding PreviewVisible}">
         <DockPanel>
           <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
@@ -659,6 +660,7 @@
         </DockPanel>
       </Border>
       </Grid>
+      </Border>
     </Grid>
 
     <!-- Status line -->

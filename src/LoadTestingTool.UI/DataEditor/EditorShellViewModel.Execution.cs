@@ -6,6 +6,20 @@ namespace LoadTestingTool.UI.DataEditor;
 public sealed partial class EditorShellViewModel
 {
     private ExecutionSettings? _execution;
+    private IRunDetails? _runDetails;
+
+    /// <summary>Supplies the dashboard's run views (overview, summary, assertions, artifacts); set by whoever hosts the editor.</summary>
+    public IRunDetails? RunDetails
+    {
+        get => _runDetails;
+        set { _runDetails = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>Points the run views at the instance of the selected node.</summary>
+    public void ShowRunDetails()
+    {
+        if (_runDetails is { } details && InstanceFor(SelectedNode) is { } instance) details.Show(instance.Name);
+    }
 
     /// <summary>The global row-execution boxes; null while the host supplies no central settings.</summary>
     public ExecutionSettings? Execution

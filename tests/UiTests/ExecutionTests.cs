@@ -168,3 +168,36 @@ public class ExecutionTests
 
     private static Avalonia.Interactivity.RoutedEvent InputElementLostFocus => Avalonia.Input.InputElement.LostFocusEvent;
 }
+
+public class RunDetailsTests
+{
+    private sealed class Details : IRunDetails
+    {
+        public List<string> Shown { get; } = [];
+        public TabControl TakeTabs() => new() { ItemsSource = new[] { new TabItem { Header = "Overview", Content = new TextBlock { Text = "overview body" } }, new TabItem { Header = "Assertions", Content = new TextBlock { Text = "assert body" } } } };
+        public void Show(string instanceName) => Shown.Add(instanceName);
+    }
+
+    [AvaloniaFact]
+    public void Run_views_become_tabs_beside_the_workbook_panel_and_follow_the_selected_instance()
+    {
+        using var dir = new TempDir();
+        var shell = new EditorShellViewModel([("Sample", Samples.CreateLarge(dir, rows: 3))]);
+        var window = new DataEditorWindow(shell);
+        window.Show();
+        var details = new Details();
+        shell.RunDetails = details;
+        var tabs = window.FindControl<Border>("RightHost")!.Child as TabControl;
+        Assert.NotNull(tabs);
+        Assert.Equal(["Workbook", "Overview", "Assertions"], tabs!.Items.Cast<TabItem>().Select(t => t.Header?.ToString()).ToArray());
+        Assert.Contains("Sample", details.Shown);
+        details.Shown.Clear();
+        shell.SelectedNode = shell.Instances[0];
+        Assert.Equal(["Sample"], details.Shown.Distinct().ToArray());
+        var shots = Environment.GetEnvironmentVariable("UI_SCREENSHOT_DIR") ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ui-shots");
+        Directory.CreateDirectory(shots);
+        tabs.SelectedIndex = 1;
+        window.CaptureRenderedFrame()!.Save(System.IO.Path.Combine(shots, "editor-run-tabs.png"));
+        window.Close();
+    }
+}
