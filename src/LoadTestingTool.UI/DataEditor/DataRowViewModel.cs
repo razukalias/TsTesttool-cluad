@@ -25,6 +25,9 @@ public sealed partial class StepNode(TestcaseItem owner, string name, int positi
     [ObservableProperty] private bool _isChosen;
     partial void OnIsChosenChanged(bool value) => Owner.StepChosenChanged();
 
+    /// <summary>Ticked to give this step the last run's generated values in the next run (a re-run); clears when that run starts.</summary>
+    [ObservableProperty] private bool _reuseValues;
+
     /// <summary>Steps have no children; present so the tree's expand binding is uniform.</summary>
     [ObservableProperty] private bool _isExpanded = true;
 

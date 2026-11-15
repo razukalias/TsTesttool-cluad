@@ -42,6 +42,24 @@ public sealed class RunValueMemory
     /// <summary>Which data row, iteration and step the running code belongs to; set by the runner around each step.</summary>
     public static AsyncLocal<string?> StepScope { get; } = new();
 
+    /// <summary>The step whose cell the workbook reader is compiling (null for a cell no step owns); lets a re-run reuse values for chosen steps only.</summary>
+    [ThreadStatic] private static string? _cellOwner;
+    public static string? CellOwner { get => _cellOwner; set => _cellOwner = value; }
+
+    private bool _reuseAll = true;
+    private HashSet<string> _reuseSteps = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Limits reuse to the named steps (null = every step). Cells no step owns follow whenever any step reuses.</summary>
+    public void ReuseOnly(IEnumerable<string>? steps)
+    {
+        lock (_gate) { _reuseAll = steps is null; _reuseSteps = new HashSet<string>(steps ?? [], StringComparer.OrdinalIgnoreCase); }
+    }
+
+    private bool Applies(string? step) => _reuseAll || (step is null ? _reuseSteps.Count > 0 : _reuseSteps.Contains(step));
+
+    /// <summary>The name of the step the running code belongs to; set by the runner around each step.</summary>
+    public static AsyncLocal<string?> StepName { get; } = new();
+
     private const int LargestRemembered = 512 * 1024;
     private readonly Dictionary<string, int> _stepOccurrences = new(StringComparer.Ordinal);
 
@@ -59,7 +77,7 @@ public sealed class RunValueMemory
             var baseKey = $"{sheet}|{row}|{rawCellText}|{token}";
             var key = $"{baseKey}|{_occurrences.GetValueOrDefault(baseKey)}";
             _occurrences[baseKey] = _occurrences.GetValueOrDefault(baseKey) + 1;
-            var value = Reuse && _previous.Generated.TryGetValue(key, out var old) ? old : make();
+            var value = Reuse && Applies(CellOwner) && _previous.Generated.TryGetValue(key, out var old) ? old : make();
             _current.Generated[key] = value;
             return value;
         }
@@ -80,7 +98,7 @@ public sealed class RunValueMemory
             var n = _stepOccurrences.GetValueOrDefault(baseKey);
             _stepOccurrences[baseKey] = n + 1;
             key = $"{baseKey}|{n}";
-            if (Reuse && _previous.Steps.TryGetValue(key, out var old)) { _current.Steps[key] = old; return old; }
+            if (Reuse && Applies(StepName.Value) && _previous.Steps.TryGetValue(key, out var old)) { _current.Steps[key] = old; return old; }
         }
         var resolved = await resolve();
         if (!string.Equals(resolved, text, StringComparison.Ordinal) && resolved.Length <= LargestRemembered) lock (_gate) _current.Steps[key] = resolved;

@@ -42,4 +42,21 @@ public class RerunCheckboxTests
         vm.ReloadCommand.Execute(null);
         Assert.False(vm.ReuseLastValues);
     }
+
+    [Fact]
+    public async Task Ticked_steps_are_sent_as_the_steps_to_reuse_and_clear_with_the_run()
+    {
+        using var dir = new TempDir();
+        var (vm, requests) = Editor(dir);
+        var step = vm.Testcases[0].StepNodes[0];
+        step.ReuseValues = true;
+
+        await vm.RunTestcaseCommand.ExecuteAsync(null);
+        await vm.RunTestcaseCommand.ExecuteAsync(null);
+
+        Assert.False(requests[0].Rerun);
+        Assert.Equal(new[] { step.Name }, requests[0].RerunSteps![vm.Testcases[0].Index]);
+        Assert.Null(requests[1].RerunSteps);
+        Assert.False(step.ReuseValues);
+    }
 }

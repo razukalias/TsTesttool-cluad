@@ -545,7 +545,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
     [RelayCommand]
     private void Reload()
     {
-        ReuseLastValues = false;
+        ClearReuseChoices();
         var keep = SelectedTestcase?.Index;
         _document = WorkbookDocument.Load(WorkbookPath);
         _referenceScan = null;

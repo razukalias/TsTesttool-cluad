@@ -258,6 +258,7 @@
                       <TextBlock Text="{Binding Run.Counts}" IsVisible="{Binding Run.HasCounts}" Foreground="{Binding Run.Tint}" FontSize="10.5" VerticalAlignment="Center" />
                     </StackPanel>
                   </Button>
+                  <CheckBox Classes="treecheck" Content="↻" IsChecked="{Binding ReuseValues, Mode=TwoWay}" FontSize="12" Margin="0,0,2,0" ToolTip.Tip="Reuse the last run's random numbers, GUIDs, dates and response values for this step in the next run (clears when the run starts)" />
                   <Button Classes="treerun" Tag="run" Content="▶" IsEnabled="{Binding Owner.InstanceRun.NotRunning}" ToolTip.Tip="Run this step" />
                   <Button Classes="treemove" Tag="up" Content="▲" ToolTip.Tip="Run earlier" />
                   <Button Classes="treemove" Tag="down" Content="▼" ToolTip.Tip="Run later" />

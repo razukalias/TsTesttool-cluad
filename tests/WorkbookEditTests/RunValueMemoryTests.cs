@@ -132,4 +132,37 @@ public class RunValueMemoryTests
         Assert.Equal("value-3", await rerun.StepTextAsync("body <script>", Resolve));          // another step does not borrow it
         RunValueMemory.StepScope.Value = null;
     }
+
+    [Fact]
+    public void Only_the_chosen_steps_get_their_old_values_back()
+    {
+        using var dir = new TempDir();
+        var path = Workbooks.CreateSmall(dir, (config, request, _) =>
+        {
+            config.Cell(3, 1).Value = 1; config.Cell(3, 2).Value = "Flow"; config.Cell(3, 3).Value = "Second"; config.Cell(3, 4).Value = "HTTP";
+            config.Cell(3, 5).Value = "create.json"; config.Cell(3, 6).Value = "http://host/x"; config.Cell(3, 7).Value = "POST"; config.Cell(3, 8).Value = true;
+            request.Cell(1, 6).Value = "CreatePost.code"; request.Cell(1, 7).Value = "Second.code";
+            request.Cell(2, 6).Value = "<randomnumber:000000>"; request.Cell(2, 7).Value = "<randomnumber:000000>";
+        });
+        (string First, string Second) Read(bool reuse, string[]? only)
+        {
+            var memory = new RunValueMemory(path);
+            memory.ReuseOnly(only);
+            RunValueMemory.Active = memory;
+            try
+            {
+                memory.BeginRead(reuse);
+                var vars = new WorkbookReader().Read(path).RequestData[(1, "D1")].Variables;
+                memory.Save();
+                return (vars["CreatePost.code"], vars["Second.code"]);
+            }
+            finally { RunValueMemory.Active = null; }
+        }
+
+        var original = Read(false, null);
+        var rerun = Read(true, ["CreatePost"]);
+
+        Assert.Equal(original.First, rerun.First);       // chosen: same as last run
+        Assert.NotEqual(original.Second, rerun.Second);  // not chosen: new
+    }
 }

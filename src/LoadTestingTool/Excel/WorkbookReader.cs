@@ -25,6 +25,7 @@ public sealed class WorkbookReader
             var testcase = Text(configHeaders, row, "testcase");
             var stepName = Text(configHeaders, row, "stepname");
             var template = Text(configHeaders, row, "templetsource");
+            RunValueMemory.CellOwner = stepName;
             var url = Compile(Text(configHeaders, row, "targeturl"), workbook, config, compiledCellCache, row.RowNumber());
             var stepType = StepTypeParser.Parse(Text(configHeaders, row, "steptype", "HTTP"));
             if (string.IsNullOrWhiteSpace(testcase) || string.IsNullOrWhiteSpace(stepName)) throw new InvalidDataException($"config row {row.RowNumber()} is missing testcase or stepname.");
@@ -43,6 +44,7 @@ public sealed class WorkbookReader
                 AssertOnlyResponse = Bool(configHeaders, row, "assertonlyresponse", Bool(configHeaders, row, "assertonlyinresponse", false)),
                 Environments = [], Headers = ExtractHeaders(configHeaders, row, workbook, config, compiledCellCache)
             });
+            RunValueMemory.CellOwner = null;
         }
         var duplicate = steps.GroupBy(s => (s.TestcaseIndex, s.StepName), StepTupleComparer.Instance).FirstOrDefault(g => g.Count() > 1);
         if (duplicate is not null) throw new InvalidDataException($"Duplicate config testcaseindex + stepname: {duplicate.Key.Item1} + {duplicate.Key.Item2}.");
@@ -82,7 +84,10 @@ public sealed class WorkbookReader
                 var cellKey = $"{sheet.Name}!{column.Key}!{row.RowNumber()}";
                 if (!compiledCellCache.TryGetValue(cellKey, out var compiledValue))
                 {
+                    // "CreateCustomer.name" belongs to step CreateCustomer; a header without a step prefix is shared.
+                    RunValueMemory.CellOwner = column.Key.Contains('.') ? column.Key[..column.Key.IndexOf('.')] : null;
                     compiledValue = Compile(Text(h, row, column.Key), workbook, sheet, compiledCellCache, row.RowNumber());
+                    RunValueMemory.CellOwner = null;
                     compiledCellCache[cellKey] = compiledValue;
                 }
                 vars[variableName] = compiledValue;
@@ -108,7 +113,9 @@ public sealed class WorkbookReader
             {
                 if (column.Key is "testcaseindex" or "testcase" or "dataid" or "extractvariable") continue;
                 var (stepName, path, headerVerb) = ParseAssertionHeader(column.Key);
+                RunValueMemory.CellOwner = stepName;
                 var cell = Compile(row.Cell(column.Value).GetString().Trim(), workbook, sheet, compiledCellCache, row.RowNumber());
+                RunValueMemory.CellOwner = null;
                 // Empty cells normally mean that no equality/content assertion was configured.
                 // Structural assertions are different: {empty}, {notempty}, {exists}, and
                 // {notexists} intentionally use a blank expected value.

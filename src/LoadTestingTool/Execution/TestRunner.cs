@@ -70,6 +70,7 @@ public sealed class TestRunner
                     try
                     {
                         RunValueMemory.StepScope.Value = $"{rowKey}|{request.StepName}";
+                        RunValueMemory.StepName.Value = request.StepName;
                         variables = StepVariables(data, request.StepName);
                         redactedVariables = StepRedactedVariables(data, request.StepName);
                         if (!string.IsNullOrWhiteSpace(environment)) variables["env"] = environment;

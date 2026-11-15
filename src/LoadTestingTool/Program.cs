@@ -44,8 +44,11 @@ internal static class Program
             config.RowsExecutionMode = GetCommandLineValue(args, "--rows-execution-mode") ?? GetCommandLineValue(args, "--execution-mode") ?? config.RowsExecutionMode;
             var dataIdSelection = GetCommandLineValue(args, "--dataids") ?? config.DataIdSelection;
             var stepSelection = GetCommandLineValue(args, "--steps") ?? config.StepSelection;
-            // --rerun: use the random numbers, GUIDs, dates, script results and response values of the last run instead of making new ones.
-            var rerun = args.Any(a => a.Equals("--rerun", StringComparison.OrdinalIgnoreCase)) && !string.Equals(GetCommandLineValue(args, "--rerun"), "false", StringComparison.OrdinalIgnoreCase);
+            // --rerun: use the random numbers, GUIDs, dates, script results and response values of the last run instead of making new ones, for every step.
+            // --rerun-steps {"1":["StepB"]}: the same, only for those steps (the others in the run generate new values).
+            var rerunAll = args.Any(a => a.Equals("--rerun", StringComparison.OrdinalIgnoreCase)) && !string.Equals(GetCommandLineValue(args, "--rerun"), "false", StringComparison.OrdinalIgnoreCase);
+            var rerunSteps = ParseRerunSteps(GetCommandLineValue(args, "--rerun-steps"));
+            var rerun = rerunAll || rerunSteps.Count > 0;
             if (!config.RowsExecutionMode.Equals("parallel", StringComparison.OrdinalIgnoreCase) && !config.RowsExecutionMode.Equals("sequential", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("rows-execution-mode must be 'parallel' or 'sequential'.");
             var runId = string.IsNullOrWhiteSpace(config.RunId) ? $"{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}"[..25] : config.RunId;
             loadedRunId = runId;
@@ -92,10 +95,11 @@ internal static class Program
             // Cells that were edited since still get new ones; a run without --rerun always generates new values.
             if (rerun && RunValueMemory.Active is { HasPrevious: true } memory)
             {
+                memory.ReuseOnly(rerunAll ? null : rerunSteps);
                 memory.BeginRead(reuse: true);
                 workbook = new WorkbookReader().Read(workbookPath);
                 work = new RunSelectionPlanner().Build(workbook, indexes, stepSelection, config.EnvironmentSelection, GetCommandLineValue(args, "--environments-json"), config.Environments);
-                Console.WriteLine("Rerun: reusing the generated values (random numbers, GUIDs, dates, script results) and saved response values from the last run for unchanged data.");
+                Console.WriteLine(rerunAll ? "Rerun: reusing the generated values (random numbers, GUIDs, dates, script results) and saved response values from the last run for unchanged data." : $"Rerun: reusing the last run's generated values for {string.Join(", ", rerunSteps)}; other steps generate new values.");
             }
             else if (rerun) Console.WriteLine("Rerun: there is no earlier run to take values from, so new values are generated.");
             Console.WriteLine("Selected work: " + string.Join("; ", work.Select(x => $"{x.Testcase.TestcaseIndex} [{(string.IsNullOrEmpty(x.Environment) ? "default" : x.Environment)}]: {string.Join(", ", x.Testcase.Steps.Select(s => s.StepName))}")));
@@ -394,6 +398,21 @@ internal static class Program
         await Task.WhenAll(processes.Select(async process => { await process.WaitForExitAsync(); process.Dispose(); }));
         return 0;
     }
+    /// <summary>The step names in --rerun-steps, a JSON object like {"1":["CreateCustomer"]}; empty when absent or not valid.</summary>
+    private static HashSet<string> ParseRerunSteps(string? json)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(json)) return names;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            foreach (var property in document.RootElement.EnumerateObject())
+                foreach (var name in property.Value.EnumerateArray()) if (name.GetString() is { Length: > 0 } step) names.Add(step);
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException) { /* ignored: no step reuses */ }
+        return names;
+    }
+
     private static string? GetCommandLineValue(string[] args, params string[] names)
     {
         for (var i = 0; i < args.Length; i++)
