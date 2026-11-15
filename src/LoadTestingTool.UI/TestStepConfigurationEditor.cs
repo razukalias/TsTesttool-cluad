@@ -388,7 +388,7 @@ internal sealed class TestStepConfigurationEditor : UserControl
             if (headerNames.Count != headerNames.Distinct(StringComparer.OrdinalIgnoreCase).Count()) throw new InvalidDataException("HTTP header names must be unique.");
             if (headerNames.Any(x => x.Contains('\n') || x.Contains('\r') || x.StartsWith("header_", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("HTTP header names must contain only the header name, without the header_ prefix or line breaks.");
             using var workbook = new XLWorkbook(_item.WorkbookPath); var sheet = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("config", StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidDataException("The workbook has no config sheet.");
-            var backup = $"{_item.WorkbookPath}.backup.{DateTime.Now:yyyyMMdd_HHmmssfff}.xlsx"; File.Copy(_item.WorkbookPath, backup, false);
+            var backup = DataEngineBackup.CreateBackup(_item.WorkbookPath);
             var original = sheet.RowsUsed().Skip(1).Where(r => r.CellsUsed().Any(c => !string.IsNullOrWhiteSpace(c.GetString()))).ToList();
             var stepChanges = BuildStepChanges(original);
             foreach (var header in _headers) sheet.Cell(1, header.Value).Value = header.Key;

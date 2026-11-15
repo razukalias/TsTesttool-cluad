@@ -492,6 +492,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             var keepRow = SelectedRow?.Cells[0];
             SavingWorkbook?.Invoke(); // open step forms write their template files too
             RemoveLegacyColumns();
+            options.BackupFolder ??= DataEngineBackup.ConfiguredFolder(WorkbookPath);
             var result = _document.Save(options);
             if (result.Saved) { ClearUndoHistory(); _referenceScan = null; }
             if (result.RequiresReload) ReloadAfterRowsMoved(keepRow);

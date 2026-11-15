@@ -146,7 +146,7 @@ public sealed class SpreadsheetPreviewWindow : Window
         var heading = new StackPanel { Spacing = 4, Children =
         {
             DashboardStyle.Text("Spreadsheet editor", 21, true),
-            DashboardStyle.Text("Edits save to the original DataEngine workbook after creating a .bak.xlsx backup. Filters are visual only and do not delete workbook data.", 12, false, DashboardStyle.Muted)
+            DashboardStyle.Text("Edits save to the original DataEngine workbook after creating a backup in the global DataEngineBackupFolder. Filters are visual only and do not delete workbook data.", 12, false, DashboardStyle.Muted)
         }};
         var filterBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 10, 0, 8), Children =
         {
@@ -1263,7 +1263,7 @@ public sealed class SpreadsheetPreviewWindow : Window
     private void SaveWorkbook()
     {
         var temp = _sourcePath + ".saving.xlsx";
-        var backup = _sourcePath + ".bak.xlsx";
+        var backup = DataEngineBackup.CreateBackup(_sourcePath);
         var formattingSkipped = false;
         Log($"Spreadsheet save started. workbook={_sourcePath}; sheets={_sheets.Count}; totalModelCells={_sheets.Values.Sum(x => x.Cells.Count)}");
         try
@@ -1330,7 +1330,6 @@ public sealed class SpreadsheetPreviewWindow : Window
 
         try
         {
-            File.Copy(_sourcePath, backup, true);
             File.Move(temp, _sourcePath, true);
             _removedSheetNames.Clear();
             foreach (var view in _sheets.Values)

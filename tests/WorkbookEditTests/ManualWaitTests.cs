@@ -23,3 +23,25 @@ public class ManualWaitTests
         Assert.Equal(0, parsed.WaitMs);
     }
 }
+
+public class CentralBackupTests
+{
+    [Fact]
+    public void A_backup_folder_receives_the_copy_instead_of_the_workbook_folder()
+    {
+        using var dir = new TempDir();
+        var path = Workbooks.CreateSmall(dir);
+        var original = File.ReadAllBytes(path);
+        var central = dir.Combine("central-backups");
+        var document = WorkbookDocument.Load(path);
+        document.Config.Rows[0]["timeout"] = "45";
+
+        var result = document.Save(new WorkbookSaveOptions { BackupFolder = central });
+
+        Assert.NotNull(result.BackupPath);
+        Assert.StartsWith(Path.GetFullPath(central), result.BackupPath);
+        Assert.EndsWith(".backup.xlsx", result.BackupPath);
+        Assert.Equal(original, File.ReadAllBytes(result.BackupPath!));
+        Assert.DoesNotContain(Directory.GetFiles(Path.GetDirectoryName(path)!), f => f.Contains(".backup."));
+    }
+}

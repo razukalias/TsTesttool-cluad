@@ -136,6 +136,9 @@ public sealed class StorageCleanupWindow : Window
         foreach (var file in EnumerateFiles(_backupRoot, "DataEngine backups", "*.xlsx")) yield return Describe(file, "DataEngine backups");
         foreach (var root in _instanceRoots)
         {
+            // Older backups were written beside the workbook ("<name>.xlsx.backup.<stamp>.xlsx").
+            if (Directory.Exists(root))
+                foreach (var file in Directory.EnumerateFiles(root, "*.backup.*xlsx", SearchOption.TopDirectoryOnly)) yield return Describe(file, "DataEngine backups");
             foreach (var file in EnumerateFiles(Path.Combine(root, "Logs"), "Logs", "*.log")) yield return Describe(file, "Logs");
             foreach (var file in EnumerateFiles(Path.Combine(root, "History"), "History", "*.xlsx")) yield return Describe(file, "History");
             foreach (var file in EnumerateFiles(Path.Combine(root, "Results"), "Results", "*.*")) yield return Describe(file, "Results");
@@ -202,6 +205,21 @@ public sealed class StorageCleanupWindow : Window
 
 public static class DataEngineBackup
 {
+    /// <summary>The central backup folder from the nearest appsettings.json above the workbook, or null when there is none (backups then stay beside the workbook).</summary>
+    public static string? ConfiguredFolder(string workbookPath)
+    {
+        var settings = FindSettings(workbookPath);
+        if (settings is null) return null;
+        try
+        {
+            var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(settings)) as System.Text.Json.Nodes.JsonObject;
+            var root = json?["DataEngineBackupFolder"]?.ToString();
+            if (string.IsNullOrWhiteSpace(root)) root = "backup";
+            return Path.GetFullPath(root, Path.GetDirectoryName(settings)!);
+        }
+        catch { return null; }
+    }
+
     public static string CreateBackup(string workbookPath)
     {
         var settings = FindSettings(workbookPath);

@@ -186,7 +186,7 @@ public sealed class AssertionWorkbenchWindow : Window
         if (changes.Count == 0) { _message.Text = "No assertion changes to save."; return; }
         try
         {
-            var backup = UniqueBackupPath(_workbookPath); File.Copy(_workbookPath, backup);
+            var backup = DataEngineBackup.CreateBackup(_workbookPath);
             using var workbook = new XLWorkbook(_workbookPath); var sheet = workbook.Worksheet("response");
             foreach (var assertion in changes)
             {

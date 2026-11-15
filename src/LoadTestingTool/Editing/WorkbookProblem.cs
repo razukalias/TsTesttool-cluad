@@ -35,6 +35,12 @@ public sealed class WorkbookSaveOptions
     /// <summary>Copy the previous file to "&lt;name&gt;.backup.&lt;timestamp&gt;.xlsx" before replacing it.</summary>
     public bool CreateBackup { get; init; } = true;
 
+    /// <summary>
+    /// Central folder for backups. When set, the copy goes to "&lt;folder&gt;/&lt;workbook folder name&gt;/&lt;name&gt;_&lt;timestamp&gt;.backup.xlsx"
+    /// instead of beside the workbook, so one place holds every backup. Null keeps the copy beside the workbook.
+    /// </summary>
+    public string? BackupFolder { get; set; }
+
     /// <summary>Replace the file even if it changed on disk after it was loaded.</summary>
     public bool OverwriteExternalChanges { get; init; }
 }

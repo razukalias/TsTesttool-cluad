@@ -211,7 +211,8 @@ public sealed partial class WorkbookDocument
             written = File.ReadAllBytes(temp);
             if (options.CreateBackup)
             {
-                backup = UniqueBackupPath(FilePath);
+                backup = string.IsNullOrWhiteSpace(options.BackupFolder) ? UniqueBackupPath(FilePath) : CentralBackupPath(FilePath, options.BackupFolder);
+                Directory.CreateDirectory(Path.GetDirectoryName(backup)!);
                 File.Copy(FilePath, backup, overwrite: false);
             }
             File.Move(temp, FilePath, overwrite: true);
@@ -260,6 +261,17 @@ public sealed partial class WorkbookDocument
     }
 
     private static string Hash(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
+
+    private static string CentralBackupPath(string path, string root)
+    {
+        var instance = Path.GetFileName(Path.GetDirectoryName(Path.GetFullPath(path)) ?? "default");
+        var folder = Path.Combine(Path.GetFullPath(root), instance);
+        var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmssfff", CultureInfo.InvariantCulture);
+        var name = Path.GetFileNameWithoutExtension(path);
+        var candidate = Path.Combine(folder, $"{name}_{stamp}.backup.xlsx");
+        for (var i = 1; File.Exists(candidate); i++) candidate = Path.Combine(folder, $"{name}_{stamp}_{i}.backup.xlsx");
+        return candidate;
+    }
 
     private static string UniqueBackupPath(string path)
     {

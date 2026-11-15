@@ -239,8 +239,7 @@ public sealed class WorkbookEditorWindow : Window
             }
             WorkbookSynchronization.SynchronizeRequestResponse(workbook);
             var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmssfff");
-            SavedBackup = $"{_path}.backup.{stamp}.xlsx";
-            File.Copy(_path, SavedBackup, overwrite: false); workbook.Save(); SetStatus(close ? $"Saved workbook. Backup: {Path.GetFileName(SavedBackup)}" : $"Saved workbook and backup. Editor remains open. Backup: {Path.GetFileName(SavedBackup)}");
+            SavedBackup = DataEngineBackup.CreateBackup(_path); workbook.Save(); SetStatus(close ? $"Saved workbook. Backup: {Path.GetFileName(SavedBackup)}" : $"Saved workbook and backup. Editor remains open. Backup: {Path.GetFileName(SavedBackup)}");
             if (close) Close();
         }
         catch (Exception ex) { SetStatus(ex.Message, true); }

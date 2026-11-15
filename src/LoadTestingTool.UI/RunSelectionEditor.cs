@@ -111,8 +111,7 @@ internal sealed class RunSelectionEditor : UserControl
                 row.Cell(enabledColumn).Value = "true"; changed = true;
             }
             if (!changed) return true;
-            var backup = $"{_item.WorkbookPath}.backup.{DateTime.Now:yyyyMMdd_HHmmssfff}.xlsx";
-            File.Copy(_item.WorkbookPath, backup, false); workbook.Save();
+            var backup = DataEngineBackup.CreateBackup(_item.WorkbookPath); workbook.Save();
             return true;
         }
         catch (Exception ex) { error = ex.Message; return false; }
