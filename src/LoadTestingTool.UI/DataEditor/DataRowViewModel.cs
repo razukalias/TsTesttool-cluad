@@ -29,6 +29,9 @@ public sealed partial class StepNode(TestcaseItem owner, string name, int positi
     [ObservableProperty] private bool _isExpanded = true;
 
     public TestcaseItem Owner { get; } = owner;
+
+    /// <summary>Result of the last run for this step.</summary>
+    public RunBadge Run { get; } = new();
     public string Name { get; } = name;
     public int Position { get; } = position;
     public string Title => $"{Position} · {Name}";
@@ -47,6 +50,12 @@ public sealed partial class TestcaseItem : ObservableObject
 
     /// <summary>The steps as children of the testcase in the tree, in run order.</summary>
     public ObservableCollection<StepNode> StepNodes { get; } = [];
+
+    /// <summary>The owning instance's run state, so the testcase's and its steps' run buttons can disable while it runs.</summary>
+    [ObservableProperty] private RunBadge? _instanceRun;
+
+    /// <summary>Result of the last run for this testcase (worst step result, with counts).</summary>
+    public RunBadge Run { get; } = new();
 
     [ObservableProperty] private bool _isExpanded = true;
 

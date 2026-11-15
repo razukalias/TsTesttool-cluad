@@ -343,7 +343,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
     private void Wire(InstanceNode node)
     {
         AttachSelection(node);
-        node.Editor!.TickedChanged += (_, _) => { OnPropertyChanged(nameof(TickedCount)); OnPropertyChanged(nameof(HasTicked)); OnPropertyChanged(nameof(TickedText)); };
+        node.Editor!.TickedChanged += (_, _) => { OnPropertyChanged(nameof(TickedCount)); OnPropertyChanged(nameof(HasTicked)); OnPropertyChanged(nameof(TickedText)); OnPropertyChanged(nameof(CanRunTicked)); };
         node.Editor!.CreateTestcaseHandler = draft => CreateTestcaseHandler?.Invoke(node.Name, draft);
         node.Editor!.CloseRequested += (_, _) => OnEditorClosed();
         node.Editor.HistoryHandler = testcase => HistoryHandler?.Invoke(node.Name, testcase);

@@ -27,7 +27,10 @@ public sealed partial class DataEditorViewModel
     /// <summary>Set by whoever hosts the editor; without it the run buttons are unavailable.</summary>
     public RunHandler? RunHandler { get; set; }
 
-    public bool CanRun => RunHandler is not null && SelectedTestcase is not null;
+    public bool CanRun => RunHandler is not null && SelectedTestcase is not null && !IsRunning;
+
+    /// <summary>True while a run of this instance is in progress; the run buttons stay disabled until it finishes.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(CanRun))] private bool _isRunning;
 
     [ObservableProperty] private bool _isStartingRun;
     [ObservableProperty] private bool _runOptionsVisible;
@@ -239,6 +242,7 @@ public sealed partial class DataEditorViewModel
     private async Task StartRunAsync(RunRequest request, string label)
     {
         if (RunHandler is not { } handler) { ShowStatus("Running is only available when the editor is opened from the dashboard.", isError: true); return; }
+        if (IsRunning) { ShowStatus("This instance is already running. Wait for it to finish or stop it first.", isError: true); return; }
         if (IsDirty) { ShowStatus("Save your changes first — a run reads the saved workbook.", isError: true); return; }
         IsStartingRun = true;
         try

@@ -106,9 +106,15 @@ public sealed partial class DataEditorViewModel
         Record($"add column {header}");
         _document.Config.EnsureColumn(header);
         step.Row.Set(header, value);
+        RaiseStepEdited(step.CurrentName);
         StepsChanged();
         BuildSteps();
     }
+
+    /// <summary>Raised with the testcase name and step name after a step was changed, so run statuses can show they are out of date.</summary>
+    public event Action<string, string>? StepEdited;
+
+    private void RaiseStepEdited(string step) { if (SelectedTestcase is { } testcase) StepEdited?.Invoke(testcase.Name, step); }
 
     private void OnStepEdited(StepRowViewModel step, int cellIndex, string value)
     {
@@ -118,6 +124,7 @@ public sealed partial class DataEditorViewModel
             var name = value.Trim();
             if (name.Length == 0) { RejectStepName(step, "A step name cannot be empty."); return; }
             var old = step.CurrentName;
+            RaiseStepEdited(old);
             Record($"rename step {old} to {name}");
             StepRenameResult result;
             try { result = _document.RenameStep(old, name); }
@@ -138,6 +145,7 @@ public sealed partial class DataEditorViewModel
         {
             Record($"edit {StepColumns[cellIndex - 1].Title} of step {step.CurrentName}");
             step.Row.SetAt(StepColumns[cellIndex - 1].SheetColumn, value);
+            RaiseStepEdited(step.CurrentName);
         }
         StepsChanged();
     }

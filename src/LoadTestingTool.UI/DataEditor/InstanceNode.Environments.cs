@@ -16,6 +16,9 @@ public sealed partial class InstanceNode
 
     public bool HasExecution => Execution is not null;
 
+    /// <summary>Result of the last run of this instance; its running flag disables the run buttons.</summary>
+    public RunBadge Run { get; } = new();
+
     public bool HasEnvironments => EnvironmentChoices.Count > 0;
 
     /// <summary>Environments to run in when started from the tree. Unlike the choice of environments, the runner has only one central parallel flag, so a per-instance change applies to runs started from the editor.</summary>

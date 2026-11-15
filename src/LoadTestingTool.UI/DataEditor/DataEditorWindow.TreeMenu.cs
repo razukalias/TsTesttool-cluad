@@ -30,11 +30,17 @@ public partial class DataEditorWindow
             if (e.Source is not Button { Tag: string way, DataContext: { } node }) return;
             if (way == "toggle") { if (node is InstanceNode instance) instance.ToggleAll(); }
             else if (way == "run") _ = _shell.RunNodeAsync(node);
+            else if (way == "stop") { if (node is InstanceNode running) _shell.StopInstance(running); }
+            else if (way == "status") ShowStatusDetails(node);
             else if (way == "add") _ = AddChildAsync(tree, node);
             else _shell.MoveNode(node, way == "up" ? -1 : 1);
             e.Handled = true;
         });
 
+        _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _statusTimer.Tick += (_, _) => _shell.RefreshRunStatus();
+        _statusTimer.Start();
+        Closed += (_, _) => _statusTimer?.Stop();
         if (this.FindControl<Button>("RunTickedButton") is { } runTicked)
             runTicked.Click += (_, _) => _ = _shell.RunTickedAsync();
         if (this.FindControl<Button>("ExpandAllButton") is { } expandAll) expandAll.Click += (_, _) => _shell.SetAllExpanded(true);
@@ -50,6 +56,17 @@ public partial class DataEditorWindow
         {
             if (e.Source is TextBox { DataContext: { } node }) _shell.CommitRename(node);
         });
+    }
+
+    private DispatcherTimer? _statusTimer;
+
+    /// <summary>A status icon was clicked: points the run views at the node and brings the matching tab to the front.</summary>
+    private void ShowStatusDetails(object node)
+    {
+        var tab = _shell.OpenStatus(node);
+        if (tab is null || this.FindControl<Border>("RightHost")?.Child is not TabControl tabs) return;
+        var match = tabs.Items.OfType<TabItem>().FirstOrDefault(t => string.Equals(t.Header?.ToString(), tab, StringComparison.OrdinalIgnoreCase));
+        if (match is not null) tabs.SelectedItem = match;
     }
 
     private ContextMenu? BuildTreeMenu(TreeView tree, object node)

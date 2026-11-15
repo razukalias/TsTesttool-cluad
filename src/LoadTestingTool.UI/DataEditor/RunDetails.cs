@@ -13,4 +13,13 @@ public interface IRunDetails
 
     /// <summary>Makes the views follow this instance.</summary>
     void Show(string instanceName);
+
+    /// <summary>What the latest run of an instance did, step by step; empty when it never ran.</summary>
+    RunStatusSnapshot GetStatus(string instanceName) => RunStatusSnapshot.Empty;
+
+    /// <summary>Brings the matching detail (assertions, overview entry) of an instance to the front after a status icon was clicked.</summary>
+    void Focus(string instanceName, RunFocus focus) { }
+
+    /// <summary>Asks the running instance to stop gracefully.</summary>
+    void Stop(string instanceName) { }
 }

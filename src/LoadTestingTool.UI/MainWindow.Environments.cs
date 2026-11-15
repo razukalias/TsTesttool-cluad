@@ -16,6 +16,44 @@ public sealed partial class MainWindow
             return window._detailTabs;
         }
 
+        private readonly HashSet<string> _lastRunLoaded = new(StringComparer.OrdinalIgnoreCase);
+
+        public DataEditor.RunStatusSnapshot GetStatus(string instanceName)
+        {
+            var item = window._instances.FirstOrDefault(x => x.Name == instanceName);
+            if (item is null) return DataEditor.RunStatusSnapshot.Empty;
+            if (_lastRunLoaded.Add(instanceName)) window.LoadLastRun(item);
+            var running = false;
+            try { running = item.Process is { HasExited: false }; } catch (InvalidOperationException) { }
+            var outcomes = new List<DataEditor.StepOutcome>();
+            foreach (var request in item.Requests.ToList())
+            {
+                if (DataEditor.RunClassifier.Classify(request.Result, request.FailureCategory, request.Error) is not { } state) continue;
+                outcomes.Add(new DataEditor.StepOutcome(request.Testcase, request.StepName, request.DataId, request.Environment, state, request.Error ?? string.Empty));
+            }
+            // Issues the runner raised for a step that has no failed request of its own (for example a validation problem before anything was sent).
+            foreach (var issue in item.Issues.ToList().Where(i => i.Severity.Equals("Error", StringComparison.OrdinalIgnoreCase)))
+            {
+                if (issue.StepName.Length > 0 && outcomes.Any(o => o.State != DataEditor.RunState.Passed && o.Testcase.Equals(issue.Testcase, StringComparison.OrdinalIgnoreCase) && o.Step.Equals(issue.StepName, StringComparison.OrdinalIgnoreCase) && o.DataId.Equals(issue.DataId, StringComparison.OrdinalIgnoreCase))) continue;
+                outcomes.Add(new DataEditor.StepOutcome(issue.Testcase, issue.StepName, issue.DataId, issue.Environment, DataEditor.RunClassifier.FromCategory(issue.Category, issue.Message), issue.Message));
+            }
+            return new DataEditor.RunStatusSnapshot(running, outcomes);
+        }
+
+        public void Focus(string instanceName, DataEditor.RunFocus focus)
+        {
+            Show(instanceName);
+            var terms = string.Join(" & ", new[] { focus.Step, focus.Testcase }.Where(x => !string.IsNullOrWhiteSpace(x)));
+            if (focus.State == DataEditor.RunState.AssertionFailed) window._assertionSearch.Text = terms.Length > 0 ? $"{terms} & FAIL" : "FAIL";
+            else window._overviewStepFilter.Text = terms;
+        }
+
+        public void Stop(string instanceName)
+        {
+            if (window._instances.FirstOrDefault(x => x.Name == instanceName) is { } item && item.Process is { HasExited: false }) window.StopOne(item, false);
+            window.RefreshRows();
+        }
+
         public void Show(string instanceName)
         {
             var item = window._instances.FirstOrDefault(x => x.Name == instanceName);

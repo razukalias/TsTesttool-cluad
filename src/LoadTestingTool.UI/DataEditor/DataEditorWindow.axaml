@@ -76,6 +76,20 @@
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="#39D39B" />
     </Style>
+    <Style Selector="Button.treerun:disabled">
+      <Setter Property="Foreground" Value="#3F536A" />
+    </Style>
+    <Style Selector="Button.status">
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="4,2" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.status:pointerover">
+      <Setter Property="Background" Value="#1B2D45" />
+    </Style>
     <Style Selector="Button.treerun:pointerover">
       <Setter Property="Foreground" Value="#7BF0C4" />
     </Style>
@@ -109,7 +123,7 @@
 
   <Grid>
   <Grid.ColumnDefinitions>
-    <ColumnDefinition Width="300" MinWidth="180" MaxWidth="700" />
+    <ColumnDefinition Width="360" MinWidth="180" MaxWidth="700" />
     <ColumnDefinition Width="Auto" />
     <ColumnDefinition Width="*" MinWidth="500" />
   </Grid.ColumnDefinitions>
@@ -126,7 +140,7 @@
           <Button Grid.Column="3" Content="Refresh results" Command="{Binding RefreshResultsCommand}" IsEnabled="{Binding !IsLoadingResults}" MinHeight="28" Padding="10,2" FontSize="12" />
         </Grid>
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="6,0,0,10">
-          <Button x:Name="RunTickedButton" Content="▶ Run ticked" IsEnabled="{Binding HasTicked}" MinHeight="28" Padding="10,2" FontSize="12" ToolTip.Tip="Run every ticked instance, testcase or step; each instance is started with its own selection" />
+          <Button x:Name="RunTickedButton" Content="▶ Run ticked" IsEnabled="{Binding CanRunTicked}" MinHeight="28" Padding="10,2" FontSize="12" ToolTip.Tip="Run every ticked instance, testcase or step; each instance is started with its own selection" />
           <Button x:Name="ExpandAllButton" Content="⊞" Classes="treemove" FontSize="14" ToolTip.Tip="Expand all instances, testcases and steps" />
           <Button x:Name="CollapseAllButton" Content="⊟" Classes="treemove" FontSize="14" ToolTip.Tip="Collapse everything to the instance rows" />
           <TextBlock Text="{Binding TickedText}" VerticalAlignment="Center" FontSize="11" Foreground="#8EA4BC" />
@@ -219,7 +233,14 @@
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Top">
                   <Button Classes="treemove" Tag="add" Content="＋" FontSize="12" ToolTip.Tip="Add a testcase to this instance" />
                   <Button Classes="treemove" Tag="toggle" Content="⇕" FontSize="12" ToolTip.Tip="Expand or collapse this instance and everything under it" />
-                  <Button Classes="treerun" Tag="run" Content="▶" ToolTip.Tip="Run the whole instance" />
+                  <Button Classes="status" Tag="status" IsVisible="{Binding Run.HasStatus}" ToolTip.Tip="{Binding Run.Tooltip}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="{Binding Run.Icon}" Foreground="{Binding Run.Tint}" FontWeight="Bold" FontSize="13" />
+                      <TextBlock Text="{Binding Run.Counts}" IsVisible="{Binding Run.HasCounts}" Foreground="{Binding Run.Tint}" FontSize="10.5" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Classes="treerun" Tag="run" Content="▶" IsEnabled="{Binding Run.NotRunning}" IsVisible="{Binding Run.NotRunning}" ToolTip.Tip="Run the whole instance" />
+                  <Button Classes="treerun" Tag="stop" Content="⏹" Foreground="#FF6B6B" IsVisible="{Binding Run.IsRunning}" ToolTip.Tip="Stop this run (finishes the current requests, then stops)" />
                 </StackPanel>
               </Grid>
             </TreeDataTemplate>
@@ -229,7 +250,13 @@
                 <TextBlock Grid.Column="1" Text="{Binding Title}" IsVisible="{Binding IsNotEditing}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 <TextBox Grid.Column="1" Classes="treeedit" Text="{Binding EditText, Mode=TwoWay}" IsVisible="{Binding IsEditing}" FontSize="12" MinHeight="24" Padding="4,2" />
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" IsVisible="{Binding IsNotEditing}">
-                  <Button Classes="treerun" Tag="run" Content="▶" ToolTip.Tip="Run this step" />
+                  <Button Classes="status" Tag="status" IsVisible="{Binding Run.HasStatus}" ToolTip.Tip="{Binding Run.Tooltip}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="{Binding Run.Icon}" Foreground="{Binding Run.Tint}" FontWeight="Bold" FontSize="13" />
+                      <TextBlock Text="{Binding Run.Counts}" IsVisible="{Binding Run.HasCounts}" Foreground="{Binding Run.Tint}" FontSize="10.5" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Classes="treerun" Tag="run" Content="▶" IsEnabled="{Binding Owner.InstanceRun.NotRunning}" ToolTip.Tip="Run this step" />
                   <Button Classes="treemove" Tag="up" Content="▲" ToolTip.Tip="Run earlier" />
                   <Button Classes="treemove" Tag="down" Content="▼" ToolTip.Tip="Run later" />
                 </StackPanel>
@@ -246,7 +273,13 @@
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" VerticalAlignment="Top" IsVisible="{Binding IsNotEditing}">
                   <Button Classes="treemove" Tag="add" Content="＋" FontSize="12" ToolTip.Tip="Add a step to this testcase" />
-                  <Button Classes="treerun" Tag="run" Content="▶" ToolTip.Tip="Run this testcase" />
+                  <Button Classes="status" Tag="status" IsVisible="{Binding Run.HasStatus}" ToolTip.Tip="{Binding Run.Tooltip}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="{Binding Run.Icon}" Foreground="{Binding Run.Tint}" FontWeight="Bold" FontSize="13" />
+                      <TextBlock Text="{Binding Run.Counts}" IsVisible="{Binding Run.HasCounts}" Foreground="{Binding Run.Tint}" FontSize="10.5" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                  <Button Classes="treerun" Tag="run" Content="▶" IsEnabled="{Binding InstanceRun.NotRunning}" ToolTip.Tip="Run this testcase" />
                   <Button Classes="treemove" Tag="up" Content="▲" ToolTip.Tip="Run earlier" />
                   <Button Classes="treemove" Tag="down" Content="▼" ToolTip.Tip="Run later" />
                 </StackPanel>

@@ -1073,7 +1073,12 @@ public sealed partial class MainWindow : Window
 
     private void StopSelected(bool force)
     {
-        foreach (var item in _instances.Where(x => x.Selected && x.Process is { HasExited: false }))
+        foreach (var item in _instances.Where(x => x.Selected && x.Process is { HasExited: false })) StopOne(item, force);
+        RefreshRows();
+    }
+
+    private void StopOne(InstanceInfo item, bool force)
+    {
         {
             try
             {
@@ -1102,7 +1107,6 @@ public sealed partial class MainWindow : Window
                 UiLog($"Runner stop failed. instance={item.Name}; runId={item.CurrentRunId}; force={force}; error={ex}");
             }
         }
-        RefreshRows();
     }
 
     private void PollEvents()
