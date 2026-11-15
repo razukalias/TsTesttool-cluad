@@ -31,7 +31,7 @@ public sealed class StorageCleanupWindow : Window
         _backupRoot = Path.GetFullPath(backupRoot);
         _instanceRoots = instanceRoots.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         Title = "Storage & Cleanup";
-        Width = 1280; Height = 820; MinWidth = 980; MinHeight = 620;
+        Width = 1100; Height = 760; MinWidth = 820; MinHeight = 560;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         _instance.ItemsSource = new[] { "All instances" }.Concat(_instanceRoots.Select(x => Path.GetFileName(x.TrimEnd(Path.DirectorySeparatorChar))).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase)).ToArray();
         _instance.SelectedIndex = 0;
@@ -48,6 +48,7 @@ public sealed class StorageCleanupWindow : Window
             DashboardStyle.Text("Status", 11, false, DashboardStyle.Muted), _status,
             _from, _to, _duplicatesOnly, _search
         }};
+        foreach (var child in filters.Children) if (child is Control c) c.Margin = new Thickness(0, 0, 8, 6);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children =
         {
             DashboardStyle.Action("Preview", Preview, "primary"),
@@ -92,7 +93,7 @@ public sealed class StorageCleanupWindow : Window
             lines.AppendLine("ACTION   TYPE                 INSTANCE                 STATUS     TIMESTAMP                SIZE       FILE");
             lines.AppendLine(new string('-', 140));
             foreach (var file in _matches.OrderBy(x => x.Timestamp))
-                lines.AppendLine($"DELETE   {file.Kind,-20} {Trim(file.Instance, -24),-24} {file.Status,-10} {file.Timestamp:yyyy-MM-dd HH:mm:ss} {FormatSize(file.Size),-10} {file.Path}");
+                lines.AppendLine($"DELETE   {file.Kind,-20} {Trim(file.Instance, 24),-24} {file.Status,-10} {file.Timestamp:yyyy-MM-dd HH:mm:ss} {FormatSize(file.Size),-10} {file.Path}");
             _preview.Text = lines.ToString();
             _statusText.Text = _matches.Count == 0 ? "No files match the current filters." : "Preview generated. Click Delete permanently to remove these files.";
             _statusText.Foreground = _matches.Count == 0 ? DashboardStyle.Muted : DashboardStyle.Brush("#F0B44D");
