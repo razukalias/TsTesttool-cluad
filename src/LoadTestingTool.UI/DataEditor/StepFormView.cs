@@ -228,7 +228,33 @@ public sealed class StepFormView : UserControl
         }
         Grid.SetColumn(input, 1);
         row.Children.Add(input);
+        if (LoadTestingTool.Editing.StepFieldRules.Covers(title)) AddFieldHint(row, input, title, current);
         return row;
+    }
+
+    /// <summary>Marks a numeric or status field that the runner would misread and says in a line what it will do with the value.</summary>
+    private void AddFieldHint(Grid row, Control input, string title, string initial)
+    {
+        row.RowDefinitions = new RowDefinitions("Auto,Auto");
+        var hint = new TextBlock { FontSize = 11, TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(0, 2, 0, 0) };
+        Grid.SetRow(hint, 1);
+        Grid.SetColumn(hint, 1);
+        row.Children.Add(hint);
+        void Refresh(string value)
+        {
+            var check = LoadTestingTool.Editing.StepFieldRules.Check(title, value);
+            hint.Text = (check.State == LoadTestingTool.Editing.FieldState.Warning ? "⚠ " : "ⓘ ") + check.Message;
+            hint.IsVisible = check.State != LoadTestingTool.Editing.FieldState.Ok;
+            hint.Foreground = Brush.Parse(check.State == LoadTestingTool.Editing.FieldState.Warning ? "#F6C76B" : "#8FA3BF");
+            if (input is TextBox box)
+            {
+                if (check.State == LoadTestingTool.Editing.FieldState.Warning) box.BorderBrush = Brush.Parse("#F6C76B");
+                else box.ClearValue(TextBox.BorderBrushProperty);
+            }
+        }
+        Refresh(initial);
+        if (input is TextBox typed) typed.TextChanged += (_, _) => Refresh(typed.Text ?? string.Empty);
+        Follow(title, Refresh);
     }
 
     /// <summary>Asks for a name (a folder like requests/create.json is fine), points the step at it and opens the editor ready to write it.</summary>

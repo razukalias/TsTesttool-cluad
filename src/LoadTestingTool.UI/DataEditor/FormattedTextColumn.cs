@@ -7,8 +7,15 @@ namespace LoadTestingTool.UI.DataEditor;
 public sealed class FormattedTextColumn : DataGridTextColumn
 {
     private readonly int _cell;
+    private readonly string? _rule;
 
-    public FormattedTextColumn(int cell) => _cell = cell;
+    /// <param name="cell">Index of the cell in the row.</param>
+    /// <param name="ruleHeader">The config header whose rules mark a questionable value with a ⚠, or null for none.</param>
+    public FormattedTextColumn(int cell, string? ruleHeader = null)
+    {
+        _cell = cell;
+        _rule = ruleHeader is not null && LoadTestingTool.Editing.StepFieldRules.Covers(ruleHeader) ? ruleHeader : null;
+    }
 
     protected override Control GenerateElement(DataGridCell cell, object dataItem)
     {
@@ -20,6 +27,21 @@ public sealed class FormattedTextColumn : DataGridTextColumn
             text.Bind(TextBlock.TextWrappingProperty, new Binding($"Formats[{_cell}].Wrapping"));
             text.Bind(TextBlock.ForegroundProperty, new Binding($"Formats[{_cell}].Foreground"));
         }
-        return element;
+        if (_rule is null || element is not TextBlock shown) return element;
+
+        // A ⚠ beside a value the runner would misread, with the reason as its tooltip; an ⓘ where it only deserves a note.
+        var mark = new TextBlock { VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Margin = new Avalonia.Thickness(4, 0, 6, 0), IsVisible = false };
+        var holder = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Children = { shown, mark } };
+        void Refresh()
+        {
+            var check = LoadTestingTool.Editing.StepFieldRules.Check(_rule, shown.Text);
+            mark.IsVisible = check.State != LoadTestingTool.Editing.FieldState.Ok;
+            mark.Text = check.State == LoadTestingTool.Editing.FieldState.Warning ? "⚠" : "ⓘ";
+            mark.Foreground = Avalonia.Media.Brush.Parse(check.State == LoadTestingTool.Editing.FieldState.Warning ? "#F6C76B" : "#8FA3BF");
+            ToolTip.SetTip(holder, mark.IsVisible ? check.Message : null);
+        }
+        shown.PropertyChanged += (_, e) => { if (e.Property == TextBlock.TextProperty) Refresh(); };
+        Refresh();
+        return holder;
     }
 }

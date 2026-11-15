@@ -11,7 +11,7 @@ namespace LoadTestingTool.Editing;
 public static class WorkbookValidator
 {
     private static readonly string[] BooleanColumns = ["enabled", "stoponfailure", "ignoreempty", "assert", "assertenabled", "assertonlyresponse", "assertonlyinresponse"];
-    private static readonly string[] NumberColumns = ["timeout", "manualtimeoutminutes"];
+    private static readonly string[] NumberColumns = ["wait", "timeout", "manualtimeoutminutes", "expectedstatus"];
     private static readonly HashSet<string> ReservedResponseColumns = new(["testcaseindex", "testcase", "dataid", "extractvariable"], StringComparer.OrdinalIgnoreCase);
 
     public static IReadOnlyList<WorkbookProblem> Validate(WorkbookDocument document)
@@ -60,9 +60,8 @@ public static class WorkbookValidator
             }
             foreach (var name in NumberColumns)
             {
-                var value = Text(row, name);
-                if (value.Length > 0 && !int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
-                    Add(problems, ProblemSeverity.Warning, table, row, $"{name} '{value}' is not a whole number; the runner will use 0 instead.");
+                var check = StepFieldRules.Check(name, Text(row, name));
+                if (check.State == FieldState.Warning) Add(problems, ProblemSeverity.Warning, table, row, check.Message);
             }
 
             if (stepName.Length == 0) continue;

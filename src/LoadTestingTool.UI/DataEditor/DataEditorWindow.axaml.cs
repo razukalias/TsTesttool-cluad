@@ -387,7 +387,7 @@ public partial class DataEditorWindow : Window
         })
     };
 
-    private static DataGridTextColumn CreateColumn(GridColumn column, bool step = false) => new FormattedTextColumn(column.CellIndex)
+    private static DataGridTextColumn CreateColumn(GridColumn column, bool step = false) => new FormattedTextColumn(column.CellIndex, step ? column.Title : null)
     {
         Tag = column.CellIndex,
         Header = CreateHeader(step ? column with { Group = ColumnGroup.Id } : column),
