@@ -72,8 +72,17 @@ public sealed partial class EditorShellViewModel
     };
 
     /// <summary>Another part of the app rewrote an instance's workbook; reloads it in the editor when that is safe.</summary>
-    public void ReloadAfterExternalChange(string instanceName)
-        => Instances.FirstOrDefault(i => i.Name == instanceName)?.Editor?.ReloadAfterExternalChange();
+    public void ReloadAfterExternalChange(string instanceName, string reason = "by an assertion fix")
+        => Instances.FirstOrDefault(i => i.Name == instanceName)?.Editor?.ReloadAfterExternalChange(reason);
+
+    /// <summary>Why an instance's workbook cannot be replaced from outside right now (it is running, or open with unsaved edits), or null when it can.</summary>
+    public string? ReplaceBlockedReason(string instanceName)
+    {
+        var node = Instances.FirstOrDefault(i => i.Name == instanceName);
+        if (node?.Editor is { IsRunning: true }) return "it is running";
+        if (node?.Editor is { IsDirty: true }) return "it is open in the editor with unsaved edits — save or reload it first";
+        return null;
+    }
 
     /// <summary>The stop button beside a running instance.</summary>
     public void StopInstance(InstanceNode instance) => _runDetails?.Stop(instance.Name);

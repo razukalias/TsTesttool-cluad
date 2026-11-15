@@ -687,6 +687,18 @@ public sealed partial class MainWindow
     private void OpenStorageCleanup()
     {
         var window = new StorageCleanupWindow(_config.DataEngineBackupFolder, _instances.Select(x => x.FolderPath));
+        InstanceInfo? Owner(string workbook) => _instances.FirstOrDefault(x => string.Equals(Path.GetFullPath(x.FolderPath).TrimEnd(Path.DirectorySeparatorChar), Path.GetFullPath(Path.GetDirectoryName(workbook)!).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase));
+        window.RestoreGuard = workbook =>
+        {
+            if (Owner(workbook) is not { } item) return null;
+            if (item.Process is { HasExited: false }) return "it is running";
+            return (_hostWindow as DataEditor.DataEditorWindow)?.Shell.ReplaceBlockedReason(item.Name);
+        };
+        window.Restored = workbook =>
+        {
+            if (Owner(workbook) is not { } item) return;
+            Dispatcher.UIThread.Post(() => (_hostWindow as DataEditor.DataEditorWindow)?.Shell.ReloadAfterExternalChange(item.Name, "by a restored backup"), DispatcherPriority.Background);
+        };
         window.Show(Host);
     }
 

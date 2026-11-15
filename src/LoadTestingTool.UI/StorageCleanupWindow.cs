@@ -56,6 +56,7 @@ public sealed class StorageCleanupWindow : Window
             DashboardStyle.Action("Delete permanently", ConfirmDelete, "danger"),
             DashboardStyle.Action("Refresh", () => { ClearPreview(); Preview(); }),
             DashboardStyle.Action("Open selected", OpenSelected),
+            DashboardStyle.Action("Restore selected", RestoreSelected, "danger"),
             DashboardStyle.Action("Close", Close)
         }};
         Content = new Grid
@@ -112,6 +113,90 @@ public sealed class StorageCleanupWindow : Window
             _statusText.Text = $"Opened {Path.GetFileName(path)}.";
         }
         catch (Exception ex) { _statusText.Text = $"Could not open the file: {ex.Message}"; _statusText.Foreground = DashboardStyle.Brush("#FF7A7A"); }
+    }
+
+    /// <summary>Asked before a restore replaces a workbook: returns why it must not (null = fine). Set by the app.</summary>
+    internal Func<string, string?>? RestoreGuard { get; set; }
+
+    /// <summary>Called after a workbook was restored, with its path, so the app can reload it.</summary>
+    internal Action<string>? Restored { get; set; }
+
+    /// <summary>The workbook a backup was taken from: "Name_20260101_120000123.backup.xlsx" (central) or "Name.xlsx.backup.20260101….xlsx" (beside it).</summary>
+    internal string? WorkbookFor(string backupPath)
+    {
+        var file = Path.GetFileName(backupPath);
+        string name;
+        var legacy = System.Text.RegularExpressions.Regex.Match(file, @"^(?<n>.+\.xlsx)\.backup\..+\.xlsx$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (legacy.Success) name = legacy.Groups["n"].Value;
+        else
+        {
+            var central = System.Text.RegularExpressions.Regex.Match(file, @"^(?<n>.+?)_\d{8}_\d{9}(_\d+)?\.backup\.xlsx$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!central.Success) return null;
+            name = central.Groups["n"].Value + ".xlsx";
+        }
+        var instance = Path.GetFileName(Path.GetDirectoryName(backupPath) ?? string.Empty);
+        var root = _instanceRoots.FirstOrDefault(r => string.Equals(Path.GetFileName(r.TrimEnd(Path.DirectorySeparatorChar)), instance, StringComparison.OrdinalIgnoreCase))
+                   ?? _instanceRoots.FirstOrDefault(r => string.Equals(Path.GetFullPath(r).TrimEnd(Path.DirectorySeparatorChar), Path.GetFullPath(Path.GetDirectoryName(backupPath) ?? string.Empty).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase));
+        return root is null ? null : Path.Combine(root, name);
+    }
+
+    internal void RestoreSelectedForTest() => RestoreSelected();
+
+    private async void RestoreSelected()
+    {
+        var backup = FileOnCurrentLine();
+        if (backup is null || !backup.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) || !backup.Contains(".backup.", StringComparison.OrdinalIgnoreCase))
+        { Say("Click a workbook backup line first, then Restore selected.", false); return; }
+        var target = WorkbookFor(backup);
+        if (target is null) { Say("Cannot tell which instance workbook this backup belongs to.", true); return; }
+        if (RestoreGuard?.Invoke(target) is { } blocked) { Say($"Cannot restore {Path.GetFileName(target)}: {blocked}.", true); return; }
+        var when = File.GetLastWriteTime(backup).ToString("yyyy-MM-dd HH:mm:ss");
+        if (!await ConfirmAsync($"Replace {Path.GetFileName(target)} with the backup from {when}?", "The current workbook is backed up first, so this can be undone by restoring that new backup.")) return;
+        try
+        {
+            string? safety = null;
+            if (File.Exists(target)) safety = DataEngineBackup.CreateBackup(target);
+            var temp = target + ".restore-" + Guid.NewGuid().ToString("N");
+            File.Copy(backup, temp);
+            File.Move(temp, target, overwrite: true);
+            Restored?.Invoke(target);
+            Say($"Restored {Path.GetFileName(target)} from {when}." + (safety is null ? string.Empty : $" Previous version saved as {Path.GetFileName(safety)}."), false);
+            Preview();
+        }
+        catch (Exception ex) { Say($"Restore failed: {ex.Message}", true); }
+    }
+
+    private void Say(string text, bool error)
+    {
+        _statusText.Text = text;
+        _statusText.Foreground = error ? DashboardStyle.Brush("#FF7A7A") : DashboardStyle.Brush("#39D39B");
+    }
+
+    /// <summary>Replaces the confirmation dialog (tests).</summary>
+    internal Func<string, string, Task<bool>>? Confirm { get; set; }
+
+    private async Task<bool> ConfirmAsync(string title, string detail)
+    {
+        if (Confirm is not null) return await Confirm(title, detail);
+        var yes = new Button { Content = "Restore", Classes = { "accent" } };
+        var no = new Button { Content = "Cancel", Margin = new Thickness(0, 0, 8, 0) };
+        var dialog = new Window
+        {
+            Title = "Restore backup", SizeToContent = SizeToContent.WidthAndHeight, WindowStartupLocation = WindowStartupLocation.CenterOwner, CanResize = false, Background = Brush.Parse("#0B1626"),
+            Content = new StackPanel
+            {
+                Margin = new Thickness(20), Spacing = 10, MaxWidth = 520,
+                Children =
+                {
+                    new TextBlock { Text = title, TextWrapping = TextWrapping.Wrap, FontWeight = FontWeight.SemiBold },
+                    new TextBlock { Text = detail, TextWrapping = TextWrapping.Wrap, Opacity = 0.75, FontSize = 12 },
+                    new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Children = { no, yes } }
+                }
+            }
+        };
+        yes.Click += (_, _) => dialog.Close(true);
+        no.Click += (_, _) => dialog.Close(false);
+        return await dialog.ShowDialog<bool>(this);
     }
 
     private void ClearPreview()
