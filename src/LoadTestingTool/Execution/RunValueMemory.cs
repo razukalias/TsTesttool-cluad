@@ -16,6 +16,8 @@ public sealed class RunValueMemory
     {
         public Dictionary<string, string> Generated { get; set; } = new(StringComparer.Ordinal);
         public Dictionary<string, Dictionary<string, string>> Rows { get; set; } = new(StringComparer.Ordinal);
+        /// <summary>What a step's dynamic text (URL, headers, body template, expected values, variables) turned into when the step ran.</summary>
+        public Dictionary<string, string> Steps { get; set; } = new(StringComparer.Ordinal);
     }
 
     private readonly string _path;
@@ -35,12 +37,18 @@ public sealed class RunValueMemory
     public bool Reuse { get; private set; }
 
     /// <summary>True when the last run left anything to reuse.</summary>
-    public bool HasPrevious => _previous.Generated.Count > 0 || _previous.Rows.Count > 0;
+    public bool HasPrevious => _previous.Generated.Count > 0 || _previous.Rows.Count > 0 || _previous.Steps.Count > 0;
+
+    /// <summary>Which data row, iteration and step the running code belongs to; set by the runner around each step.</summary>
+    public static AsyncLocal<string?> StepScope { get; } = new();
+
+    private const int LargestRemembered = 512 * 1024;
+    private readonly Dictionary<string, int> _stepOccurrences = new(StringComparer.Ordinal);
 
     /// <summary>Starts a (re)read of the workbook; with reuse, unchanged cells get their old generated values back.</summary>
     public void BeginRead(bool reuse)
     {
-        lock (_gate) { Reuse = reuse; _current.Generated.Clear(); _occurrences.Clear(); }
+        lock (_gate) { Reuse = reuse; _current.Generated.Clear(); _occurrences.Clear(); _stepOccurrences.Clear(); }
     }
 
     /// <summary>The value for one generated token: the old one when reusing and the cell is unchanged, else a new one (remembered).</summary>
@@ -55,6 +63,28 @@ public sealed class RunValueMemory
             _current.Generated[key] = value;
             return value;
         }
+    }
+
+    /// <summary>
+    /// Runs <paramref name="resolve"/> for a piece of step text, or — when reusing and this exact text was resolved in the last run — returns what it became then.
+    /// Only text that actually changed is remembered, and only up to 512 KB.
+    /// </summary>
+    public async Task<string> StepTextAsync(string text, Func<Task<string>> resolve)
+    {
+        var scope = StepScope.Value;
+        if (scope is null || string.IsNullOrEmpty(text)) return await resolve();
+        string key;
+        lock (_gate)
+        {
+            var baseKey = $"{scope}|{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)))}";
+            var n = _stepOccurrences.GetValueOrDefault(baseKey);
+            _stepOccurrences[baseKey] = n + 1;
+            key = $"{baseKey}|{n}";
+            if (Reuse && _previous.Steps.TryGetValue(key, out var old)) { _current.Steps[key] = old; return old; }
+        }
+        var resolved = await resolve();
+        if (!string.Equals(resolved, text, StringComparison.Ordinal) && resolved.Length <= LargestRemembered) lock (_gate) _current.Steps[key] = resolved;
+        return resolved;
     }
 
     public static string RowKey(int testcaseIndex, string dataId, int iteration, string environment)
@@ -79,9 +109,10 @@ public sealed class RunValueMemory
         lock (_gate)
         {
             var merged = new Snapshot();
-            if (Reuse) { foreach (var pair in _previous.Generated) merged.Generated[pair.Key] = pair.Value; foreach (var pair in _previous.Rows) merged.Rows[pair.Key] = pair.Value; }
+            if (Reuse) { foreach (var pair in _previous.Generated) merged.Generated[pair.Key] = pair.Value; foreach (var pair in _previous.Rows) merged.Rows[pair.Key] = pair.Value; foreach (var pair in _previous.Steps) merged.Steps[pair.Key] = pair.Value; }
             foreach (var pair in _current.Generated) merged.Generated[pair.Key] = pair.Value;
             foreach (var pair in _current.Rows) merged.Rows[pair.Key] = pair.Value;
+            foreach (var pair in _current.Steps) merged.Steps[pair.Key] = pair.Value;
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(_path)!);

@@ -69,6 +69,7 @@ public sealed class TestRunner
                     IReadOnlySet<string> redactedVariables;
                     try
                     {
+                        RunValueMemory.StepScope.Value = $"{rowKey}|{request.StepName}";
                         variables = StepVariables(data, request.StepName);
                         redactedVariables = StepRedactedVariables(data, request.StepName);
                         if (!string.IsNullOrWhiteSpace(environment)) variables["env"] = environment;
@@ -440,7 +441,11 @@ public sealed class TestRunner
     private async Task<string> ResolveDynamicValueAsync(string value, IReadOnlyDictionary<string, string> correlation, IReadOnlyDictionary<string, string>? requestReferences, LoadTestingTool.Domain.ExecutionContext context, CancellationToken cancellationToken)
     {
         var resolved = ResolveRuntimeReferences(value, correlation, requestReferences, context);
-        return await InlineScriptRunner.ResolveTokensAsync(resolved, context, _features.WorkspaceRoot, _features, _logger, cancellationToken);
+        // Inline scripts and random/time tokens can give a different answer every time; when a few steps are re-run, they give the last run's answer.
+        // The text after the references are filled in is the key, so a changed reference (an earlier step ran again) still resolves anew.
+        return RunValueMemory.Active is { } memory
+            ? await memory.StepTextAsync(resolved, () => InlineScriptRunner.ResolveTokensAsync(resolved, context, _features.WorkspaceRoot, _features, _logger, cancellationToken))
+            : await InlineScriptRunner.ResolveTokensAsync(resolved, context, _features.WorkspaceRoot, _features, _logger, cancellationToken);
     }
     private async Task<IReadOnlyList<AssertionDefinition>> ResolveAssertionReferencesAsync(IReadOnlyList<AssertionDefinition> definitions, IReadOnlyDictionary<string, string> correlation, IReadOnlyDictionary<string, string>? requestReferences, LoadTestingTool.Domain.ExecutionContext context, CancellationToken cancellationToken)
     {

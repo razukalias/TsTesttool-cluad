@@ -95,4 +95,41 @@ public class RunValueMemoryTests
         Assert.Equal("new", check.PreviousRow("1|D1|1|default")["b"]);
         Assert.Equal("2", check.PreviousRow("1|D2|1|default")["a"]);
     }
+
+    [Fact]
+    public void Date_and_time_tokens_are_remembered_too()
+    {
+        using var dir = new TempDir();
+        var path = Workbooks.CreateSmall(dir, (_, request, _) => request.Cell(2, 5).Value = "at-<currentdatetime:yyyyMMddHHmmssfff>");
+
+        var first = ReadWith(path, reuse: false);
+        Thread.Sleep(30);
+        Assert.Equal(first, ReadWith(path, reuse: true));
+        Assert.NotEqual(first, ReadWith(path, reuse: false));
+    }
+
+    [Fact]
+    public async Task Resolved_step_text_is_replayed_only_for_the_same_step_and_text()
+    {
+        using var dir = new TempDir();
+        var path = Workbooks.CreateSmall(dir);
+        var calls = 0;
+        Task<string> Resolve() => Task.FromResult($"value-{++calls}");
+
+        var first = new RunValueMemory(path);
+        first.BeginRead(reuse: false);
+        RunValueMemory.StepScope.Value = "1|D1|1|default|CreatePost";
+        Assert.Equal("value-1", await first.StepTextAsync("body <script>", Resolve));
+        Assert.Equal("plain", await first.StepTextAsync("plain", () => Task.FromResult("plain")));   // unchanged text is not stored
+        first.Save();
+
+        var rerun = new RunValueMemory(path);
+        rerun.BeginRead(reuse: true);
+        Assert.Equal("value-1", await rerun.StepTextAsync("body <script>", Resolve));          // replayed, resolver not called
+        Assert.Equal(1, calls);
+        Assert.Equal("value-2", await rerun.StepTextAsync("body <script> changed", Resolve));  // edited text resolves anew
+        RunValueMemory.StepScope.Value = "1|D1|1|default|OtherStep";
+        Assert.Equal("value-3", await rerun.StepTextAsync("body <script>", Resolve));          // another step does not borrow it
+        RunValueMemory.StepScope.Value = null;
+    }
 }
