@@ -53,6 +53,9 @@ public sealed class TestRunner
                 var testcaseResult = new TestcaseResult { RunId = run.RunId, TestcaseIndex = testcase.TestcaseIndex, ExcelRowNumber = data.ExcelRowNumber, TestcaseRowNumber = data.TestcaseRowNumber, Testcase = testcase.Testcase, DataId = data.DataId, Thread = threadId, Iteration = iteration, Environment = environment, StartedAt = DateTimeOffset.Now };
                 var correlation = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); var correlationSources = new Dictionary<string, CorrelationRecord>(StringComparer.OrdinalIgnoreCase); var requestReferences = data.Variables.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase); var stepOrder = 0;
                 var executionContext = new LoadTestingTool.Domain.ExecutionContext();
+                var rowKey = RunValueMemory.RowKey(testcase.TestcaseIndex, data.DataId, iteration, environment);
+                if (RunValueMemory.Active is { Reuse: true } rowMemory)
+                    foreach (var saved in rowMemory.PreviousRow(rowKey)) correlation[saved.Key] = saved.Value;   // what earlier steps extracted in the last run
                 foreach (var request in testcase.Steps)
                 {
                     _logger.Info($"---- STEP {stepOrder + 1}: {request.StepName} | type={request.StepType.WireName()} | dataid={data.DataId} | iteration={iteration} ----");
@@ -114,6 +117,7 @@ public sealed class TestRunner
                     if (result.FailureCategory.Equals("RuntimeReference", StringComparison.OrdinalIgnoreCase)) { _logger.Warn($"Stopping current data row after missing runtime reference. dataid={data.DataId}; step={request.StepName}; iteration={iteration}; remaining rows will continue."); break; }
                     if (result.Result == "FAIL" && (request.StopOnFailure || request.StepType == StepType.ActionManual)) { _logger.Warn($"Stopping current data row after failed dataid={data.DataId}, step {request.StepName} because {(request.StepType == StepType.ActionManual ? "ActionManual always stops immediately" : "stopOnFailure=true")}."); break; }
                 }
+                RunValueMemory.Active?.SetRow(rowKey, correlation);
                 testcaseResult.EndedAt = DateTimeOffset.Now;
                 lock (run.Testcases) run.Testcases.Add(testcaseResult);
                 rowCompleted?.Invoke(testcaseResult);

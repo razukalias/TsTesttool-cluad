@@ -44,6 +44,7 @@ internal static class Program
             config.RowsExecutionMode = GetCommandLineValue(args, "--rows-execution-mode") ?? GetCommandLineValue(args, "--execution-mode") ?? config.RowsExecutionMode;
             var dataIdSelection = GetCommandLineValue(args, "--dataids") ?? config.DataIdSelection;
             var stepSelection = GetCommandLineValue(args, "--steps") ?? config.StepSelection;
+            config.ReuseLastValues = GetCommandLineValue(args, "--reuse-last-values") ?? config.ReuseLastValues;
             if (!config.RowsExecutionMode.Equals("parallel", StringComparison.OrdinalIgnoreCase) && !config.RowsExecutionMode.Equals("sequential", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("rows-execution-mode must be 'parallel' or 'sequential'.");
             var runId = string.IsNullOrWhiteSpace(config.RunId) ? $"{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}"[..25] : config.RunId;
             loadedRunId = runId;
@@ -67,6 +68,8 @@ internal static class Program
             WorkbookModel workbook;
             try
             {
+                RunValueMemory.Active = new RunValueMemory(workbookPath);
+                RunValueMemory.Active.BeginRead(reuse: false);
                 workbook = new WorkbookReader().Read(workbookPath);
             }
             catch (Exception ex)
@@ -84,6 +87,17 @@ internal static class Program
             var selection = new RuntimeSelection { Input = string.IsNullOrWhiteSpace(expression) ? "0" : expression!, Indexes = indexes, Source = GetCommandLineValue(args, "--testcases") is not null ? "command-line" : "appsettings.json" };
             var overall = new RunResult { RunId = runId, Selection = selection, StartedAt = DateTimeOffset.Now };
             var work = new RunSelectionPlanner().Build(workbook, indexes, stepSelection, config.EnvironmentSelection, GetCommandLineValue(args, "--environments-json"), config.Environments);
+            // Re-running only some steps of a testcase (a failed step, say) should see the same random numbers, GUIDs and response values as the
+            // run it follows, not new ones. The workbook is read again with the old generated values put back; edited cells still get new ones.
+            var reuseMode = config.ReuseLastValues.Trim().ToLowerInvariant();
+            var partialRun = work.Any(x => x.Testcase.Steps.Count < (workbook.Testcases.FirstOrDefault(t => t.TestcaseIndex == x.Testcase.TestcaseIndex)?.Steps.Count(step => step.Enabled) ?? x.Testcase.Steps.Count));
+            if (RunValueMemory.Active is { HasPrevious: true } memory && (reuseMode == "on" || (reuseMode != "off" && partialRun)))
+            {
+                memory.BeginRead(reuse: true);
+                workbook = new WorkbookReader().Read(workbookPath);
+                work = new RunSelectionPlanner().Build(workbook, indexes, stepSelection, config.EnvironmentSelection, GetCommandLineValue(args, "--environments-json"), config.Environments);
+                Console.WriteLine("Reusing the generated values (random numbers, GUIDs) and saved response values from the last run for unchanged data.");
+            }
             Console.WriteLine("Selected work: " + string.Join("; ", work.Select(x => $"{x.Testcase.TestcaseIndex} [{(string.IsNullOrEmpty(x.Environment) ? "default" : x.Environment)}]: {string.Join(", ", x.Testcase.Steps.Select(s => s.StepName))}")));
             var filters = ParseDataIdSelection(dataIdSelection);
             try
@@ -102,6 +116,8 @@ internal static class Program
             }
             finally
             {
+                RunValueMemory.Active?.Save();
+                RunValueMemory.Active = null;
                 overall.Cancelled |= cancellation.IsCancellationRequested;
                 overall.EndedAt = DateTimeOffset.Now;
                 var overallResult = overall.Cancelled ? "cancelled" : overall.Testcases.Any(t => t.Result == "FAILED") ? "failed" : "passed";

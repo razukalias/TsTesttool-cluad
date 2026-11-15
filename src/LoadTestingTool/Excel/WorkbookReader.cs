@@ -1,3 +1,4 @@
+using LoadTestingTool.Execution;
 using ClosedXML.Excel;
 using LoadTestingTool.Domain;
 using System.Globalization;
@@ -211,9 +212,11 @@ public sealed class WorkbookReader
                 ? m.Value
                 : Cell(workbook, currentSheet.Name, m.Groups[1].Value, int.Parse(m.Groups[2].Value), compiledCellCache, resolving), RegexOptions.IgnoreCase);
         result = Regex.Replace(result, @"<(datum|currentdatum|currenttime|currentdatetime|currenttimestamp)(?::([^>]+))?>", m => FormatDateToken(m.Groups[1].Value, m.Groups[2].Success ? m.Groups[2].Value : null), RegexOptions.IgnoreCase);
-        result = Regex.Replace(result, @"<randomnumber(?::([^>]+))?>", m => FormatRandomNumberToken(m.Groups[1].Success ? m.Groups[1].Value : null), RegexOptions.IgnoreCase);
-        result = Regex.Replace(result, @"<guid(?::([NnDdBbPp]))?>", m => FormatGuidToken(m.Groups[1].Success ? m.Groups[1].Value : null), RegexOptions.IgnoreCase);
-        result = Regex.Replace(result, @"<randomnumber_(\d+)>", m => FormatRandomNumberToken(m.Groups[1].Value), RegexOptions.IgnoreCase);
+        var rawText = value ?? string.Empty;
+        string Remember(Match m, Func<string> make) => RunValueMemory.Active is { } memory ? memory.Generated(currentSheet.Name, currentRowNumber, rawText, m.Value, make) : make();
+        result = Regex.Replace(result, @"<randomnumber(?::([^>]+))?>", m => Remember(m, () => FormatRandomNumberToken(m.Groups[1].Success ? m.Groups[1].Value : null)), RegexOptions.IgnoreCase);
+        result = Regex.Replace(result, @"<guid(?::([NnDdBbPp]))?>", m => Remember(m, () => FormatGuidToken(m.Groups[1].Success ? m.Groups[1].Value : null)), RegexOptions.IgnoreCase);
+        result = Regex.Replace(result, @"<randomnumber_(\d+)>", m => Remember(m, () => FormatRandomNumberToken(m.Groups[1].Value)), RegexOptions.IgnoreCase);
         result = result.Replace("<datum>", DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase).Replace("<currentdatum>", DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase).Replace("<currenttime>", DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase).Replace("<currentdatetime>", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase).Replace("<currenttimestamp>", DateTimeOffset.Now.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
         return result;
     }

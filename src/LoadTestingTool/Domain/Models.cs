@@ -14,6 +14,9 @@ public sealed class AppConfig
     public bool GenerateResults { get; set; } = true;
     public bool GenerateAggregateHistory { get; set; }
     public bool GenerateRowHistory { get; set; } = true;
+
+    /// <summary>"auto" (default): a run of only some steps of a testcase reuses the random numbers/GUIDs and the response values from the last run; "on" always reuses; "off" never.</summary>
+    public string ReuseLastValues { get; set; } = "auto";
     public string InstanceId { get; set; } = "default";
     public string RunId { get; set; } = string.Empty;
     public int RequestTimeoutSeconds { get; set; } = 300;
