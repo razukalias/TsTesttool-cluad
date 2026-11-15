@@ -531,6 +531,17 @@ public sealed partial class DataEditorViewModel : ObservableObject
         ShowStatus($"Reloaded {FileName}: it was changed on disk {reason}.", isError: false);
     }
 
+    /// <summary>Puts a backup in place of this workbook (the current one is backed up first) and reloads it. Returns the safety copy's path.</summary>
+    public string? RestoreFrom(string backupPath)
+    {
+        if (IsRunning) throw new InvalidOperationException("the instance is running");
+        if (IsDirty) throw new InvalidOperationException("the workbook has unsaved edits");
+        var safety = WorkbookBackups.Restore(backupPath, WorkbookPath);
+        Reload();
+        ShowStatus($"Restored {FileName} from a backup." + (safety is null ? string.Empty : $" Previous version: {safety}"), isError: false);
+        return safety;
+    }
+
     [RelayCommand]
     private void Reload()
     {

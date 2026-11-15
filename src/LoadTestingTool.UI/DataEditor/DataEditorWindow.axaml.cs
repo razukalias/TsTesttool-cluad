@@ -298,6 +298,13 @@ public partial class DataEditorWindow : Window
 
     private void OnSaveClick(object? sender, RoutedEventArgs e) => Save();
 
+    private void OnBackupsClick(object? sender, RoutedEventArgs e)
+    {
+        if (_shell.Current is not { } editor) return;
+        var instance = _shell.SelectedNode is null ? null : _shell.Instances.FirstOrDefault(i => i.Editor == editor);
+        new BackupsWindow(editor, () => instance is null ? null : _shell.ReplaceBlockedReason(instance.Name)).Show(this);
+    }
+
     private void Save()
     {
         CommitPendingEdit();
