@@ -503,7 +503,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             var moved = result.RowsInserted == 0 ? (result.ReferencesRenumbered > 0 ? $" Updated {result.ReferencesRenumbered} {(result.ReferencesRenumbered == 1 ? "reference" : "references")}." : string.Empty)
                 : $" Inserted {result.RowsInserted / 2} {(result.RowsInserted / 2 == 1 ? "row" : "rows")} in the request and response sheets and renumbered {result.ReferencesRenumbered} {(result.ReferencesRenumbered == 1 ? "reference" : "references")}.";
             ShowStatus(result.Saved
-                ? $"Saved {FileName}.{moved}{(result.BackupPath is null ? string.Empty : $" Backup: {Path.GetFileName(result.BackupPath)}")}"
+                ? $"Saved {FileName}.{moved}{(result.BackupPath is null ? string.Empty : $" Backup copy: {result.BackupPath}")}"
                 : "Nothing to save.", isError: false);
             return true;
         }

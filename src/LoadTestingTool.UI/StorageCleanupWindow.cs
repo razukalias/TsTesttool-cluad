@@ -35,6 +35,7 @@ public sealed class StorageCleanupWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         _instance.ItemsSource = new[] { "All instances" }.Concat(_instanceRoots.Select(x => Path.GetFileName(x.TrimEnd(Path.DirectorySeparatorChar))).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase)).ToArray();
         _instance.SelectedIndex = 0;
+        _preview.DoubleTapped += (_, _) => OpenSelected();
         foreach (var control in new Control[] { _search, _type, _instance, _status, _from, _to, _duplicatesOnly })
         {
             if (control is TextBox text) text.TextChanged += (_, _) => ClearPreview();
@@ -54,6 +55,7 @@ public sealed class StorageCleanupWindow : Window
             DashboardStyle.Action("Preview", Preview, "primary"),
             DashboardStyle.Action("Delete permanently", ConfirmDelete, "danger"),
             DashboardStyle.Action("Refresh", () => { ClearPreview(); Preview(); }),
+            DashboardStyle.Action("Open selected", OpenSelected),
             DashboardStyle.Action("Close", Close)
         }};
         Content = new Grid
@@ -70,6 +72,46 @@ public sealed class StorageCleanupWindow : Window
             }
         };
         Grid.SetRow(filters, 1); Grid.SetRow(actions, 2); Grid.SetRow(Content is Grid grid ? grid.Children[3] : null!, 3); Grid.SetRow(Content is Grid grid2 ? grid2.Children[4] : null!, 4);
+    }
+
+    /// <summary>The previewed file on the line the caret is on, or null.</summary>
+    internal string? FileOnCurrentLine()
+    {
+        var text = _preview.Text ?? string.Empty;
+        if (text.Length == 0) return null;
+        var caret = Math.Clamp(_preview.CaretIndex, 0, text.Length);
+        var start = caret == 0 ? 0 : text.LastIndexOf('\n', caret - 1) + 1;
+        var end = text.IndexOf('\n', start);
+        var line = (end < 0 ? text[start..] : text[start..end]).TrimEnd('\r');
+        return _matches.Select(x => x.Path).FirstOrDefault(path => line.EndsWith(path, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Opens the file on the caret's line. A workbook opens in the spreadsheet editor on a temporary copy, so saving there can never change the stored backup;
+    /// anything else (logs, history, results) opens in the system's default app.
+    /// </summary>
+    private void OpenSelected()
+    {
+        var path = FileOnCurrentLine();
+        if (path is null) { _statusText.Text = "Click a file line first (or double-click it), then Open selected."; _statusText.Foreground = DashboardStyle.Muted; return; }
+        try
+        {
+            if (!File.Exists(path)) { _statusText.Text = "That file no longer exists. Click Refresh."; return; }
+            if (path.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            {
+                var folder = Path.Combine(Path.GetTempPath(), "TestToolBackupView", Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(folder);
+                var copy = Path.Combine(folder, Path.GetFileName(path));
+                File.Copy(path, copy);
+                var viewer = new SpreadsheetPreviewWindow(copy);
+                viewer.Title = $"{viewer.Title} (copy — the stored file is not changed)";
+                viewer.Closed += (_, _) => { try { Directory.Delete(folder, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { } };
+                viewer.Show(this);
+            }
+            else System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+            _statusText.Text = $"Opened {Path.GetFileName(path)}.";
+        }
+        catch (Exception ex) { _statusText.Text = $"Could not open the file: {ex.Message}"; _statusText.Foreground = DashboardStyle.Brush("#FF7A7A"); }
     }
 
     private void ClearPreview()
