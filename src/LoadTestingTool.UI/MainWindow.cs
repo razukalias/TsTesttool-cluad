@@ -90,6 +90,8 @@ public sealed class RunIssueInfo
     public string Testcase { get; init; } = string.Empty;
     public string DataId { get; init; } = string.Empty;
     public string StepName { get; init; } = string.Empty;
+    /// <summary>True when the issue only repeats a failed request that the step timeline and status icons already show.</summary>
+    public bool FromRequest { get; init; }
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.Now;
     public string Identity => $"{Category}|{Severity}|{Environment}|{Testcase}|{DataId}|{StepName}|{Message}";
 }
@@ -1026,7 +1028,16 @@ public sealed partial class MainWindow : Window
             if (item.Process is null) throw new InvalidOperationException("The runner process could not be started.");
             item.Process.EnableRaisingEvents = true;
             item.Process.OutputDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) UiLog($"Runner stdout. instance={item.Name}; runId={item.CurrentRunId}; message={e.Data}"); };
-            item.Process.ErrorDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) UiLog($"Runner stderr. instance={item.Name}; runId={item.CurrentRunId}; message={e.Data}"); };
+            item.Process.ErrorDataReceived += (_, e) =>
+            {
+                if (string.IsNullOrWhiteSpace(e.Data)) return;
+                UiLog($"Runner stderr. instance={item.Name}; runId={item.CurrentRunId}; message={e.Data}");
+                var line = e.Data.Trim();
+                // Errors the runner could only print (startup failures, crashes) would otherwise never reach the Overview.
+                if (line.StartsWith("[Fatal]", StringComparison.OrdinalIgnoreCase)) Dispatcher.UIThread.Post(() => AddRunnerIssue(item, "Error", "Runner", line["[Fatal]".Length..].Trim()));
+                else if (line.StartsWith("[Warning]", StringComparison.OrdinalIgnoreCase)) Dispatcher.UIThread.Post(() => AddRunnerIssue(item, "Warning", "Runner", line["[Warning]".Length..].Trim()));
+                else if (line.StartsWith("Unhandled exception", StringComparison.OrdinalIgnoreCase)) Dispatcher.UIThread.Post(() => AddRunnerIssue(item, "Error", "Runner", line));
+            };
             item.Process.Exited += (_, _) => UiLog($"Runner process exited. instance={item.Name}; runId={item.CurrentRunId}; processId={item.Process?.Id}; exitCode={item.Process?.ExitCode}; hasEvents={item.EventMessages.Count > 0}");
             item.Process.BeginOutputReadLine();
             item.Process.BeginErrorReadLine();
@@ -1042,6 +1053,7 @@ public sealed partial class MainWindow : Window
             UiLog($"Runner launch failed for '{item.Name}': {ex}");
             item.Status = "Launch failed";
             item.LastEvent = ex.Message;
+            AddRunnerIssue(item, "Error", "Launch", ex.Message);
             _details.Text = $"Cannot run {item.Name}: {ex.Message}";
         }
     }
@@ -1069,6 +1081,17 @@ public sealed partial class MainWindow : Window
         finally { (item.TestcaseSelection, item.StepSelectionJson, item.DataIdSelection) = (testcases, steps, dataIdSelection); }
         RefreshRows();
         return item.Status == "Launch failed" ? item.LastEvent : null;
+    }
+
+    /// <summary>Adds an error or warning to the instance's Run issues (shown in the Overview); the same text is only added once per run.</summary>
+    private void AddRunnerIssue(InstanceInfo item, string severity, string category, string message, string testcase = "", string step = "", bool fromRequest = false)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+        var issue = new RunIssueInfo { Severity = severity, Category = category, Message = message.Trim(), Testcase = testcase, StepName = step, FromRequest = fromRequest };
+        if (item.Issues.Any(x => x.Identity.Equals(issue.Identity, StringComparison.OrdinalIgnoreCase) || x.Message.Equals(issue.Message, StringComparison.OrdinalIgnoreCase))) return;
+        item.Issues.Add(issue);
+        item.LastEvent = $"{severity}: {category} — {issue.Message}";
+        UiLog($"Run issue added. instance={item.Name}; severity={severity}; category={category}; message={issue.Message}");
     }
 
     private void StopSelected(bool force)
@@ -1156,6 +1179,8 @@ public sealed partial class MainWindow : Window
                 item.CurrentRunFolder = FindRunFolder(item, item.CurrentRunId) ?? item.CurrentRunFolder;
                 item.Status = item.Process.ExitCode == 0 ? "Passed" : item.Process.ExitCode == 3 ? "Cancelled" : "Failed";
                 item.CompletedAt ??= DateTimeOffset.Now;
+                if (item.Process.ExitCode is not (0 or 3 or 2) && !item.Issues.Any(i => i.Severity.Equals("Error", StringComparison.OrdinalIgnoreCase) && !i.FromRequest))
+                    AddRunnerIssue(item, "Error", "Runner", $"The runner stopped with exit code {item.Process.ExitCode} before it reported a result. See the internal log for details.");
                 UiLog($"Runner process exited. instance={item.Name}; runId={item.CurrentRunId}; processId={item.Process.Id}; exitCode={item.Process.ExitCode}; observedAt={DateTimeOffset.Now:O}");
             }
         }

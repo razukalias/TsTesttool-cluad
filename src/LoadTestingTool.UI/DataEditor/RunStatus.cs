@@ -43,7 +43,7 @@ public static class RunClassifier
     {
         switch (category?.Trim())
         {
-            case "Configuration" or "WorkbookValidation" or "Template": return RunState.ValidationError;
+            case "Configuration" or "WorkbookValidation" or "Template" or "Validation": return RunState.ValidationError;
             case "VariableResolution" or "RuntimeReference": return RunState.VariableError;
             case "Assertion" or "HttpStatus" or "ActionManual": return RunState.AssertionFailed;
             case "Cancelled": return RunState.Cancelled;

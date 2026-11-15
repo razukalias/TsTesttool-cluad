@@ -1417,7 +1417,7 @@ public sealed partial class MainWindow
                 {
                     new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { DashboardStyle.Badge(issue.Severity), DashboardStyle.Text($"{issue.Category}{(string.IsNullOrWhiteSpace(scope) ? "" : $" · {scope}")}", 11, true) } },
                     DashboardStyle.Text(issue.Message, 11, false, color),
-                    DashboardStyle.Text($"{issue.OccurredAt:HH:mm:ss} · Informational issue; warnings do not affect failure totals.", 10, false, DashboardStyle.Muted)
+                    DashboardStyle.Text(issue.Severity.Equals("Warning", StringComparison.OrdinalIgnoreCase) ? $"{issue.OccurredAt:HH:mm:ss} · Warning; it does not affect failure totals." : $"{issue.OccurredAt:HH:mm:ss} · Error reported by the runner; the run may be incomplete.", 10, false, DashboardStyle.Muted)
                 }};
                 _overviewPanel.Children.Add(DashboardStyle.Card(content, new Thickness(8)));
             }
@@ -1458,7 +1458,14 @@ public sealed partial class MainWindow
             var context = DashboardStyle.Text($"{request.Testcase} / Row {request.DataId} · {request.Environment} · Step {position}/{stepTotals.GetValueOrDefault(rowKey, position)} · {request.DurationMs} ms", 10, false, DashboardStyle.Muted);
             context.TextWrapping = TextWrapping.Wrap;
             var line = new StackPanel { Spacing = 3, Children = { top, context } };
-            if (!string.IsNullOrWhiteSpace(request.FailureCategory) && request.FailureCategory != "None") { var error = DashboardStyle.Text($"{request.FailureCategory}: {request.Error}", 10, false, DashboardStyle.Red); error.TextWrapping = TextWrapping.Wrap; line.Children.Add(error); }
+            var hasCategory = !string.IsNullOrWhiteSpace(request.FailureCategory) && request.FailureCategory != "None";
+            if (hasCategory || !string.IsNullOrWhiteSpace(request.Error) || request.Result.Equals("FAIL", StringComparison.OrdinalIgnoreCase))
+            {
+                var text = !string.IsNullOrWhiteSpace(request.Error) ? request.Error : FailedAssertionText(item, request);
+                var error = DashboardStyle.Text(hasCategory ? $"{request.FailureCategory}: {text}" : text, 10, false, DashboardStyle.Red);
+                error.TextWrapping = TextWrapping.Wrap;
+                line.Children.Add(error);
+            }
             _overviewPanel.Children.Add(DashboardStyle.Card(line, new Thickness(8)));
         }
         _overviewPanel.Children.Add(overviewPaging);
@@ -1471,6 +1478,17 @@ public sealed partial class MainWindow
         RenderUnifiedLog();
         RefreshAssertionList(); RefreshArtifacts();
     }
+    /// <summary>The failed assertions of a request, as text, for failures that carry no error message of their own.</summary>
+    private static string FailedAssertionText(InstanceInfo item, DashboardRequest request)
+    {
+        var failed = item.Assertions.Where(a => a.Result == "FAIL" && a.StepName.Equals(request.StepName, StringComparison.OrdinalIgnoreCase)
+            && a.Testcase.Equals(request.Testcase, StringComparison.OrdinalIgnoreCase) && a.DataId.Equals(request.DataId, StringComparison.OrdinalIgnoreCase)
+            && a.Environment.Equals(request.Environment, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (failed.Count == 0) return "The step failed without an error message. Open View details for the request and response.";
+        var shown = failed.Take(3).Select(a => !string.IsNullOrWhiteSpace(a.FailureMessage) ? a.FailureMessage : $"{a.ResponsePath} expected {a.ExpectedValue} but was {a.ActualValue}");
+        return string.Join(" | ", shown) + (failed.Count > 3 ? $" | +{failed.Count - 3} more (see Assertions)" : "");
+    }
+
     private static bool IsUnexpectedRequest(DashboardRequest request)
         => !string.IsNullOrWhiteSpace(request.Error) || (!string.IsNullOrWhiteSpace(request.FailureCategory) && request.FailureCategory is not "None" and not "Assertion" and not "HttpStatus");
     private static IReadOnlyList<DashboardRowSummary> BuildDashboardRowSummaries(IReadOnlyList<DashboardRequest> requests)
