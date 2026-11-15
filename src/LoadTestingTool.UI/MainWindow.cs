@@ -21,7 +21,6 @@ public sealed class InstanceInfo
     public string Name { get; set; } = string.Empty;
     public string FolderPath { get; set; } = string.Empty;
     public string WorkbookPath { get; set; } = string.Empty;
-    public string WorkbookFingerprint { get; set; } = string.Empty;
     public string Status { get; set; } = "Ready";
     public string LastEvent { get; set; } = "No results yet";
     public string TestcaseSelection { get; set; } = "0";
@@ -179,7 +178,6 @@ public sealed partial class MainWindow : Window
     private readonly TextBlock _rpsValue = new();
     private InstanceInfo? _selectedInstance;
     private readonly DispatcherTimer _timer;
-    private DateTimeOffset _nextWorkbookScan = DateTimeOffset.MinValue;
 
     public MainWindow()
     {
@@ -516,8 +514,6 @@ public sealed partial class MainWindow : Window
                                 item.DataIdOptions[testcaseIndex].Add(dataId);
                             }
                         }
-                var workbookInfo = new FileInfo(workbook);
-                item.WorkbookFingerprint = $"{workbookInfo.Length}:{workbookInfo.LastWriteTimeUtc.Ticks}";
             }
             catch (Exception ex)
             {
@@ -1137,15 +1133,6 @@ public sealed partial class MainWindow : Window
     private void PollEvents()
     {
         var pollStarted = Stopwatch.GetTimestamp();
-        if (DateTimeOffset.UtcNow >= _nextWorkbookScan)
-        {
-            _nextWorkbookScan = DateTimeOffset.UtcNow.AddSeconds(1.5);
-            if (_instances.Any(WorkbookChangedOnDisk))
-            {
-                UiLog("Workbook change detected; refreshing instance workbook catalogs automatically.");
-                RefreshInstances();
-            }
-        }
         var filesSeen = 0;
         var eventsApplied = 0;
         foreach (var item in _instances)
@@ -1195,19 +1182,6 @@ public sealed partial class MainWindow : Window
             _selectedInstance = selected;
             UpdateDetailsText();
         }
-    }
-
-    private static bool WorkbookChangedOnDisk(InstanceInfo item)
-    {
-        try
-        {
-            var info = new FileInfo(item.WorkbookPath);
-            if (!info.Exists) return false;
-            var fingerprint = $"{info.Length}:{info.LastWriteTimeUtc.Ticks}";
-            return !string.Equals(item.WorkbookFingerprint, fingerprint, StringComparison.Ordinal);
-        }
-        catch (IOException) { return false; }
-        catch (UnauthorizedAccessException) { return false; }
     }
 
     private void ApplyEvent(InstanceInfo item, JsonElement e)
