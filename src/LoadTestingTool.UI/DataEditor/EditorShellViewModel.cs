@@ -288,6 +288,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(TestcaseNodeSelected));
         OnPropertyChanged(nameof(StepNodeSelected));
+        ShowRunDetails();
         switch (value)
         {
             case StepNode step:

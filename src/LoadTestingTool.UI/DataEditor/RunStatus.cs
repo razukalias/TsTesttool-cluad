@@ -26,7 +26,10 @@ public sealed record RunStatusSnapshot(bool Running, IReadOnlyList<StepOutcome> 
 }
 
 /// <summary>Where a click on a status icon should take the person.</summary>
-public sealed record RunFocus(string Testcase, string? Step, RunState State);
+public sealed record RunFocus(string Testcase, int TestcaseIndex, string? Step, RunState State);
+
+/// <summary>What the run views are narrowed to: one testcase, or one step of it.</summary>
+public sealed record RunScope(string Testcase, int TestcaseIndex, string? Step);
 
 public static class RunClassifier
 {

@@ -14,7 +14,9 @@ public class RunStatusTests
         public List<(string Instance, RunFocus Focus)> Focused { get; } = [];
         public List<string> Stopped { get; } = [];
         public TabControl TakeTabs() => new() { ItemsSource = new[] { new TabItem { Header = "Overview" }, new TabItem { Header = "Assertions" } } };
+        public List<(string Instance, RunScope? Scope)> Selected { get; } = [];
         public void Show(string instanceName) { }
+        public void Select(string instanceName, RunScope? scope) => Selected.Add((instanceName, scope));
         public RunStatusSnapshot GetStatus(string instanceName) => Snapshot;
         public void Focus(string instanceName, RunFocus focus) => Focused.Add((instanceName, focus));
         public void Stop(string instanceName) => Stopped.Add(instanceName);
@@ -150,7 +152,7 @@ public class RunStatusTests
         details.Snapshot = Only(RunState.AssertionFailed);
         shell.RefreshRunStatus();
         Assert.Equal("Assertions", shell.OpenStatus(step));
-        Assert.Equal(new RunFocus(testcase.Name, step.Name, RunState.AssertionFailed), details.Focused[^1].Focus);
+        Assert.Equal(new RunFocus(testcase.Name, testcase.Index, step.Name, RunState.AssertionFailed), details.Focused[^1].Focus);
         details.Snapshot = Only(RunState.ValidationError);
         shell.RefreshRunStatus();
         Assert.Equal("Workbook", shell.OpenStatus(step));
@@ -158,7 +160,7 @@ public class RunStatusTests
         shell.RefreshRunStatus();
         Assert.Equal("Overview", shell.OpenStatus(testcase));
         Assert.Equal("Overview", shell.OpenStatus(instance));
-        Assert.Equal(new RunFocus(string.Empty, null, RunState.UnexpectedError), details.Focused[^1].Focus);
+        Assert.Equal(new RunFocus(string.Empty, 0, null, RunState.UnexpectedError), details.Focused[^1].Focus);
         shell.StopInstance(instance);
         Assert.Equal(["Sample"], details.Stopped);
     }
@@ -182,5 +184,18 @@ public class RunStatusTests
         Directory.CreateDirectory(shots);
         window.CaptureRenderedFrame()!.Save(System.IO.Path.Combine(shots, "editor-run-status.png"));
         window.Close();
+    }
+
+    [Fact]
+    public void Selecting_a_node_narrows_the_run_views_to_it()
+    {
+        using var dir = new TempDir();
+        var (shell, details, instance, testcase, step) = Open(dir);
+        shell.SelectedNode = step;
+        Assert.Equal(("Sample", new RunScope(testcase.Name, testcase.Index, step.Name)), details.Selected[^1]);
+        shell.SelectedNode = testcase;
+        Assert.Equal(("Sample", new RunScope(testcase.Name, testcase.Index, null)), details.Selected[^1]);
+        shell.SelectedNode = instance;
+        Assert.Equal(("Sample", (RunScope?)null), details.Selected[^1]);
     }
 }

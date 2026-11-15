@@ -52,13 +52,13 @@ public sealed partial class EditorShellViewModel
         switch (node)
         {
             case InstanceNode instance:
-                details.Focus(instance.Name, new RunFocus(string.Empty, null, instance.Run.State));
+                details.Focus(instance.Name, new RunFocus(string.Empty, 0, null, instance.Run.State));
                 return TabFor(instance.Run.State);
             case TestcaseItem testcase when InstanceFor(testcase) is { } owner:
-                details.Focus(owner.Name, new RunFocus(testcase.Name, null, testcase.Run.State));
+                details.Focus(owner.Name, new RunFocus(testcase.Name, testcase.Index, null, testcase.Run.State));
                 return TabFor(testcase.Run.State);
             case StepNode step when InstanceFor(step) is { } owner:
-                details.Focus(owner.Name, new RunFocus(step.Owner.Name, step.Name, step.Run.State));
+                details.Focus(owner.Name, new RunFocus(step.Owner.Name, step.Owner.Index, step.Name, step.Run.State));
                 return TabFor(step.Run.State);
         }
         return null;
@@ -70,6 +70,10 @@ public sealed partial class EditorShellViewModel
         RunState.ValidationError => "Workbook",
         _ => "Overview"
     };
+
+    /// <summary>Another part of the app rewrote an instance's workbook; reloads it in the editor when that is safe.</summary>
+    public void ReloadAfterExternalChange(string instanceName)
+        => Instances.FirstOrDefault(i => i.Name == instanceName)?.Editor?.ReloadAfterExternalChange();
 
     /// <summary>The stop button beside a running instance.</summary>
     public void StopInstance(InstanceNode instance) => _runDetails?.Stop(instance.Name);

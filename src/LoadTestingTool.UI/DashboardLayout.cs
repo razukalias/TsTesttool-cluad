@@ -681,7 +681,7 @@ public sealed partial class MainWindow
     {
         var manager = new EnvironmentManagerWindow(_config.Environments, _config.RunEnvironmentsParallel, SaveGlobalEnvironmentSettings, ApplyEnvironmentsToAllInstances);
         manager.Closed += (_, _) => RefreshInstances();
-        manager.Show(this);
+        manager.Show(Host);
     }
 
     private void SaveGlobalEnvironmentSettings(IReadOnlyList<string> environments, bool runEnvironmentsParallel)
@@ -969,7 +969,7 @@ public sealed partial class MainWindow
     private void OpenDataEditor()
     {
         if (_selectedInstance is null) { _details.Text = "Select an instance first."; return; }
-        CreateDataEditor()?.Show(this);
+        CreateDataEditor()?.Show(Host);
     }
 
     /// <summary>The data editor as the application's only window: the dashboard is built but never shown, and still runs tests and tracks results for the editor.</summary>
@@ -978,6 +978,11 @@ public sealed partial class MainWindow
         _selectedInstance ??= _instances.FirstOrDefault();
         return _selectedInstance is null ? null : CreateDataEditor();
     }
+
+    private Window? _hostWindow;
+
+    /// <summary>The window that owns dialogs opened from the dashboard's panels: the data editor while it is open (the dashboard itself may be hidden, and a hidden window cannot own a window).</summary>
+    internal Window Host => _hostWindow is { IsVisible: true } ? _hostWindow : this;
 
     private DataEditor.DataEditorWindow? CreateDataEditor()
     {
@@ -988,6 +993,7 @@ public sealed partial class MainWindow
             editor.Shell.EnvironmentSettings = new EditorEnvironmentSettings(this);
             editor.Shell.HistoryHandler = LaunchHistoryWorkspace;
             editor.Shell.RunDetails = new EditorRunDetails(this);
+            _hostWindow = editor;
             editor.Shell.CreateTestcaseHandler = (name, draft) => { if (_instances.FirstOrDefault(x => x.Name == name) is { } target) CreateTestcaseForInstance(target, draft); };
             editor.Closed += (_, _) =>
             {
@@ -1009,7 +1015,7 @@ public sealed partial class MainWindow
         if (_selectedInstance is null) { _details.Text = "Select an instance first."; return; }
         var editor = new WorkbookEditorWindow(_selectedInstance.WorkbookPath, _selectedInstance.Name);
         editor.Closed += (_, _) => { if (!string.IsNullOrWhiteSpace(editor.SavedBackup)) { RefreshInstances(); _details.Text = $"Workbook saved. Backup created: {Path.GetFileName(editor.SavedBackup)}"; } };
-        editor.Show(this);
+        editor.Show(Host);
         await Task.CompletedTask;
     }
 
@@ -1017,7 +1023,7 @@ public sealed partial class MainWindow
     {
         if (!string.IsNullOrWhiteSpace(item.SelectionReadError)) { _details.Text = $"Cannot read run choices: {item.SelectionReadError}"; return; }
         var form = new InstanceConfigurationWindow(item, ApplyRunSelection, SaveInstanceExecutionSettings, SaveInstanceReportingSettings, CreateTestcaseForInstance);
-        form.Show(this);
+        form.Show(Host);
     }
 
     private void ApplyRunSelection(InstanceInfo item, RunSelectionResult result)
@@ -1073,7 +1079,7 @@ public sealed partial class MainWindow
         if (!string.IsNullOrWhiteSpace(item.SelectionReadError)) { _details.Text = $"Cannot read run choices: {item.SelectionReadError}. Fix the workbook and click Refresh."; return false; }
         try
         {
-            var result = await new RunSelectionWindow(item).ShowDialog<RunSelectionResult?>(this);
+            var result = await new RunSelectionWindow(item).ShowDialog<RunSelectionResult?>(Host);
             if (result is null) return false;
             ApplyRunSelection(item, result); _details.Text = "Selection applied. Click Run selected to execute the checked choices."; return true;
         }
@@ -1106,6 +1112,7 @@ public sealed partial class MainWindow
         title.Children.Add(DashboardStyle.Text("Run Summary", 17, true));
         var stateBadge = DashboardStyle.Badge(string.IsNullOrWhiteSpace(state) ? "Ready" : state); Grid.SetColumn(stateBadge, 1); title.Children.Add(stateBadge);
         _runSummaryPanel.Children.Add(title);
+        if (ActiveScope(item) is { } summaryScope) _runSummaryPanel.Children.Add(DashboardStyle.Text($"Preview for {ScopeText(summaryScope)}: what its ▶ button would run.", 12, true));
         _runSummaryPanel.Children.Add(DashboardStyle.Text("Selection preview. dontrun skips individual steps inside a row; it does not automatically remove the whole row.", 11, false, DashboardStyle.Muted));
 
         Border Metric(string label, long value, IBrush color) => DashboardStyle.Card(new StackPanel { Spacing = 4, Children = { DashboardStyle.Text(label, 10, false, DashboardStyle.Muted), DashboardStyle.Text(value.ToString("N0"), 20, true, color) } }, new Thickness(10));
@@ -1257,11 +1264,14 @@ public sealed partial class MainWindow
     private RunPlanSummary BuildRunPlanSummary(InstanceInfo item)
     {
         if (!File.Exists(item.WorkbookPath)) throw new FileNotFoundException("Workbook was not found.", item.WorkbookPath);
-        var draft = new RunSelectionDraft(item.TestcaseOptions, item.EnvironmentOptions, item.TestcaseSelection, item.StepSelectionJson, item.EnvironmentSelection, item.EnvironmentSelectionJson);
+        var scope = ActiveScope(item);
+        var testcaseSelection = scope is null ? item.TestcaseSelection : scope.TestcaseIndex.ToString();
+        var stepSelection = scope is null ? item.StepSelectionJson : scope.Step is null ? "" : JsonSerializer.Serialize(new Dictionary<string, string[]> { [scope.TestcaseIndex.ToString()] = [scope.Step] });
+        var draft = new RunSelectionDraft(item.TestcaseOptions, item.EnvironmentOptions, testcaseSelection, stepSelection, item.EnvironmentSelection, item.EnvironmentSelectionJson);
         var selectedCases = draft.Cases.ToHashSet();
         var selectedSteps = draft.Steps.ToDictionary(x => x.Key, x => x.Value, EqualityComparer<int>.Default);
         var environments = draft.AvailableEnvironments.Where(x => draft.Environments.Contains(x)).Select(x => string.IsNullOrWhiteSpace(x) ? "Default" : x).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var dataIds = DataIdSelectionCodec.Parse(item.DataIdSelection);
+        var dataIds = DataIdSelectionCodec.Parse(scope is null ? item.DataIdSelection : "");
         using var workbook = new XLWorkbook(item.WorkbookPath);
         var config = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("config", StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidDataException("The workbook has no config sheet.");
         var request = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("request", StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidDataException("The workbook has no request sheet.");
@@ -1327,6 +1337,23 @@ public sealed partial class MainWindow
         finally { _overviewStepFilterRefreshing = false; }
     }
 
+    // ---- Scope: the run views follow the selection in the data editor (one testcase or one step) ----
+    private DataEditor.RunScope? _scope;
+    private string _scopeInstance = string.Empty;
+
+    private DataEditor.RunScope? ActiveScope(InstanceInfo? item) => item is not null && _scope is not null && _scopeInstance == item.Name ? _scope : null;
+
+    private static bool InScope(DataEditor.RunScope? scope, string testcase, string step)
+        => scope is null || (testcase.Equals(scope.Testcase, StringComparison.OrdinalIgnoreCase) && (scope.Step is null || step.Equals(scope.Step, StringComparison.OrdinalIgnoreCase)));
+
+    private List<DashboardRequest> ScopedRequests(InstanceInfo item)
+        => ActiveScope(item) is { } scope ? item.Requests.Where(r => InScope(scope, r.Testcase, r.StepName)).ToList() : item.Requests;
+
+    private List<AssertionInfo> ScopedAssertions(InstanceInfo item)
+        => ActiveScope(item) is { } scope ? item.Assertions.Where(a => InScope(scope, a.Testcase, a.StepName)).ToList() : item.Assertions;
+
+    private static string ScopeText(DataEditor.RunScope scope) => scope.Step is null ? $"testcase {scope.Testcase}" : $"step {scope.Step} of {scope.Testcase}";
+
     private bool MatchesOverviewStep(DashboardRequest request)
     {
         var status = _overviewStepStatus.SelectedItem?.ToString() ?? "All statuses";
@@ -1370,7 +1397,7 @@ public sealed partial class MainWindow
     private void RefreshDashboardDetails(bool force = false)
     {
         var item = _selectedInstance;
-        var signature = item is null ? "empty" : $"{item.Name}|{item.Status}|{item.Requests.Count}|{item.Assertions.Count}|{item.Issues.Count}|{item.LastEvent}|{item.P95Ms}|{item.StartedAt}|{item.CompletedAt}|{item.TestcaseSelection}|{item.EnvironmentSelection}|{item.RowsExecutionMode}|{item.RunEnvironmentsParallel}|{item.StepSelectionJson}";
+        var signature = item is null ? "empty" : $"{ActiveScope(item)}|{item.Name}|{item.Status}|{item.Requests.Count}|{item.Assertions.Count}|{item.Issues.Count}|{item.LastEvent}|{item.P95Ms}|{item.StartedAt}|{item.CompletedAt}|{item.TestcaseSelection}|{item.EnvironmentSelection}|{item.RowsExecutionMode}|{item.RunEnvironmentsParallel}|{item.StepSelectionJson}";
         if (!force && signature == _detailSignature) return;
         _detailSignature = signature;
         _selectedTitle.Text = item?.Name ?? "Selected instance";
@@ -1395,21 +1422,31 @@ public sealed partial class MainWindow
         }
         RefreshRunSummary(item);
         RefreshOverviewStepFilters(item);
+        var requests = ScopedRequests(item);
+        var assertions = ScopedAssertions(item);
+        var scoped = ActiveScope(item) is not null;
+        var issues = scoped ? item.Issues.Where(i => InScope(ActiveScope(item), i.Testcase, i.StepName)).ToList() : item.Issues;
+        if (ActiveScope(item) is { } active)
+        {
+            _overviewPanel.Children.Add(DashboardStyle.Text($"Showing only {ScopeText(active)}", 12, true));
+            if (requests.Count == 0)
+                _overviewPanel.Children.Add(DashboardStyle.Text(item.Requests.Count > 0 ? "Not run yet — this was not part of the last run of the instance." : "No results yet — run it to see them here.", 12, false, DashboardStyle.Muted));
+        }
         void AddOverview(Control control, string searchable) { if (MatchesTerms(searchable, _overviewFilter.Text)) _overviewPanel.Children.Add(control); }
         AddOverview(DashboardStyle.Badge(item.Status), item.Status);
         AddOverview(KeyValue("Environment", string.IsNullOrWhiteSpace(item.EnvironmentSelection) ? "All global environments" : item.EnvironmentSelection), item.EnvironmentSelection);
         AddOverview(KeyValue("Mode / order", $"{(item.RowsExecutionMode == "sequential" ? "Loop" : "Parallel")} / {(item.RunEnvironmentsParallel ? "Parallel" : "Sequential")}"), $"{item.RowsExecutionMode} {(item.RunEnvironmentsParallel ? "Parallel" : "Sequential")}");
         AddOverview(KeyValue("Started", item.StartedAt?.ToString("HH:mm:ss") ?? "Not started"), item.StartedAt?.ToString() ?? "Not started");
-        AddOverview(KeyValue("Requests", (item.CompletedRequests ?? item.Requests.Count).ToString()), $"{item.CompletedRequests} {item.Requests.Count}");
-        var average = item.AverageMs ?? (item.Requests.Count == 0 ? (double?)null : item.Requests.Average(r => r.DurationMs));
+        AddOverview(KeyValue("Requests", ((scoped ? null : item.CompletedRequests) ?? requests.Count).ToString()), $"{item.CompletedRequests} {requests.Count}");
+        var average = (scoped ? null : item.AverageMs) ?? (requests.Count == 0 ? (double?)null : requests.Average(r => r.DurationMs));
         AddOverview(KeyValue("Avg. latency", average is null ? "—" : $"{average:F1} ms"), average?.ToString() ?? "Available");
-        AddOverview(KeyValue("p95 latency", item.P95Ms is null ? "Available on completion" : $"{item.P95Ms} ms"), item.P95Ms?.ToString() ?? "Available");
-        AddOverview(KeyValue("Throughput", item.RequestsPerSecond is null ? "Available on completion" : $"{item.RequestsPerSecond:F2} requests / sec"), item.RequestsPerSecond?.ToString() ?? "Available");
-        AddOverview(KeyValue("Assertions", $"{item.Assertions.Count(a => a.Result == "PASS")} passed / {item.Assertions.Count(a => a.Result == "FAIL")} failed"), $"{item.Assertions.Count} pass fail");
-        if (item.Issues.Count > 0)
+        AddOverview(KeyValue("p95 latency", scoped ? "—" : item.P95Ms is null ? "Available on completion" : $"{item.P95Ms} ms"), item.P95Ms?.ToString() ?? "Available");
+        AddOverview(KeyValue("Throughput", scoped ? "—" : item.RequestsPerSecond is null ? "Available on completion" : $"{item.RequestsPerSecond:F2} requests / sec"), item.RequestsPerSecond?.ToString() ?? "Available");
+        AddOverview(KeyValue("Assertions", $"{assertions.Count(a => a.Result == "PASS")} passed / {assertions.Count(a => a.Result == "FAIL")} failed"), $"{assertions.Count} pass fail");
+        if (issues.Count > 0)
         {
-            _overviewPanel.Children.Add(DashboardStyle.Text($"Run issues  ·  {item.Issues.Count(i => i.Severity.Equals("Error", StringComparison.OrdinalIgnoreCase))} error(s) / {item.Issues.Count(i => i.Severity.Equals("Warning", StringComparison.OrdinalIgnoreCase))} warning(s)", 13, true));
-            foreach (var issue in item.Issues.Where(i => MatchesTerms($"{i.Severity} {i.Category} {i.Environment} {i.Testcase} {i.DataId} {i.StepName} {i.Message}", _overviewFilter.Text)).OrderByDescending(i => i.OccurredAt))
+            _overviewPanel.Children.Add(DashboardStyle.Text($"Run issues  ·  {issues.Count(i => i.Severity.Equals("Error", StringComparison.OrdinalIgnoreCase))} error(s) / {issues.Count(i => i.Severity.Equals("Warning", StringComparison.OrdinalIgnoreCase))} warning(s)", 13, true));
+            foreach (var issue in issues.Where(i => MatchesTerms($"{i.Severity} {i.Category} {i.Environment} {i.Testcase} {i.DataId} {i.StepName} {i.Message}", _overviewFilter.Text)).OrderByDescending(i => i.OccurredAt))
             {
                 var color = issue.Severity.Equals("Warning", StringComparison.OrdinalIgnoreCase) ? DashboardStyle.Brush("#FFB36B") : DashboardStyle.Red;
                 var scope = string.Join(" / ", new[] { issue.Environment, issue.Testcase, issue.DataId, issue.StepName }.Where(x => !string.IsNullOrWhiteSpace(x)));
@@ -1431,14 +1468,14 @@ public sealed partial class MainWindow
         _overviewPanel.Children.Add(stepFilterBar);
         _overviewPanel.Children.Add(DashboardStyle.Text("Filters apply to completed steps only. Use & between terms to require all terms; matching text remains visible in the details viewer.", 10, false, DashboardStyle.Muted));
         var stepPositions = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        var stepTotals = item.Requests
+        var stepTotals = requests
             .GroupBy(request => $"{request.Testcase}\u001F{request.DataId}\u001F{request.Environment}", StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
-        var filteredRequests = item.Requests.Where(MatchesOverviewStep).ToList();
+        var filteredRequests = requests.Where(MatchesOverviewStep).ToList();
         var overviewTotalPages = Math.Max(1, (int)Math.Ceiling(filteredRequests.Count / (double)DashboardPageSize));
         _overviewPage = Math.Clamp(_overviewPage, 1, overviewTotalPages);
         var pageRequests = filteredRequests.Skip((_overviewPage - 1) * DashboardPageSize).Take(DashboardPageSize);
-        foreach (var request in item.Requests)
+        foreach (var request in requests)
         {
             var rowKey = $"{request.Testcase}\u001F{request.DataId}\u001F{request.Environment}";
             stepPositions[rowKey] = stepPositions.GetValueOrDefault(rowKey) + 1;
@@ -1469,11 +1506,11 @@ public sealed partial class MainWindow
             _overviewPanel.Children.Add(DashboardStyle.Card(line, new Thickness(8)));
         }
         _overviewPanel.Children.Add(overviewPaging);
-        if (item.Requests.Count > 0)
+        if (requests.Count > 0)
         {
             _overviewPanel.Children.Add(DashboardStyle.Text("Latency trend  /  last 30 requests", 13, true));
-            _overviewPanel.Children.Add(new LatencyChart(item.Requests.TakeLast(30).Select(r => (double)r.DurationMs).ToArray()) { Height = 90 });
-            _overviewPanel.Children.Add(DashboardStyle.Text($"Range: 0–{item.Requests.TakeLast(30).Max(r => r.DurationMs)} ms / observed completion order", 10, false, DashboardStyle.Muted));
+            _overviewPanel.Children.Add(new LatencyChart(requests.TakeLast(30).Select(r => (double)r.DurationMs).ToArray()) { Height = 90 });
+            _overviewPanel.Children.Add(DashboardStyle.Text($"Range: 0–{requests.TakeLast(30).Max(r => r.DurationMs)} ms / observed completion order", 10, false, DashboardStyle.Muted));
         }
         RenderUnifiedLog();
         RefreshAssertionList(); RefreshArtifacts();
@@ -1513,8 +1550,11 @@ public sealed partial class MainWindow
         _artifactPanel.Children.Clear(); var item = _selectedInstance;
         if (item is null) return;
         _artifactPanel.Children.Add(DashboardStyle.Text("Workbooks and run artifacts", 16, true));
-        _artifactPanel.Children.Add(DashboardStyle.Action("Edit data", OpenDataEditor, "primary"));
-        _artifactPanel.Children.Add(DashboardStyle.Action("Handcraft: Edit workbook (legacy)", () => _ = EditWorkbookAsync()));
+        if (_hostWindow is not { IsVisible: true })
+        {
+            _artifactPanel.Children.Add(DashboardStyle.Action("Edit data", OpenDataEditor, "primary"));
+            _artifactPanel.Children.Add(DashboardStyle.Action("Handcraft: Edit workbook (legacy)", () => _ = EditWorkbookAsync()));
+        }
         _artifactPanel.Children.Add(DashboardStyle.Action("Open latest result workbook", OpenLatestResultWorkbook));
         _artifactPanel.Children.Add(DashboardStyle.Action("Open Templates folder", OpenTemplatesFolder));
         _artifactPanel.Children.Add(DashboardStyle.Action("Open Results folder", () =>
@@ -1529,6 +1569,24 @@ public sealed partial class MainWindow
         _artifactPanel.Children.Add(KeyValue("Workbook", item.WorkbookPath));
         _artifactPanel.Children.Add(KeyValue("Results", item.ResultsFolder));
         _artifactPanel.Children.Add(KeyValue("Current run", item.CurrentRunFolder));
+        if (ActiveScope(item) is { } scope)
+        {
+            _artifactPanel.Children.Add(DashboardStyle.Text($"Files of {ScopeText(scope)} in the last run", 13, true));
+            var files = new List<string>();
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(item.CurrentRunFolder) && Directory.Exists(item.CurrentRunFolder))
+                    files = Directory.EnumerateFiles(item.CurrentRunFolder, "*", SearchOption.AllDirectories)
+                        .Where(f => f.Contains(scope.Testcase, StringComparison.OrdinalIgnoreCase)).OrderByDescending(File.GetLastWriteTimeUtc).Take(30).ToList();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            if (files.Count == 0) _artifactPanel.Children.Add(DashboardStyle.Text("No result files for this yet.", 12, false, DashboardStyle.Muted));
+            foreach (var file in files)
+            {
+                _artifactPanel.Children.Add(KeyValue(Path.GetFileName(file), file));
+                _artifactPanel.Children.Add(DashboardStyle.Action("Open folder", () => OpenFolder(Path.GetDirectoryName(file) ?? file, "result folder")));
+            }
+        }
     }
     private void OpenSpreadsheetPreview()
     {
@@ -1575,7 +1633,7 @@ public sealed partial class MainWindow
     }
     private async Task CopyTextAsync(string text)
     {
-        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        var clipboard = TopLevel.GetTopLevel(Host)?.Clipboard;
         if (clipboard is not null) await clipboard.SetTextAsync(text);
         _details.Text = "Copied dashboard details to the clipboard.";
     }
@@ -1678,7 +1736,7 @@ public sealed partial class MainWindow
         var close = DashboardStyle.Action("Close", dialog.Close);
         var comparisonGrid = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto"), Margin = new Thickness(18) };
         comparisonGrid.Children.Add(search); Grid.SetRow(tabs, 1); comparisonGrid.Children.Add(tabs); Grid.SetRow(close, 2); comparisonGrid.Children.Add(close); dialog.Content = comparisonGrid;
-        dialog.Show(this);
+        dialog.Show(Host);
     }
 
     private static Control DiffVisual(string line)

@@ -223,11 +223,11 @@ public sealed partial class MainWindow : Window
     private void RefreshAssertionList()
     {
         var selectedEnvironment = _environmentFilter.SelectedItem?.ToString();
-        var values = _selectedInstance?.Assertions
+        var values = (_selectedInstance is null ? [] : ScopedAssertions(_selectedInstance))
             .Where(a => string.IsNullOrWhiteSpace(selectedEnvironment) || selectedEnvironment == "All environments" || a.Environment.Equals(selectedEnvironment, StringComparison.OrdinalIgnoreCase))
             .Where(a => !_failedOnly.IsChecked.GetValueOrDefault() || a.Result == "FAIL")
             .Where(a => MatchesTerms($"{a.Environment} {a.Testcase} {a.DataId} {a.StepName} {a.ResponsePath} {a.AssertionVerb} {a.ExpectedValue} {a.ActualValue} {a.Result}", _assertionSearch.Text))
-            .ToList() ?? [];
+            .ToList();
         var totalPages = Math.Max(1, (int)Math.Ceiling(values.Count / (double)DashboardPageSize));
         _assertionPage = Math.Clamp(_assertionPage, 1, totalPages);
         var pageValues = values.Skip((_assertionPage - 1) * DashboardPageSize).Take(DashboardPageSize);
@@ -262,7 +262,7 @@ public sealed partial class MainWindow : Window
         if (_selectedInstance is null) return;
         var editor = new AssertionEditorWindow(assertion);
         editor.Closed += (_, _) => { if (editor.Result is not null) ApplyAssertionEdit(assertion, editor.Result); };
-        editor.Show(this);
+        editor.Show(Host);
     }
 
     private void OpenAssertionWorkbench()
@@ -282,7 +282,7 @@ public sealed partial class MainWindow : Window
         try
         {
             var workbench = new AssertionWorkbenchWindow(_selectedInstance.WorkbookPath, _selectedInstance.Assertions, message => _details.Text = message, () => { RefreshAssertionList(); RefreshDashboardDetails(true); }, UiLog);
-            workbench.Show(this);
+            workbench.Show(Host);
             UiLog($"Assertion Workbench opened. instance={_selectedInstance.Name}; assertions={_selectedInstance.Assertions.Count}");
         }
         catch (Exception ex)
@@ -308,6 +308,7 @@ public sealed partial class MainWindow : Window
             var cell = sheet.Cell(assertion.ExcelRowNumber, assertion.ExpectedValueColumn);
             cell.Value = result.ExpectedValue;
             workbook.Save();
+            NotifyEditorWorkbookChanged(_selectedInstance);
             assertion.ResponseHeader = responseHeader;
             assertion.ResponsePath = HeaderPath(responseHeader, assertion.StepName);
             assertion.AssertionVerb = HeaderVerb(responseHeader, result.ExpectedValue);
@@ -318,6 +319,10 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex) { _details.Text = $"Assertion correction failed: {ex.Message}"; UiLog($"Assertion correction failed: {ex}"); }
     }
+
+    /// <summary>The workbook was changed on disk from a dashboard panel: lets the open data editor pick it up (after the file is closed again).</summary>
+    private void NotifyEditorWorkbookChanged(InstanceInfo item)
+        => Dispatcher.UIThread.Post(() => (_hostWindow as DataEditor.DataEditorWindow)?.Shell.ReloadAfterExternalChange(item.Name), DispatcherPriority.Background);
 
     private void ApplySelectedFixes()
     {
@@ -371,6 +376,7 @@ public sealed partial class MainWindow : Window
                 updated++;
             }
             workbook.Save();
+            NotifyEditorWorkbookChanged(_selectedInstance);
             _details.Text = $"Updated {updated} assertion value(s); added {addedHeaders} response header(s). Skipped {skippedMissing} missing response value(s) and {skippedVariables} variable cell(s); dynamic values were not overwritten. New headers are highlighted green. Backup created: {Path.GetFileName(backup)}. Run the instance again to validate.";
             UiLog($"Apply selected values completed. instance={_selectedInstance.Name}; updated={updated}; addedHeaders={addedHeaders}; skippedMissing={skippedMissing}; skippedVariables={skippedVariables}; backup={backup}");
         }
@@ -543,7 +549,7 @@ public sealed partial class MainWindow : Window
             if (created is not null) { created.Selected = true; _instanceList.SelectedItem = created; ShowDetails(created); RefreshRows(); }
             _details.Text = $"Created instance: {created?.Name ?? Path.GetFileName(createdFolder)}. Select Configure to edit its testcase and steps.";
         };
-        builder.Show(this);
+        builder.Show(Host);
         await Task.CompletedTask;
     }
 
@@ -709,7 +715,7 @@ public sealed partial class MainWindow : Window
     {
         _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item);
         var wizard = new TestStepWizardWindow(step => SaveWizardStep(item, step), templatesFolder: item.TemplatesFolder, instanceName: item.Name);
-        wizard.Show(this);
+        wizard.Show(Host);
     }
 
     private void OpenSpreadsheetForInstance(InstanceInfo item)
@@ -723,7 +729,7 @@ public sealed partial class MainWindow : Window
         _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item);
         if (item.TestcaseOptions.Count == 0) { SetStatusForInstance($"No editable steps found for {item.Name}.", true); return; }
         var picker = new StepPickerWindow(item.Name, item.TestcaseOptions, (testcaseIndex, stepName) => OpenExistingStepWizard(item, testcaseIndex, stepName));
-        picker.Show(this);
+        picker.Show(Host);
     }
 
     private void OpenExistingStepWizard(InstanceInfo item, int testcaseIndex, string stepName)
@@ -740,7 +746,7 @@ public sealed partial class MainWindow : Window
             if (row is null) { SetStatusForInstance($"Could not locate config row for testcase {testcaseIndex}, step {stepName}.", true); return; }
             var values = headers.ToDictionary(pair => pair.Key, pair => row.Cell(pair.Value).GetString(), StringComparer.OrdinalIgnoreCase);
             var wizard = new TestStepWizardWindow(step => SaveWizardStep(item, step), new WizardStepDraft(row.RowNumber(), values), item.TemplatesFolder, item.Name);
-            wizard.Show(this);
+            wizard.Show(Host);
         }
         catch (Exception ex) { SetStatusForInstance($"Could not open step editor: {ex.Message}", true); }
     }

@@ -522,6 +522,14 @@ public sealed partial class DataEditorViewModel : ObservableObject
         return false;
     }
 
+    /// <summary>The workbook file was changed by another part of the app (for example an assertion fix): reloads it, unless there are unsaved edits that a reload would discard.</summary>
+    public void ReloadAfterExternalChange()
+    {
+        if (IsDirty) { ShowStatus("The workbook was changed on disk (assertion fix). Use Reload to see it — your unsaved edits would be lost.", isError: true); return; }
+        Reload();
+        ShowStatus($"Reloaded {FileName}: it was changed on disk by an assertion fix.", isError: false);
+    }
+
     [RelayCommand]
     private void Reload()
     {

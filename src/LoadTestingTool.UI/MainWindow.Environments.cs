@@ -42,10 +42,8 @@ public sealed partial class MainWindow
 
         public void Focus(string instanceName, DataEditor.RunFocus focus)
         {
-            Show(instanceName);
-            var terms = string.Join(" & ", new[] { focus.Step, focus.Testcase }.Where(x => !string.IsNullOrWhiteSpace(x)));
-            if (focus.State == DataEditor.RunState.AssertionFailed) window._assertionSearch.Text = terms.Length > 0 ? $"{terms} & FAIL" : "FAIL";
-            else window._overviewStepFilter.Text = terms;
+            Select(instanceName, focus.Testcase.Length == 0 ? null : new DataEditor.RunScope(focus.Testcase, focus.TestcaseIndex, focus.Step));
+            if (focus.State == DataEditor.RunState.AssertionFailed) { window._failedOnly.IsChecked = true; window.RefreshAssertionList(); }
         }
 
         public void Stop(string instanceName)
@@ -54,8 +52,12 @@ public sealed partial class MainWindow
             window.RefreshRows();
         }
 
-        public void Show(string instanceName)
+        public void Show(string instanceName) => Select(instanceName, null);
+
+        public void Select(string instanceName, DataEditor.RunScope? scope)
         {
+            window._scope = scope;
+            window._scopeInstance = instanceName;
             var item = window._instances.FirstOrDefault(x => x.Name == instanceName);
             if (item is null) return;
             window.LoadLastRun(item);

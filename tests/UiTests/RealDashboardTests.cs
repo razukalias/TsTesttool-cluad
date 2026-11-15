@@ -9,7 +9,7 @@ namespace UiTests;
 public class RealDashboardTests
 {
     [AvaloniaFact]
-    public void Real_dashboard_tabs_are_hosted_in_the_editor()
+    public async Task Real_dashboard_tabs_are_hosted_in_the_editor()
     {
         var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dash_" + Guid.NewGuid().ToString("N")[..8]);
         var inst = System.IO.Path.Combine(root, "Instances", "Demo");
@@ -35,6 +35,11 @@ public class RealDashboardTests
             Assert.Contains("Run Summary", headers);
             var shots = Environment.GetEnvironmentVariable("UI_SCREENSHOT_DIR") ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ui-shots");
             Directory.CreateDirectory(shots);
+            var shell = editor.Shell;
+            var instance = shell.Instances[0];
+            await shell.LoadAsync(instance);
+            var step = instance.Testcases[0].StepNodes[0];
+            shell.SelectedNode = step;           // narrows Overview, Assertions, Artifacts and Run Summary to this step
             tabs.SelectedIndex = headers.IndexOf("Overview");
             editor.CaptureRenderedFrame()!.Save(System.IO.Path.Combine(shots, "editor-real-overview.png"));
             tabs.SelectedIndex = headers.IndexOf("Run Summary");

@@ -25,7 +25,6 @@ public partial class DataEditorWindow : Window
         {
             if (e.PropertyName == nameof(EditorShellViewModel.Current)) AttachCurrent();
             if (e.PropertyName == nameof(EditorShellViewModel.RunDetails)) AttachRunDetails();
-            if (e.PropertyName == nameof(EditorShellViewModel.SelectedNode)) shell.ShowRunDetails();
         };
         shell.CloseRequested += (_, _) =>
         {

@@ -18,7 +18,14 @@ public sealed partial class EditorShellViewModel
     /// <summary>Points the run views at the instance of the selected node.</summary>
     public void ShowRunDetails()
     {
-        if (_runDetails is { } details && InstanceFor(SelectedNode) is { } instance) details.Show(instance.Name);
+        if (_runDetails is not { } details || InstanceFor(SelectedNode) is not { } instance) return;
+        RunScope? scope = SelectedNode switch
+        {
+            TestcaseItem testcase => new RunScope(testcase.Name, testcase.Index, null),
+            StepNode step => new RunScope(step.Owner.Name, step.Owner.Index, step.Name),
+            _ => null
+        };
+        details.Select(instance.Name, scope);
     }
 
     /// <summary>The global row-execution boxes; null while the host supplies no central settings.</summary>

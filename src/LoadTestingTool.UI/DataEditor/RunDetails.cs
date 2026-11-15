@@ -11,8 +11,11 @@ public interface IRunDetails
     /// <summary>The dashboard's tab control, taken out of the dashboard so the editor can host it. Called once.</summary>
     TabControl TakeTabs();
 
-    /// <summary>Makes the views follow this instance.</summary>
+    /// <summary>Makes the views follow this instance (everything it ran).</summary>
     void Show(string instanceName);
+
+    /// <summary>Makes the views follow an instance and, when given, narrow them to one testcase or one step of it.</summary>
+    void Select(string instanceName, RunScope? scope) => Show(instanceName);
 
     /// <summary>What the latest run of an instance did, step by step; empty when it never ran.</summary>
     RunStatusSnapshot GetStatus(string instanceName) => RunStatusSnapshot.Empty;
