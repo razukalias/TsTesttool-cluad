@@ -379,6 +379,8 @@
           <Button Content="Redo" Command="{Binding RedoCommand}" IsEnabled="{Binding CanRedo}" ToolTip.Tip="{Binding RedoTip}" MinHeight="36" />
           <Border Width="1" Background="#22364D" Margin="4,6" />
           <Button Content="Reload" Command="{Binding ReloadCommand}" MinHeight="36" />
+          <CheckBox Content="Reuse last values" IsChecked="{Binding ReuseLastValues}" VerticalAlignment="Center"
+                    ToolTip.Tip="Tick before a run to re-run with the same random numbers, GUIDs, dates, script results and response values as the last run — for a failed step. It clears when the run starts or the workbook is reloaded." />
           <Button Content="Backups…" Click="OnBackupsClick" ToolTip.Tip="Restore this workbook from an earlier backup (filter by date and time)" MinHeight="36" />
           <Button Content="Save" Classes="primary" Click="OnSaveClick" MinHeight="36" MinWidth="76" />
         </WrapPanel>

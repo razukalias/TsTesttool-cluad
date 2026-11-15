@@ -1071,6 +1071,7 @@ public sealed partial class MainWindow : Window
         var stepsJson = request.Steps is null ? "" : System.Text.Json.JsonSerializer.Serialize(request.Steps.ToDictionary(p => p.Key, p => p.Value.ToArray()));
         List<(string, string)> overrides = [("--testcases", selection), ("--steps", stepsJson), ("--dataids", ids.Length > 0 ? ids : "0")];
         if (request.RowsMode is { } mode) overrides.Add(("--rows-execution-mode", mode));
+        if (request.Rerun) overrides.Add(("--rerun", "true"));
         if (request.TestcasesParallel is { } parallel) overrides.Add(("--scenarios-parallel", parallel ? "true" : "false"));
         item.TestcaseSelection = selection;
         item.StepSelectionJson = stepsJson;

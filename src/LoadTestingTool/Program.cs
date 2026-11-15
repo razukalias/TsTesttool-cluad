@@ -44,7 +44,8 @@ internal static class Program
             config.RowsExecutionMode = GetCommandLineValue(args, "--rows-execution-mode") ?? GetCommandLineValue(args, "--execution-mode") ?? config.RowsExecutionMode;
             var dataIdSelection = GetCommandLineValue(args, "--dataids") ?? config.DataIdSelection;
             var stepSelection = GetCommandLineValue(args, "--steps") ?? config.StepSelection;
-            config.ReuseLastValues = GetCommandLineValue(args, "--reuse-last-values") ?? config.ReuseLastValues;
+            // --rerun: use the random numbers, GUIDs, dates, script results and response values of the last run instead of making new ones.
+            var rerun = args.Any(a => a.Equals("--rerun", StringComparison.OrdinalIgnoreCase)) && !string.Equals(GetCommandLineValue(args, "--rerun"), "false", StringComparison.OrdinalIgnoreCase);
             if (!config.RowsExecutionMode.Equals("parallel", StringComparison.OrdinalIgnoreCase) && !config.RowsExecutionMode.Equals("sequential", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("rows-execution-mode must be 'parallel' or 'sequential'.");
             var runId = string.IsNullOrWhiteSpace(config.RunId) ? $"{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}"[..25] : config.RunId;
             loadedRunId = runId;
@@ -87,17 +88,16 @@ internal static class Program
             var selection = new RuntimeSelection { Input = string.IsNullOrWhiteSpace(expression) ? "0" : expression!, Indexes = indexes, Source = GetCommandLineValue(args, "--testcases") is not null ? "command-line" : "appsettings.json" };
             var overall = new RunResult { RunId = runId, Selection = selection, StartedAt = DateTimeOffset.Now };
             var work = new RunSelectionPlanner().Build(workbook, indexes, stepSelection, config.EnvironmentSelection, GetCommandLineValue(args, "--environments-json"), config.Environments);
-            // Re-running only some steps of a testcase (a failed step, say) should see the same random numbers, GUIDs and response values as the
-            // run it follows, not new ones. The workbook is read again with the old generated values put back; edited cells still get new ones.
-            var reuseMode = config.ReuseLastValues.Trim().ToLowerInvariant();
-            var partialRun = work.Any(x => x.Testcase.Steps.Count < (workbook.Testcases.FirstOrDefault(t => t.TestcaseIndex == x.Testcase.TestcaseIndex)?.Steps.Count(step => step.Enabled) ?? x.Testcase.Steps.Count));
-            if (RunValueMemory.Active is { HasPrevious: true } memory && (reuseMode == "on" || (reuseMode != "off" && partialRun)))
+            // A re-run (--rerun) sees the same generated values as the run it follows: the workbook is read again with the old values put back.
+            // Cells that were edited since still get new ones; a run without --rerun always generates new values.
+            if (rerun && RunValueMemory.Active is { HasPrevious: true } memory)
             {
                 memory.BeginRead(reuse: true);
                 workbook = new WorkbookReader().Read(workbookPath);
                 work = new RunSelectionPlanner().Build(workbook, indexes, stepSelection, config.EnvironmentSelection, GetCommandLineValue(args, "--environments-json"), config.Environments);
-                Console.WriteLine("Reusing the generated values (random numbers, GUIDs) and saved response values from the last run for unchanged data.");
+                Console.WriteLine("Rerun: reusing the generated values (random numbers, GUIDs, dates, script results) and saved response values from the last run for unchanged data.");
             }
+            else if (rerun) Console.WriteLine("Rerun: there is no earlier run to take values from, so new values are generated.");
             Console.WriteLine("Selected work: " + string.Join("; ", work.Select(x => $"{x.Testcase.TestcaseIndex} [{(string.IsNullOrEmpty(x.Environment) ? "default" : x.Environment)}]: {string.Join(", ", x.Testcase.Steps.Select(s => s.StepName))}")));
             var filters = ParseDataIdSelection(dataIdSelection);
             try
