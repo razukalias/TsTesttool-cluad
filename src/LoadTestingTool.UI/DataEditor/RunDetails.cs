@@ -25,4 +25,7 @@ public interface IRunDetails
 
     /// <summary>Asks the running instance to stop gracefully.</summary>
     void Stop(string instanceName) { }
+
+    /// <summary>Opens the Storage &amp; Cleanup window (backups, logs, history and results).</summary>
+    void OpenStorageCleanup() { }
 }

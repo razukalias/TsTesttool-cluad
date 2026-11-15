@@ -184,6 +184,8 @@
             </Button.Flyout>
           </Button>
         </StackPanel>
+        <Button x:Name="StorageCleanupButton" DockPanel.Dock="Bottom" Content="Storage &amp; cleanup…" HorizontalAlignment="Left" Margin="0,12,0,0" MinHeight="28" Padding="10,2" FontSize="12"
+                ToolTip.Tip="Preview and permanently delete old workbook backups, logs, history and results." />
         <CheckBox DockPanel.Dock="Bottom" Content="Load instances only when opened" IsChecked="{Binding LazyLoading, Mode=TwoWay}" Margin="6,12,0,0" FontSize="12"
                   ToolTip.Tip="On: a workbook is read the first time you click its instance, so the editor opens quickly with many or large workbooks. Off: every workbook is read when the editor opens." />
         <TreeView x:Name="Tree" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">

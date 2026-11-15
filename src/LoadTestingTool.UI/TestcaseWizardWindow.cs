@@ -14,7 +14,7 @@ public sealed class TestcaseWizardDraft
     public string Stage { get; init; } = "Test";
     public bool Enabled { get; init; } = true;
     public int TimeoutSeconds { get; init; } = 30;
-    public int WaitMilliseconds { get; init; }
+    public string WaitExpression { get; init; } = "0";
     public string TargetUrl { get; init; } = string.Empty;
     public string Verb { get; init; } = "GET";
     public string TemplateSource { get; init; } = string.Empty;
@@ -30,7 +30,7 @@ internal sealed class TestcaseWizardWindow : Window
     private readonly TextBox _index = Field("Auto");
     private readonly TextBox _name = Field("NewTestcase");
     private readonly TextBox _stepName = Field("Request");
-    private readonly ComboBox _stepType = new() { ItemsSource = new[] { "HTTP", "GraphQL", "CaseQL", "File", "Script", "SQL", "ActionManual" }, SelectedIndex = 0, Width = 260 };
+    private readonly ComboBox _stepType = new() { ItemsSource = new[] { "HTTP", "GraphQL", "CaseQL", "File", "Script", "SQL" }, SelectedIndex = 0, Width = 260 };
     private readonly ComboBox _stage = new() { ItemsSource = new[] { "Setup", "Test", "Teardown" }, SelectedIndex = 1, Width = 220 };
     private readonly CheckBox _enabled = new() { Content = "Enable the initial step", IsChecked = true };
     private readonly TextBox _timeout = Field("30");
@@ -66,7 +66,7 @@ internal sealed class TestcaseWizardWindow : Window
         AddRow(common, 3, "Step type", _stepType);
         AddRow(common, 4, "Stage", _stage);
         AddRow(common, 5, "Timeout (seconds)", _timeout);
-        AddRow(common, 6, "Wait (milliseconds)", _wait);
+        AddRow(common, 6, "Wait (ms, _variable_, or manual text)", _wait);
 
         var request = new StackPanel { Spacing = 7 };
         request.Children.Add(DashboardStyle.Text("Initial step settings", 15, true));
@@ -123,7 +123,9 @@ internal sealed class TestcaseWizardWindow : Window
         if (string.IsNullOrWhiteSpace(name)) { _error.Text = "Testcase name is required."; return; }
         if (string.IsNullOrWhiteSpace(stepName)) { _error.Text = "Initial step name is required."; return; }
         if (!int.TryParse(_timeout.Text, out var timeout) || timeout < 0) { _error.Text = "Timeout must be zero or a positive number of seconds."; return; }
-        if (!int.TryParse(_wait.Text, out var wait) || wait < 0) { _error.Text = "Wait must be zero or a positive number of milliseconds."; return; }
+        var waitExpression = _wait.Text?.Trim() ?? "0";
+        if (string.IsNullOrWhiteSpace(waitExpression)) waitExpression = "0";
+        if (int.TryParse(waitExpression, out var numericWait) && numericWait < 0) { _error.Text = "Wait milliseconds must be zero or positive."; return; }
         var type = _stepType.SelectedItem?.ToString() ?? "HTTP";
         var dataId = _dataId.Text?.Trim() ?? "";
         if (_createRow.IsChecked == true && string.IsNullOrWhiteSpace(dataId)) { _error.Text = "Data ID is required when creating the initial request row."; return; }
@@ -131,7 +133,7 @@ internal sealed class TestcaseWizardWindow : Window
         {
             TestcaseIndex = index, TestcaseName = name, StepName = stepName, StepType = type,
             Stage = _stage.SelectedItem?.ToString() ?? "Test", Enabled = _enabled.IsChecked == true,
-            TimeoutSeconds = timeout, WaitMilliseconds = wait, TargetUrl = _url.Text?.Trim() ?? "",
+            TimeoutSeconds = timeout, WaitExpression = waitExpression, TargetUrl = _url.Text?.Trim() ?? "",
             Verb = _verb.SelectedItem?.ToString() ?? "GET", TemplateSource = _template.Text?.Trim() ?? "",
             ContentType = _contentType.SelectedItem?.ToString() ?? "application/json", ExpectedStatus = _expectedStatus.Text?.Trim() ?? "",
             CreateInitialRow = _createRow.IsChecked == true, DataId = dataId

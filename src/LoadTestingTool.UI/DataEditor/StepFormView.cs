@@ -33,7 +33,7 @@ public sealed class StepFormView : UserControl
     {
         ["steptype"] = "Type", ["stage"] = "Stage", ["enabled"] = "Enabled", ["verb"] = "Verb", ["targeturl"] = "Target URL",
         ["templetsource"] = "Template", ["stoponfailure"] = "Stop on failure", ["contenttype"] = "Content type", ["timeout"] = "Timeout (s)",
-        ["wait"] = "Wait before (ms)", ["expectedstatus"] = "Expected status", ["assert"] = "Assertions", ["ignoreempty"] = "Ignore empty",
+        ["wait"] = "Wait before (ms or message)", ["expectedstatus"] = "Expected status", ["assert"] = "Assertions", ["ignoreempty"] = "Ignore empty",
         ["assertonlyresponse"] = "Only response", ["manualtimeoutminutes"] = "Wait limit (min)",
     };
 
@@ -193,6 +193,7 @@ public sealed class StepFormView : UserControl
         else if (options is not null)
         {
             var choices = options.ToList();
+            if (title.Equals("steptype", StringComparison.OrdinalIgnoreCase) && !current.Trim().Equals("ActionManual", StringComparison.OrdinalIgnoreCase)) choices.RemoveAll(c => c.Equals("ActionManual", StringComparison.OrdinalIgnoreCase));
             if (current.Length > 0 && !choices.Contains(current, StringComparer.OrdinalIgnoreCase)) choices.Add(current);
             var box = new ComboBox { ItemsSource = choices, HorizontalAlignment = HorizontalAlignment.Stretch, SelectedItem = choices.FirstOrDefault(c => string.Equals(c, current, StringComparison.OrdinalIgnoreCase)) };
             box.SelectionChanged += (_, _) => { if (box.SelectedItem is string chosen && !string.Equals(chosen, _step.Value(title), StringComparison.Ordinal)) _step.Write(title, chosen); };

@@ -35,7 +35,8 @@ public sealed class WorkbookReader
                 TestcaseIndex = index, Testcase = testcase, StepName = stepName, Sequence = row.RowNumber(), TemplateSource = template, TargetUrl = url,
                 StepType = stepType, Stage = ExecutionStageParser.Parse(Text(configHeaders, row, "stage", "Test")), Enabled = Bool(configHeaders, row, "enabled", true), TimeoutSeconds = Math.Max(0, Int(configHeaders, row, "timeout", 0)), ManualTimeoutMinutes = Math.Max(0, Int(configHeaders, row, "manualtimeoutminutes", 15)), StepConfig = Compile(Text(configHeaders, row, "stepconfig", "{}"), workbook, config, compiledCellCache, row.RowNumber()),
                 Verb = Text(configHeaders, row, "verb", "POST").ToUpperInvariant(), ContentType = Text(configHeaders, row, "contenttype"),
-                WaitMs = Math.Max(0, Int(configHeaders, row, "wait", 0)), ExpectedStatus = Compile(Text(configHeaders, row, "expectedstatus"), workbook, config, compiledCellCache, row.RowNumber()),
+                WaitExpression = Compile(Text(configHeaders, row, "wait", "0"), workbook, config, compiledCellCache, row.RowNumber()),
+                WaitMs = ParseWaitMilliseconds(Text(configHeaders, row, "wait", "0")), ExpectedStatus = Compile(Text(configHeaders, row, "expectedstatus"), workbook, config, compiledCellCache, row.RowNumber()),
                 StopOnFailure = Bool(configHeaders, row, "stoponfailure", true), IgnoreEmpty = Bool(configHeaders, row, "ignoreempty", false),
                 AssertEnabled = Bool(configHeaders, row, "assert", Bool(configHeaders, row, "assertenabled", true)),
                 AssertOnlyResponse = Bool(configHeaders, row, "assertonlyresponse", Bool(configHeaders, row, "assertonlyinresponse", false)),
@@ -177,6 +178,7 @@ public sealed class WorkbookReader
         return CanonicalRequestVariableName(value).StartsWith("fileData", StringComparison.OrdinalIgnoreCase);
     }
     private static int Int(Dictionary<string, int> h, IXLRow row, string key, int fallback) => int.TryParse(Text(h, row, key), out var value) ? value : fallback;
+    private static int ParseWaitMilliseconds(string value) => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? Math.Max(0, parsed) : 0;
     private static bool Bool(Dictionary<string, int> h, IXLRow row, string key, bool fallback) => bool.TryParse(Text(h, row, key), out var value) ? value : fallback;
     private static bool IsBlank(IXLRow row) => row.CellsUsed().All(c => string.IsNullOrWhiteSpace(c.GetString()));
     private static IReadOnlyList<string> SplitValues(string value) => string.IsNullOrWhiteSpace(value) ? [] : value.Split(',', '|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

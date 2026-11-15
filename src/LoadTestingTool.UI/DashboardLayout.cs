@@ -630,9 +630,12 @@ public sealed partial class MainWindow
         panel.Children.Add(DashboardStyle.Text("Global paths are stored in the central appsettings.json. Instance folders are derived as InstancesRoot/<instance name>.", 12, false, DashboardStyle.Muted));
         var instancesRoot = new TextBox { Text = _config.InstancesRoot, HorizontalAlignment = HorizontalAlignment.Stretch };
         var workbookName = new TextBox { Text = _config.WorkbookName, HorizontalAlignment = HorizontalAlignment.Stretch };
+        var backupFolder = new TextBox { Text = _config.DataEngineBackupFolder, HorizontalAlignment = HorizontalAlignment.Stretch };
         panel.Children.Add(Field("Instances root", instancesRoot));
         panel.Children.Add(Field("Global workbook filename", workbookName));
-        panel.Children.Add(DashboardStyle.Action("Save global paths", () => SaveGlobalPathSettings(instancesRoot.Text, workbookName.Text), "primary"));
+        panel.Children.Add(Field("DataEngine backup folder", backupFolder));
+        panel.Children.Add(DashboardStyle.Action("Save global paths", () => SaveGlobalPathSettings(instancesRoot.Text, workbookName.Text, backupFolder.Text), "primary"));
+        panel.Children.Add(DashboardStyle.Action("Storage & Cleanup", OpenStorageCleanup, "primary"));
         panel.Children.Add(DashboardStyle.Text("Runner", 12, false, DashboardStyle.Muted));
         panel.Children.Add(KeyValue("Path", Path.GetFullPath(_config.RunnerDll)));
         panel.Children.Add(KeyValue("UI log", Path.GetFullPath(_config.UiLogFile)));
@@ -644,7 +647,7 @@ public sealed partial class MainWindow
         panel.Children.Add(DashboardStyle.Text("The dashboard reads and writes the central appsettings.json beside the application installation.", 12, false, DashboardStyle.Muted));
         return Scroll(panel);
     }
-    private void SaveGlobalPathSettings(string? instancesRootText, string? workbookNameText)
+    private void SaveGlobalPathSettings(string? instancesRootText, string? workbookNameText, string? backupFolderText)
     {
         var workbookName = Path.GetFileName((workbookNameText ?? string.Empty).Trim());
         if (string.IsNullOrWhiteSpace(workbookName) || workbookName.Equals(".", StringComparison.Ordinal) || workbookName.Equals("..", StringComparison.Ordinal) || !workbookName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
@@ -657,10 +660,13 @@ public sealed partial class MainWindow
             var settingsDirectory = Path.GetDirectoryName(_config.SettingsFile)!;
             var fullRoot = Path.GetFullPath(string.IsNullOrWhiteSpace(instancesRootText) ? _config.InstancesRoot : instancesRootText.Trim(), settingsDirectory);
             var storedRoot = Path.GetRelativePath(settingsDirectory, fullRoot).Replace('\\', '/');
+            var fullBackup = Path.GetFullPath(string.IsNullOrWhiteSpace(backupFolderText) ? _config.DataEngineBackupFolder : backupFolderText.Trim(), settingsDirectory);
+            var storedBackup = Path.GetRelativePath(settingsDirectory, fullBackup).Replace('\\', '/');
             var root = File.Exists(_config.SettingsFile) ? JsonNode.Parse(File.ReadAllText(_config.SettingsFile)) as JsonObject : new JsonObject();
             root ??= new JsonObject();
             root["InstancesRoot"] = storedRoot;
             root["WorkbookName"] = workbookName;
+            root["DataEngineBackupFolder"] = storedBackup;
             if (root["Instances"] is JsonObject instances)
                 foreach (var pair in instances)
                     if (pair.Value is JsonObject instance)
@@ -671,11 +677,20 @@ public sealed partial class MainWindow
             File.WriteAllText(_config.SettingsFile, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine);
             _config.InstancesRoot = fullRoot;
             _config.WorkbookName = workbookName;
+            _config.DataEngineBackupFolder = fullBackup;
             RefreshInstances();
-            _details.Text = $"Saved global paths. Instances use {fullRoot}/<instance name>/{workbookName}. Existing workbook names remain supported until migrated.";
+            _details.Text = $"Saved global paths. Instances use {fullRoot}/<instance name>/{workbookName}; backups use {fullBackup}.";
         }
         catch (Exception ex) { _details.Text = $"Could not save global paths: {ex.Message}"; }
     }
+
+    private void OpenStorageCleanup()
+    {
+        var window = new StorageCleanupWindow(_config.DataEngineBackupFolder, _instances.Select(x => x.FolderPath));
+        window.Show(Host);
+    }
+
+    internal void ShowStorageCleanup() => OpenStorageCleanup();
 
     private void OpenEnvironmentManager()
     {

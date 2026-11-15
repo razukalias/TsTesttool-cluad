@@ -46,6 +46,8 @@ public sealed partial class MainWindow
             if (focus.State == DataEditor.RunState.AssertionFailed) { window._failedOnly.IsChecked = true; window.RefreshAssertionList(); }
         }
 
+        public void OpenStorageCleanup() => window.ShowStorageCleanup();
+
         public void Stop(string instanceName)
         {
             if (window._instances.FirstOrDefault(x => x.Name == instanceName) is { } item && item.Process is { HasExited: false }) window.StopOne(item, false);

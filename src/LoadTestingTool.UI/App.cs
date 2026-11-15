@@ -8,6 +8,7 @@ public sealed class UiConfig
 {
     public string InstancesRoot { get; set; } = "../Instances";
     public string WorkbookName { get; set; } = "DataEngine.xlsx";
+    public string DataEngineBackupFolder { get; set; } = "backup";
     public string RunnerDll { get; set; } = "../Runner/LoadTestingTool.exe";
     public string SettingsFile { get; set; } = "../appsettings.json";
     public string InstancePrefix { get; set; } = "DataEngine_";

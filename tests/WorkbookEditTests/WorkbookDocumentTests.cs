@@ -386,13 +386,13 @@ public class WorkbookDocumentTests
         using var dir = new TempDir();
         var document = WorkbookDocument.Load(Workbooks.CreateSmall(dir));
         document.Config.Rows[0]["enabled"] = "yes";
-        document.Config.Rows[0]["wait"] = "soon";
+        document.Config.Rows[0]["timeout"] = "soon";
         document.Request.Rows[0]["testcaseindex"] = "abc";
 
         var problems = document.Validate();
 
         Assert.Contains(problems, p => p.Severity == ProblemSeverity.Warning && p.Message.Contains("enabled 'yes'"));
-        Assert.Contains(problems, p => p.Severity == ProblemSeverity.Warning && p.Message.Contains("wait 'soon'"));
+        Assert.Contains(problems, p => p.Severity == ProblemSeverity.Warning && p.Message.Contains("timeout 'soon'"));
         Assert.Contains(problems, p => p.Severity == ProblemSeverity.Warning && p.Message.Contains("testcaseindex 'abc'"));
     }
 

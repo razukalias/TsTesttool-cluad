@@ -62,7 +62,6 @@ public sealed class TestRunner
                         continue;
                     }
                     if (!request.Enabled) { _logger.Info($"STEP SKIPPED | reason=disabled | step={request.StepName}"); continue; }
-                    if (request.WaitMs > 0) { _logger.Info($"Waiting {request.WaitMs} ms before dataid={data.DataId}, step {request.StepName}."); await Task.Delay(request.WaitMs, token); }
                     Dictionary<string, string> variables;
                     IReadOnlySet<string> redactedVariables;
                     try
@@ -91,10 +90,25 @@ public sealed class TestRunner
                         break;
                     }
                     foreach (var variable in variables) executionContext.Set(variable.Key, variable.Value, VariableScope.Iteration);
+                    var waitExpression = await ResolveDynamicValueAsync(request.WaitExpression, correlation, requestReferences, executionContext, token);
+                    waitExpression = Substitute(waitExpression, variables).Trim();
+                    if (!string.IsNullOrWhiteSpace(waitExpression) && !waitExpression.Equals("0", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (int.TryParse(waitExpression, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var waitMs) && waitMs >= 0)
+                        {
+                            if (waitMs > 0) { _logger.Info($"Waiting {waitMs} ms before dataid={data.DataId}, step {request.StepName}."); await Task.Delay(waitMs, token); }
+                        }
+                        else
+                        {
+                            var manualWait = await ExecuteActionManualAsync(run, testcase, data.DataId, request, variables, waitExpression, ++stepOrder, threadId, iteration, token, environment, waitDriven: true);
+                            testcaseResult.Requests.Add(manualWait);
+                            if (manualWait.Result == "FAIL") break;
+                        }
+                    }
                     foreach (var source in correlationSources.Values) if (string.IsNullOrWhiteSpace(source.UsedByStepName) || !source.UsedByStepName.Split(',', StringSplitOptions.TrimEntries).Contains(request.StepName, StringComparer.OrdinalIgnoreCase)) source.UsedByStepName = string.IsNullOrWhiteSpace(source.UsedByStepName) ? request.StepName : $"{source.UsedByStepName},{request.StepName}";
                     var definitions = workbook.Assertions.GetValueOrDefault((request.TestcaseIndex, data.DataId, request.StepName)) ?? [];
                     var result = request.StepType == StepType.ActionManual
-                        ? await ExecuteActionManualAsync(run, testcase, data.DataId, request, variables, ++stepOrder, threadId, iteration, token, environment)
+                        ? await ExecuteActionManualAsync(run, testcase, data.DataId, request, variables, variables.TryGetValue("manualinfo", out var manualInfo) ? Substitute(manualInfo, variables) : string.Empty, ++stepOrder, threadId, iteration, token, environment)
                         : await ExecuteRequestAsync(run, testcase, data.DataId, request, variables, redactedVariables, definitions, requestReferences, ++stepOrder, threadId, iteration, correlation, correlationSources, executionContext, token, environment);
                     testcaseResult.Requests.Add(result);
                     if (result.FailureCategory.Equals("RuntimeReference", StringComparison.OrdinalIgnoreCase)) { _logger.Warn($"Stopping current data row after missing runtime reference. dataid={data.DataId}; step={request.StepName}; iteration={iteration}; remaining rows will continue."); break; }
@@ -108,13 +122,15 @@ public sealed class TestRunner
         _logger.Section($"TESTCASE {testcase.TestcaseIndex}: {testcase.Testcase} - END");
     }
 
-    private async Task<RequestResult> ExecuteActionManualAsync(RunResult run, TestcaseDefinition testcase, string dataId, RequestStep step, Dictionary<string, string> variables, int sequence, int thread, int iteration, CancellationToken cancellationToken, string environment)
+    private async Task<RequestResult> ExecuteActionManualAsync(RunResult run, TestcaseDefinition testcase, string dataId, RequestStep step, Dictionary<string, string> variables, string manualInfo, int sequence, int thread, int iteration, CancellationToken cancellationToken, string environment, bool waitDriven = false)
     {
         var started = DateTimeOffset.Now;
         var environmentKey = string.IsNullOrWhiteSpace(environment) ? "default" : environment;
-        var request = new RequestResult { RunId = run.RunId, RequestId = $"MANUAL-{SafeManualId(environmentKey)}-{Guid.NewGuid():N}", TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, EndedAt = started, Verb = step.StepType.WireName(), StepConfig = step.StepConfig, HttpStatus = 200, Environment = environment };
-        request.ManualInfo = variables.TryGetValue("manualinfo", out var info) ? Substitute(info, variables) : string.Empty;
-        var timeoutMinutes = step.ManualTimeoutMinutes > 0 ? step.ManualTimeoutMinutes : Math.Max(1, step.TimeoutSeconds / 60);
+        var request = new RequestResult { RunId = run.RunId, RequestId = $"MANUAL-{SafeManualId(environmentKey)}-{Guid.NewGuid():N}", TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, EndedAt = started, Verb = step.StepType.WireName(), StepConfig = step.StepConfig, HttpStatus = 200, Environment = environment, ManualAction = true, WaitExpression = step.WaitExpression };
+        request.ManualInfo = manualInfo;
+        var timeoutMinutes = waitDriven
+            ? (step.TimeoutSeconds > 0 ? Math.Max(1, (int)Math.Ceiling(step.TimeoutSeconds / 60d)) : Math.Max(1, step.ManualTimeoutMinutes))
+            : (step.ManualTimeoutMinutes > 0 ? step.ManualTimeoutMinutes : Math.Max(1, (int)Math.Ceiling(step.TimeoutSeconds / 60d)));
         _logger.Info($"ACTION MANUAL PENDING [{request.RequestId}] testcase={testcase.TestcaseIndex}; testcaseName={testcase.Testcase}; dataid={dataId}; stepName={step.StepName}; environment={environment}; timeoutMinutes={timeoutMinutes}; manualInfo={request.ManualInfo}");
         _manualPending?.Invoke(request, request.ManualInfo, timeoutMinutes);
         if (_allowConsoleManual && !Console.IsInputRedirected)
@@ -143,9 +159,9 @@ public sealed class TestRunner
             {
                 request.HttpStatus = 500;
                 request.FailureCategory = "ActionManual";
-                request.ErrorMessage = $"ActionManual timed out after {timeoutMinutes} minute(s).";
+                request.ErrorMessage = $"Manual wait timed out after {timeoutMinutes} minute(s).";
             }
-            else if (request.HttpStatus == 500 && string.IsNullOrWhiteSpace(request.ErrorMessage)) { request.FailureCategory = "ActionManual"; request.ErrorMessage = "ActionManual failed by operator."; }
+            else if (request.HttpStatus == 500 && string.IsNullOrWhiteSpace(request.ErrorMessage)) { request.FailureCategory = "ActionManual"; request.ErrorMessage = waitDriven ? "Manual wait failed by operator." : "ActionManual failed by operator."; }
         }
         request.EndedAt = DateTimeOffset.Now;
         request.DurationMs = (long)(request.EndedAt - request.StartedAt).TotalMilliseconds;
@@ -211,7 +227,7 @@ public sealed class TestRunner
         if (step.StepType != StepType.Http) return await ExecuteNonHttpAsync(run, testcase, dataId, step, variables, redactedVariables, definitions, requestReferences, sequence, thread, iteration, correlation, correlationSources, executionContext, cancellationToken, environment);
         var started = DateTimeOffset.Now; var sw = Stopwatch.StartNew(); var requestId = $"REQ-{Interlocked.Increment(ref _sequence):D8}"; var templatePath = Path.Combine(_templatesFolder, step.TemplateSource);
         _logger.Info($"Request starting. RequestId={requestId}; testcase={testcase.TestcaseIndex}; dataid={dataId}; stepName={step.StepName}; thread={thread}; iteration={iteration}; verb={step.Verb}; url={step.TargetUrl}; template={templatePath}; ignoreempty={step.IgnoreEmpty}");
-        var result = new RequestResult { RunId = run.RunId, RequestId = requestId, TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, WaitMs = step.WaitMs, Verb = step.Verb, TargetUrl = step.TargetUrl, TemplateSource = step.TemplateSource, StepConfig = step.StepConfig, ContentType = ResolveContentType(step), RequestHeaders = string.Join("; ", step.Headers.Select(h => $"{h.Key}={h.Value}")), Variables = new Dictionary<string, string>(variables, StringComparer.OrdinalIgnoreCase), RedactedVariables = redactedVariables, Environment = environment };
+        var result = new RequestResult { RunId = run.RunId, RequestId = requestId, TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, WaitMs = step.WaitMs, WaitExpression = step.WaitExpression, Verb = step.Verb, TargetUrl = step.TargetUrl, TemplateSource = step.TemplateSource, StepConfig = step.StepConfig, ContentType = ResolveContentType(step), RequestHeaders = string.Join("; ", step.Headers.Select(h => $"{h.Key}={h.Value}")), Variables = new Dictionary<string, string>(variables, StringComparer.OrdinalIgnoreCase), RedactedVariables = redactedVariables, Environment = environment };
         try
         {
             foreach (var runtimeVariable in executionContext.Snapshot())
@@ -306,7 +322,7 @@ public sealed class TestRunner
     {
         var started = DateTimeOffset.Now; var requestId = $"STEP-{Interlocked.Increment(ref _sequence):D8}";
         var templatePath = string.IsNullOrWhiteSpace(step.TemplateSource) ? string.Empty : Path.Combine(_templatesFolder, step.TemplateSource);
-        var result = new RequestResult { RunId = run.RunId, RequestId = requestId, TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, WaitMs = step.WaitMs, Verb = step.StepType.WireName(), TargetUrl = step.TargetUrl, TemplateSource = step.TemplateSource, StepConfig = step.StepConfig, ContentType = step.ContentType, Variables = new Dictionary<string, string>(variables, StringComparer.OrdinalIgnoreCase), RedactedVariables = redactedVariables, Environment = environment };
+        var result = new RequestResult { RunId = run.RunId, RequestId = requestId, TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, WaitMs = step.WaitMs, WaitExpression = step.WaitExpression, Verb = step.StepType.WireName(), TargetUrl = step.TargetUrl, TemplateSource = step.TemplateSource, StepConfig = step.StepConfig, ContentType = step.ContentType, Variables = new Dictionary<string, string>(variables, StringComparer.OrdinalIgnoreCase), RedactedVariables = redactedVariables, Environment = environment };
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

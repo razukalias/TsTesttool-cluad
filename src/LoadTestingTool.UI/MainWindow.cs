@@ -899,7 +899,7 @@ public sealed partial class MainWindow : Window
             SetCell(config, configRow, configHeaders, "enabled", draft.Enabled ? "true" : "false");
             SetCell(config, configRow, configHeaders, "timeout", draft.TimeoutSeconds.ToString());
             SetCell(config, configRow, configHeaders, "manualtimeoutminutes", "15");
-            SetCell(config, configRow, configHeaders, "wait", draft.WaitMilliseconds.ToString());
+            SetCell(config, configRow, configHeaders, "wait", draft.WaitExpression);
             SetCell(config, configRow, configHeaders, "targeturl", draft.TargetUrl);
             SetCell(config, configRow, configHeaders, "verb", draft.Verb);
             SetCell(config, configRow, configHeaders, "templetsource", draft.TemplateSource);
@@ -1768,6 +1768,8 @@ public sealed partial class MainWindow : Window
                         config.InstancesRoot = ResolveConfiguredPath(instancesRoot.ToString(), Path.GetDirectoryName(config.SettingsFile)!);
                     if (central["WorkbookName"] is JsonValue workbookName && !string.IsNullOrWhiteSpace(workbookName.ToString()))
                         config.WorkbookName = Path.GetFileName(workbookName.ToString());
+                    if (central["DataEngineBackupFolder"] is JsonValue backupFolder && !string.IsNullOrWhiteSpace(backupFolder.ToString()))
+                        config.DataEngineBackupFolder = ResolveConfiguredPath(backupFolder.ToString(), Path.GetDirectoryName(config.SettingsFile)!);
                     if (int.TryParse(central["MaxParallelRows"]?.ToString() ?? central["MaxConcurrentRows"]?.ToString(), out var maxParallelRows)) config.MaxParallelRows = Math.Clamp(maxParallelRows, 1, 100);
                     if (int.TryParse(central["Iterations"]?.ToString(), out var iterations)) config.Iterations = Math.Max(1, iterations);
                     if (int.TryParse(central["ParallelRowStartIntervalMs"]?.ToString() ?? central["ThreadIntervalMs"]?.ToString(), out var threadInterval)) config.ParallelRowStartIntervalMs = Math.Max(0, threadInterval);
