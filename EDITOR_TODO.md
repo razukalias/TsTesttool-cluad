@@ -389,6 +389,45 @@ Example row:
 - Remembered text is capped at 512 KB, so `values.json` can grow.
 - `values.json` holds only the rows that were run. A run without reuse replaces it; a run with reuse merges into it.
 
+### Backlog from user review (2026-11-15)
+
+**Current status:** All items open. Wording follows the user's request; items 8 and 5 are bugs, the rest are features or checks.
+
+#### Navigation and views
+
+- [ ] 1. Clicking the instance root in the tree shows the last selected testcase. It should list all available testcases/steps of the instance.
+- [ ] 2. Selecting an instance, testcase or step should open **data mode** by default, not step mode.
+- [ ] 3. Data mode should show the config sheet and all other sheets. Rename "Data" to **Table view** and "Step mode" to **Config edit mode** (or a similar fitting name), each with an icon.
+- [ ] 4. Add a filter for all sheets so one or many sheets can be selected for viewing.
+- [ ] 13. When an instance, testcase or step is selected, show the instance name in every Overview panel tab.
+
+#### Bugs and checks
+
+- [ ] 5. After a validation error in a step is fixed and saved, the validation mark still shows the old error. Re-validate on save and clear stale marks.
+- [ ] 6. The ActionManual title must be gray like the others when it is not active.
+- [ ] 8. **Crash:** deleting a testcase and saving makes the whole app hang and crash. Reproduce, find the cause and add a regression test.
+- [ ] 17. Check that `<datetime>` used in several rows or several columns of the same row gives a fresh time each time.
+
+#### Step editor
+
+- [ ] 7. Add an `ActionManualTimeout` field to the step editor. Add an info icon next to every field in the editor with an explanation of that field.
+- [ ] 12. Advanced data-table view/editor: a wizard that builds `{eq}` and `<from_...>` expressions.
+
+#### Settings and logging
+
+- [ ] 9. History reports configuration form: add a way to see it and to enable or disable the internal log.
+- [ ] 10. Very large cell values (for example a file read by a Read file step and passed to other steps): above a configurable number of characters, leave the value out of the log and history and show its size in bytes instead.
+
+#### New tokens
+
+- [ ] 11. New `<from_*filepath>` token with a path value: the value is fetched from a file, and `_variables_` inside the file are resolved. Add `<from_*filepath_base64>`, which converts the file to base64.
+
+#### Re-run and history
+
+- [ ] 14. Re-run the failed rows of a testcase, with fresh data or with the same data. (Related: the re-run reuse item above.)
+- [ ] 15. In the Overview panel, load the status of a run by date and time, and re-run it with fresh data or with the old data.
+- [ ] 16. The history report should include an exact copy of all sheets after variables are resolved.
+
 ### Verification checklist
 
 - [ ] Create an instance and confirm the editable default name starts with `DataEngine_`.
