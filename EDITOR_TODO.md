@@ -427,7 +427,7 @@ Example row:
   - **Paths:** a bare file name is read from `<instance>\Files\` (case-insensitive). Relative paths with folders and absolute paths are also accepted. No `..` blocking and no file size limit.
   - **No variables are resolved inside the file.** The content is used exactly as read (UTF-8 text, nothing trimmed).
   - **Read at run time**, so a re-run sees file edits. File content is never written to `values.json`.
-  - **Never logged:** log and history show only `[file <name>, <N> bytes]`, never the content (this also covers item 10 for file values).
+  - **Never logged:** the log shows only `[file <name>, <N> bytes]`, never the content. The history report keeps the token and path as written (for example `<from_filepath>payload.json`), not the content and not the size, so a re-run reads the file again (this also covers item 10 for file values).
   - **Validation:** a missing file is reported in the editor and Problems list before the run, like the Wait/Timeout field checks.
   - **Editor helper:** an "Insert file..." button next to the cell/step field opens a file picker and writes the token with the path (first piece of the wizard in item 12).
   - Exists alongside the Read file step; it does not replace it.
@@ -441,7 +441,14 @@ Example row:
   - Old data is taken from the run history (not only `values.json`). Depends on the "earlier steps keep their values" fix in the re-run reuse section above.
   - Each re-run creates a new run entry in history, linked to the original run; nothing is overwritten.
 - [ ] 15. In the Overview panel, load the status of a run by date and time, and re-run it with fresh data or with the old data. Same dialog and rules as item 14 (selectable steps and environments, new linked history entry); the old data must come from history because `values.json` holds only the last run.
-- [ ] 16. The history report should include an exact copy of all sheets after variables are resolved.
+- [ ] 16. The history report should include an exact copy of all sheets after resolving the variables (decisions agreed 2026-11-16):
+  - Copies are shaped like the workbook (same sheet names and columns: Config, Request, Response) with resolved values, plus extra columns for run id, iteration and environment. No separate "original cell" copy.
+  - One row per row-and-iteration actually executed in that run, not the whole workbook.
+  - "Resolved" covers generated values (random numbers, GUIDs, dates), `<From_request_...>` / `<From_response_...>` references, script results and response values extracted by earlier steps, in both Request and Response (expected) cells.
+  - Sensitive values are masked as today. `<from_filepath>` cells keep the token and path (see item 11); the item 10 size limit applies to other large values.
+  - New **ResolvedValues** sheet in long format (testcase, DataId, iteration, environment, step, cell, resolved value). The runner reads it for "old data" (items 14, 15).
+  - Each new sheet gets its own on/off entry in `HistorySheets`, all on by default. Exception: ResolvedValues cannot be switched off.
+  - History becomes the **only** source for re-run data; `.last-run-state/values.json` is retired. Needs: history is also written when a run is cancelled or crashes (verify and fix), and a clear message "no history found, using fresh data" when cleanup has removed the file.
 
 ### Verification checklist
 
