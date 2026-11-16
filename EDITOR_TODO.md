@@ -409,7 +409,12 @@ Example row:
   - **Investigation 2026-11-16:** a headless test deleted every testcase one by one, saving after each, on `DataEngine_IntegrationScenarios` and `FileHttpScenarios`. Delete, save, backup and reload all worked, with no hang. So the cause is probably in the window after the delete or save (tree/table refresh with the selected testcase gone, the validation re-check after save, see item 5), or specific to the user's instance.
   - **Needs from the user:** which instance, the exact steps, whether an error or Windows crash dialog appeared (or only a freeze), and ideally the failing `.xlsx` (private data removed).
   - Once reproduced, add a regression test with that workbook.
-- [ ] 17. Check that `<datetime>` used in several rows or several columns of the same row gives a fresh time each time.
+- [ ] 17. Fresh generated values (investigated 2026-11-16; behaviour agreed):
+  - **Finding (from reading the code, not yet proven by a test):** `<datum>`, `<currenttime>`, `<randomnumber>`, `<guid>` and similar tokens are turned into values when the workbook is **read** (`WorkbookReader.Compile`), at the start of the run. A row is read once and then looped over rows and iterations, so all iterations of a row seem to send the same time, random number and GUID, and a step that runs after a long wait (for example an Action Manual step) still sends the run-start time.
+  - **Agreed behaviour:** values are generated **when the step runs**, not when the workbook is read. **Every cell, and every token occurrence in a cell, gets its own fresh value**, and every iteration gets fresh values too.
+  - A reference to a cell, such as `{eq}<From_request_X_r>` in an expected cell, still reads the value that cell generated for this step and iteration (the value that was sent), not a new one.
+  - "Old data" re-runs (items 14, 15) reuse the values stored in history; "Fresh data" generates new ones as above.
+  - First step: write a test that proves today's behaviour (two iterations of one row, and a step after a long wait), then change it. Also check the `<From_..._r>` references and the `RunValueMemory` reuse still work when generation moves to step run time.
 
 #### Step editor
 
