@@ -430,7 +430,13 @@ Example row:
   - Add the field to the old wizard, shown only for Action Manual steps.
   - Add an info icon next to every field label in both forms (tooltip on hover, also on click or keyboard focus), with a one or two sentence explanation and an example where useful. Keep the texts in one central list of field names and explanations, reused for the table column headers and validation messages. Cover all step form fields: Step type, Stage, Enabled, Stop on failure, Verb, Target URL, Content type, Template source, Expected status, Timeout, Wait, Assert, Ignore empty, Only response, Manual timeout, Step config. English only for now.
   - Open question for later: also show the explanations as tooltips on the column headers in Table view.
-- [ ] 12. Advanced data-table view/editor: a wizard that builds `{eq}` and `<from_...>` expressions.
+- [ ] 12. Friendly value and assertion builder for data cells (discussed 2026-11-16; details marked "proposal" are not yet confirmed):
+  - **Goal:** nobody has to remember the syntax of `{eq}`, `<From_...>`, `<randomnumber>`, `<guid>`, `<datum>`. The workbook keeps storing exactly the same text, so the runner and existing files are unchanged.
+  - Users are IT people, so function names (`randomnumber`, `guid`, `datum`, ...) stay as they are, English only. **Raw text stays the main way to edit**, with helpers around it.
+  - **Helpers:** (1) autocomplete as you type `<` or `{`, listing functions, verbs, steps and columns (extend the existing `<From_request_` autocomplete); (2) a **"Build..." button** (Ctrl+Space) on request and expected cells that opens the builder; (3) hover and info help per function with its formats, e.g. `<randomnumber:000000>`, `<datum:yyyy-MM-dd>`; (4) warnings in the cell and in the Problems list for typos, unknown steps or columns, and references to a later step.
+  - **Builder:** a value is a list of **parts** joined together: Text, Function (with its format field), Reference (request value of this row / fixed row, response value of an earlier step, file). Add, remove and reorder parts; a live preview shows the final text with an example generated value and the exact text written to the cell. Response fields are picked from the **last run's response tree**, so no JSON path has to be typed. In expected cells the builder starts with a **verb dropdown** (`eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `contains`, `notcontains`, `startswith`, `endswith`, `regex`, `exists`, `notexists`, `empty`, `notempty`, `in`, `size`) with the plain meaning next to each name.
+  - If existing cell text is too complex to read back, the builder opens in raw text and changes nothing.
+  - **Proposal / later:** pills shown inside the cell (e.g. "Random number", "GetUser > test"); the same builder in step form fields (Target URL, Expected status, header values); the plain-sentence view was dropped.
 
 #### Settings and logging
 
