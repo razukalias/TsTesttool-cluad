@@ -420,7 +420,17 @@ Example row:
 
 #### New tokens
 
-- [ ] 11. New `<from_*filepath>` token with a path value: the value is fetched from a file, and `_variables_` inside the file are resolved. Add `<from_*filepath_base64>`, which converts the file to base64.
+- [ ] 11. New file tokens for request cells (decisions agreed 2026-11-16):
+  - `<from_filepath>path` loads the file content into the cell; `<from_filepath_base64>path` loads the raw bytes of any file type as base64.
+  - **Whole cell only.** The token replaces the entire cell and does not work inside longer text. To combine it with other text, build the text in another cell and reference that cell with `<from_...>`.
+  - **Request cells only** (all step types: HTTP, GraphQL, SQL, script, ...). Not for expected/response cells.
+  - **Paths:** a bare file name is read from `<instance>\Files\` (case-insensitive). Relative paths with folders and absolute paths are also accepted. No `..` blocking and no file size limit.
+  - **No variables are resolved inside the file.** The content is used exactly as read (UTF-8 text, nothing trimmed).
+  - **Read at run time**, so a re-run sees file edits. File content is never written to `values.json`.
+  - **Never logged:** log and history show only `[file <name>, <N> bytes]`, never the content (this also covers item 10 for file values).
+  - **Validation:** a missing file is reported in the editor and Problems list before the run, like the Wait/Timeout field checks.
+  - **Editor helper:** an "Insert file..." button next to the cell/step field opens a file picker and writes the token with the path (first piece of the wizard in item 12).
+  - Exists alongside the Read file step; it does not replace it.
 
 #### Re-run and history
 
