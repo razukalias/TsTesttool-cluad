@@ -55,6 +55,13 @@ public sealed class HistoryWriter
         var folder = outputFolder ?? _config.HistoryFolder;
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, fileName ?? $"Execution_History_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx");
+        ValueSpill.Folder = Path.Combine(_config.HistoryFolder, "_values", InternalLogger.SafeFolderName(run.RunId));
+        try { return WriteWorkbook(run, path, workbookModel); }
+        finally { ValueSpill.Folder = null; }
+    }
+
+    private string WriteWorkbook(RunResult run, string path, WorkbookModel? workbookModel)
+    {
         using var workbook = new XLWorkbook();
         var requests = run.Testcases.SelectMany(t => t.Requests).ToList();
         var metrics = run.Metrics;
@@ -172,7 +179,7 @@ public sealed class HistoryWriter
                 object?[] head = [run.RunId, r.Iteration, r.Environment, r.TestcaseIndex, r.Testcase, r.DataId, r.StepName];
                 for (var i = 0; i < head.Length; i++) sheet.Cell(row, i + 1).Value = XLCellValue.FromObject(head[i]);
                 for (var i = 0; i < names.Count; i++)
-                    if (r.Variables.TryGetValue(names[i], out var value)) sheet.Cell(row, head.Length + i + 1).Value = Cell(r, names[i], value);
+                    if (r.Variables.TryGetValue(names[i], out var value)) sheet.Cell(row, head.Length + i + 1).Value = ValueSpill.Fit(Cell(r, names[i], value));
             }
         }
         if (Enabled("Response"))
@@ -199,5 +206,52 @@ public sealed class HistoryWriter
 internal static class WorksheetExtensions
 {
     public static void AddRow(this IXLWorksheet sheet, params object?[] values)
-    { var row = sheet.LastRowUsed()?.RowNumber() + 1 ?? 2; for (var i = 0; i < values.Length; i++) sheet.Cell(row, i + 1).Value = XLCellValue.FromObject(values[i]); }
+    { var row = sheet.LastRowUsed()?.RowNumber() + 1 ?? 2; for (var i = 0; i < values.Length; i++) sheet.Cell(row, i + 1).Value = XLCellValue.FromObject(ValueSpill.Fit(values[i])); }
+}
+
+/// <summary>Removes the value files (see <see cref="ValueSpill"/>) of history that Storage &amp; Cleanup has deleted.</summary>
+public static class HistoryValueFiles
+{
+    /// <summary>
+    /// Deletes each run's value folder that is older than every history workbook still there (all of them when none is left),
+    /// because the workbooks that pointed at those files are gone.
+    /// </summary>
+    public static int Prune(string historyFolder)
+    {
+        var root = Path.Combine(historyFolder, "_values");
+        if (!Directory.Exists(root)) return 0;
+        var remaining = Directory.EnumerateFiles(historyFolder, "*.xlsx", SearchOption.AllDirectories).Select(File.GetCreationTimeUtc).ToList();
+        var oldest = remaining.Count == 0 ? DateTime.MaxValue : remaining.Min().AddMinutes(-1);
+        var removed = 0;
+        foreach (var folder in Directory.EnumerateDirectories(root))
+        {
+            if (Directory.GetCreationTimeUtc(folder) >= oldest) continue;
+            try { Directory.Delete(folder, recursive: true); removed++; } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+        return removed;
+    }
+}
+
+/// <summary>
+/// An Excel cell holds at most 32,767 characters. A longer value (a big response, a file read by a step) is saved as a text file next to the history
+/// and the cell holds <c>&lt;from_filepath&gt;</c> and the file's path instead, so the full value is still there and a re-run can read it back.
+/// </summary>
+internal static class ValueSpill
+{
+    public const int CellLimit = 32767;
+
+    /// <summary>Where the files of the history being written go; set by <see cref="HistoryWriter"/> while it writes.</summary>
+    [ThreadStatic] public static string? Folder;
+
+    public static object? Fit(object? value) => value is string text ? Fit(text) : value;
+
+    public static string Fit(string text)
+    {
+        if (text.Length <= CellLimit || Folder is null) return text.Length <= CellLimit ? text : text[..CellLimit];
+        var name = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)))[..16].ToLowerInvariant() + ".txt";
+        var path = Path.Combine(Folder, name);
+        Directory.CreateDirectory(Folder);
+        if (!File.Exists(path)) File.WriteAllText(path, text, new System.Text.UTF8Encoding(false));
+        return "<from_filepath>" + Path.GetFullPath(path);
+    }
 }

@@ -22,6 +22,7 @@ public static class WorkbookValidator
         var responseKeys = ValidateDataSheet(document.Response, problems, duplicateSeverity: ProblemSeverity.Warning);
         ValidateResponseColumns(document.Response, stepsByTestcase, problems);
         ValidateFileTokens(document, problems);
+        foreach (var table in new[] { document.Config, document.Request, document.Response }) ValidateCellLength(table, problems);
         ValidateCrossSheet(document, stepsByTestcase, requestKeys, responseKeys, problems);
         return problems;
     }
@@ -222,6 +223,21 @@ public static class WorkbookValidator
     }
 
     private static string Text(TableRow row, string header) => row.Get(header).Trim();
+
+    /// <summary>Excel cannot hold more than 32,767 characters in a cell, so such a value cannot be saved; keep it in a file and use &lt;from_filepath&gt;.</summary>
+    private static void ValidateCellLength(SheetTable table, List<WorkbookProblem> problems)
+    {
+        foreach (var row in table.Rows)
+        {
+            if (row.IsBlank) continue;
+            for (var column = 0; column < table.ColumnCount; column++)
+            {
+                var text = row.GetAt(column);
+                if (text.Length > 32767)
+                    Add(problems, ProblemSeverity.Error, table, row, $"{table.Headers[column]}: the value is {text.Length:N0} characters; a cell holds at most 32,767. Save it as a text file in the instance's {LoadTestingTool.Execution.FileTokens.FilesFolder} folder and put <from_filepath>file name in the cell instead.");
+            }
+        }
+    }
 
     /// <summary>A request cell that is <c>&lt;from_filepath&gt;name</c> (or the base64 form) must point at a file that exists.</summary>
     private static void ValidateFileTokens(WorkbookDocument document, List<WorkbookProblem> problems)

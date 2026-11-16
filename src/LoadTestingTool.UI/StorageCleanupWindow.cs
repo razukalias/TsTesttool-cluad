@@ -248,6 +248,9 @@ public sealed class StorageCleanupWindow : Window
                 }
                 catch { skipped++; }
             }
+            foreach (var historyRoot in _matches.Select(m => m.Path).Where(p => p.Contains(Path.DirectorySeparatorChar + "History" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                         .Select(p => p[..(p.LastIndexOf(Path.DirectorySeparatorChar + "History" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) + "History".Length + 1)]).Distinct())
+                try { LoadTestingTool.Reporting.HistoryValueFiles.Prune(historyRoot); } catch (Exception) { /* leftover value files are harmless */ }
             dialog.Close();
             _matches = [];
             _preview.Text = string.Empty;

@@ -1,5 +1,6 @@
 using ClosedXML.Excel;
 using LoadTestingTool.Domain;
+using LoadTestingTool.Execution;
 using LoadTestingTool.Reporting;
 using Xunit;
 
@@ -68,5 +69,66 @@ public class ResolvedHistoryTests
         Assert.False(book.Worksheets.Contains("Request"));
         Assert.False(book.Worksheets.Contains("Response"));
         Assert.True(book.Worksheets.Contains("ResolvedValues"));
+    }
+}
+
+public class LongValueTests
+{
+    [Fact]
+    public void A_value_longer_than_an_Excel_cell_is_saved_as_a_file_and_the_cell_holds_the_token_and_path()
+    {
+        using var dir = new TempDir();
+        var config = new AppConfig { HistoryFolder = dir.Combine("history") };
+        var big = new string('a', 40_000) + "END";
+        var run = new RunResult { RunId = "r1", StartedAt = DateTimeOffset.Now, EndedAt = DateTimeOffset.Now };
+        var testcase = new TestcaseResult { TestcaseIndex = 1, Testcase = "T", DataId = "d1", Iteration = 1, StartedAt = DateTimeOffset.Now, EndedAt = DateTimeOffset.Now };
+        testcase.Requests.Add(new RequestResult { Testcase = "T", StepName = "Read", HttpStatus = 200, ResponseBody = big, Variables = new Dictionary<string, string> { ["content"] = big } });
+        run.Testcases.Add(testcase);
+
+        var path = new HistoryWriter(config).Write(run);
+
+        using var book = new XLWorkbook(path);
+        var cell = book.Worksheet("ResolvedValues").Cell(2, 9).GetString();
+        Assert.StartsWith("<from_filepath>", cell);
+        var file = cell["<from_filepath>".Length..];
+        Assert.Equal(big, File.ReadAllText(file));           // the full value is kept
+        Assert.Contains(Path.Combine("_values", "r1"), file);
+        Assert.True(FileTokens.TryParse(cell, out _, out var parsed) && File.Exists(parsed));   // and the token reads it back
+    }
+
+    [Fact]
+    public void Validation_reports_a_cell_over_the_limit_with_the_file_fix()
+    {
+        using var dir = new TempDir();
+        var path = Workbooks.CreateSmall(dir);
+        var document = LoadTestingTool.Editing.WorkbookDocument.Load(path);
+        document.Request.Rows.First(r => !r.IsBlank).SetAt(4, new string('x', 33_000));
+
+        var problem = Assert.Single(document.Validate(), p => p.Message.Contains("32,767"));
+        Assert.Equal(LoadTestingTool.Editing.ProblemSeverity.Error, problem.Severity);
+        Assert.Contains("<from_filepath>", problem.Message);
+    }
+}
+
+public class ValueFilePruneTests
+{
+    [Fact]
+    public void Value_files_go_when_the_history_that_pointed_at_them_is_gone_and_stay_while_newer_history_remains()
+    {
+        using var dir = new TempDir();
+        var history = dir.Combine("history");
+        Directory.CreateDirectory(Path.Combine(history, "_values", "old")); File.WriteAllText(Path.Combine(history, "_values", "old", "a.txt"), "x");
+        Directory.CreateDirectory(Path.Combine(history, "_values", "new")); File.WriteAllText(Path.Combine(history, "_values", "new", "b.txt"), "y");
+        Directory.SetCreationTimeUtc(Path.Combine(history, "_values", "old"), DateTime.UtcNow.AddDays(-2));
+        Directory.CreateDirectory(Path.Combine(history, "passed"));
+        var kept = Path.Combine(history, "passed", "keep.xlsx"); File.WriteAllText(kept, "x");
+        File.SetCreationTimeUtc(kept, DateTime.UtcNow.AddHours(-1));
+
+        Assert.Equal(1, HistoryValueFiles.Prune(history));
+        Assert.False(Directory.Exists(Path.Combine(history, "_values", "old")));
+        Assert.True(Directory.Exists(Path.Combine(history, "_values", "new")));
+
+        File.Delete(kept);
+        Assert.Equal(1, HistoryValueFiles.Prune(history));       // no history left: nothing points at the files
     }
 }

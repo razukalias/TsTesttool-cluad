@@ -464,13 +464,15 @@ Example row:
   - Show a hint when the run size (threads x iterations x rows) is large and the Functional profile is on. The profile is chosen by hand, never automatically.
   - **Per-run checkbox:** the "Enable internal log" checkbox next to Run is replaced by this setting (the setting lives only in the form).
   - Test the Load test profile: failed requests keep full detail, passing requests are only counted, and Metrics are still complete.
-- [ ] 10. Values longer than the Excel cell limit (redefined 2026-11-16; the earlier "replace by size in bytes" idea is dropped). The limit is **32,767 characters per cell**; nothing in the code checks it today, so a longer value only fails when written into a cell with an error from the spreadsheet library.
+- [x] 10. Values longer than the Excel cell limit (redefined 2026-11-16; the earlier "replace by size in bytes" idea is dropped). The limit is **32,767 characters per cell**; nothing in the code checks it today, so a longer value only fails when written into a cell with an error from the spreadsheet library.
   - **Run output** (Read file result, response, variable too long for a history cell): save the value to a text file and put `<from_filepath>` plus the file's path in the cell instead, for example `History\<runid>\values\<testcase>_<DataId>_<step>_<field>.txt`. The history/ResolvedValues then holds the token, so "Old data" re-runs (items 14, 15) re-read the exact value from the file.
   - **Editor:** pasting or typing a value over the limit into a cell is refused with a message, and the editor offers to save it as a file in the instance's `Files` folder and insert the `<from_filepath>` token (needs item 11).
   - **Workbook read:** a cell that already exceeds the limit (changed outside the editor) is reported by validation as an error before the run, with the same "save as file" fix.
   - Storage & Cleanup removes the value files together with the history run they belong to.
   - Folder, file naming and cleanup rules are proposals; adjust before building.
   - Test: a response longer than 32,767 characters runs without error, the history cell holds the token and path, and the file contains the full value.
+  - Done 2026-11-17 (part): any history cell over 32,767 characters now holds `<from_filepath>` + the path of a text file in `History\_values\<runid>\<hash>.txt` holding the full value (before this, writing such a value into history failed). Validation reports a workbook cell over the limit with the file fix. Storage & Cleanup prunes value folders whose history is gone.
+  - Not done: the editor does not yet refuse an over-limit paste or offer to save it as a file in `Files` (validation flags it after the paste); a response over the limit is not yet spilled in the run's own events/results files, only in history.
 
 #### New tokens
 
