@@ -75,7 +75,8 @@ public sealed class InstanceInfo
     {
         ["RunSummary"] = true, ["Metrics"] = true, ["TestcaseSummary"] = true, ["RequestHistory"] = true,
         ["RuntimeReferenceErrors"] = true, ["AssertionHistory"] = true, ["Variables"] = true,
-        ["CorrelationHistory"] = true, ["DataEngineRequestRows"] = true, ["DataEngineConfig"] = true
+        ["CorrelationHistory"] = true, ["DataEngineRequestRows"] = true, ["DataEngineConfig"] = true,
+        ["Config"] = true, ["Request"] = true, ["Response"] = true
     };
 }
 

@@ -123,8 +123,60 @@ public sealed class HistoryWriter
                         config.AddRow(step.TestcaseIndex, testcase.Testcase, step.StepName, step.StepType.WireName(), step.Stage.ToString(), step.Enabled, step.Sequence, step.TemplateSource, GeneratedTokens.ToDisplay(step.TargetUrl), step.Verb, step.ContentType, step.ManualTimeoutMinutes, Mask(GeneratedTokens.ToDisplay(step.StepConfig)), Mask(GeneratedTokens.ToDisplay(string.Join("; ", step.Headers.Select(h => $"{h.Key}={h.Value}")))), step.StopOnFailure, step.AssertOnlyResponse);
             }
         }
+        WriteResolvedCopies(workbook, run, requests);
         foreach (var sheet in workbook.Worksheets) { sheet.Columns().AdjustToContents(1, 80); sheet.SheetView.FreezeRows(1); sheet.Row(1).Style.Font.Bold = true; sheet.Row(1).Style.Fill.SetBackgroundColor(XLColor.LightBlue); }
         workbook.SaveAs(path); return path;
+    }
+
+    /// <summary>
+    /// Exact copies of what ran, after every value was resolved: Config (one row per executed step), Request (one row per executed step with its
+    /// cell values), Response (the expected cells), shaped like the workbook plus runid / iteration / environment. ResolvedValues is the same
+    /// request values in long form and is always written, because a re-run with old data reads it.
+    /// </summary>
+    private void WriteResolvedCopies(XLWorkbook workbook, RunResult run, List<RequestResult> requests)
+    {
+        string Cell(RequestResult r, string key, string value) => MaskVariableContent(value, r.RedactedVariables, r.Variables);
+        var executed = requests.OrderBy(r => r.TestcaseIndex).ThenBy(r => r.DataId).ThenBy(r => r.Iteration).ThenBy(r => r.SequenceOrder).ToList();
+
+        var values = workbook.AddWorksheet("ResolvedValues");
+        WriteTable(values, "runid", "testcaseindex", "testcase", "dataid", "iteration", "environment", "stepname", "cell", "value");
+        foreach (var r in executed)
+        {
+            var fromEarlierResponses = r.Correlations.Select(c => c.Variable).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var variable in r.Variables.Where(v => !fromEarlierResponses.Contains(v.Key) && !v.Key.Equals("env", StringComparison.OrdinalIgnoreCase)))
+                values.AddRow(run.RunId, r.TestcaseIndex, r.Testcase, r.DataId, r.Iteration, r.Environment, r.StepName, variable.Key, Cell(r, variable.Key, variable.Value));
+        }
+
+        if (Enabled("Config"))
+        {
+            var config = workbook.AddWorksheet("Config");
+            WriteTable(config, "runid", "iteration", "environment", "testcaseindex", "testcase", "stepname", "steptype", "sequenceorder", "templetsource", "targeturl", "verb", "contenttype", "wait", "stepconfig");
+            foreach (var r in executed)
+                config.AddRow(run.RunId, r.Iteration, r.Environment, r.TestcaseIndex, r.Testcase, r.StepName, r.StepType, r.SequenceOrder, r.TemplateSource, Mask(GeneratedTokens.ToDisplay(r.TargetUrl)), r.Verb, r.ContentType, r.WaitMs, Mask(r.StepConfig));
+        }
+        if (Enabled("Request"))
+        {
+            var sheet = workbook.AddWorksheet("Request");
+            var names = executed.SelectMany(r => r.Variables.Keys.Where(k => !r.Correlations.Any(c => c.Variable.Equals(k, StringComparison.OrdinalIgnoreCase)) && !k.Equals("env", StringComparison.OrdinalIgnoreCase)))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            WriteTable(sheet, ["runid", "iteration", "environment", "testcaseindex", "testcase", "dataid", "stepname", .. names]);
+            foreach (var r in executed)
+            {
+                var row = (sheet.LastRowUsed()?.RowNumber() ?? 1) + 1;
+                object?[] head = [run.RunId, r.Iteration, r.Environment, r.TestcaseIndex, r.Testcase, r.DataId, r.StepName];
+                for (var i = 0; i < head.Length; i++) sheet.Cell(row, i + 1).Value = XLCellValue.FromObject(head[i]);
+                for (var i = 0; i < names.Count; i++)
+                    if (r.Variables.TryGetValue(names[i], out var value)) sheet.Cell(row, head.Length + i + 1).Value = Cell(r, names[i], value);
+            }
+        }
+        if (Enabled("Response"))
+        {
+            var sheet = workbook.AddWorksheet("Response");
+            WriteTable(sheet, "runid", "iteration", "environment", "testcaseindex", "testcase", "dataid", "stepname", "responsepath", "assertionverb", "expectedvalue", "extractvariable");
+            foreach (var r in executed)
+                foreach (var a in r.Assertions)
+                    sheet.AddRow(run.RunId, r.Iteration, r.Environment, a.TestcaseIndex, a.Testcase, a.DataId, a.StepName, a.ResponsePath, a.AssertionVerb, Mask(a.ExpectedValue), a.ExtractVariable);
+        }
     }
 
     private string Mask(string value) => InternalLogger.MaskSensitiveData(value, _config.MaskSensitiveData);

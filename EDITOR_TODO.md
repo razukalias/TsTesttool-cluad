@@ -496,7 +496,7 @@ Example row:
   - Old data is taken from the run history (not only `values.json`). Depends on the "earlier steps keep their values" fix in the re-run reuse section above.
   - Each re-run creates a new run entry in history, linked to the original run; nothing is overwritten.
 - [ ] 15. In the Overview panel, load the status of a run by date and time, and re-run it with fresh data or with the old data. Same dialog and rules as item 14 (selectable steps and environments, new linked history entry); the old data must come from history because `values.json` holds only the last run.
-- [ ] 16. The history report should include an exact copy of all sheets after resolving the variables (decisions agreed 2026-11-16):
+- [ ] 16. (part 1 done) The history report should include an exact copy of all sheets after resolving the variables (decisions agreed 2026-11-16):
   - Copies are shaped like the workbook (same sheet names and columns: Config, Request, Response) with resolved values, plus extra columns for run id, iteration and environment. No separate "original cell" copy.
   - One row per row-and-iteration actually executed in that run, not the whole workbook.
   - "Resolved" covers generated values (random numbers, GUIDs, dates), `<From_request_...>` / `<From_response_...>` references, script results and response values extracted by earlier steps, in both Request and Response (expected) cells.
@@ -504,6 +504,8 @@ Example row:
   - New **ResolvedValues** sheet in long format (testcase, DataId, iteration, environment, step, cell, resolved value). The runner reads it for "old data" (items 14, 15).
   - Each new sheet gets its own on/off entry in `HistorySheets`, all on by default. Exception: ResolvedValues cannot be switched off.
   - History becomes the **only** source for re-run data; `.last-run-state/values.json` is retired. Needs: history is also written when a run is cancelled or crashes (verify and fix), and a clear message "no history found, using fresh data" when cleanup has removed the file.
+  - Part 1 done 2026-11-16: history now has **Config**, **Request** and **Response** sheets (resolved, one row per executed step, with runid / iteration / environment, masked like the other sheets, each with its own on/off entry) and an always-on **ResolvedValues** long-format sheet.
+  - Still open: retire `values.json` and read old data from ResolvedValues (item 14/15 need it); write history for cancelled or crashed runs and show "no history found, using fresh data"; `<from_filepath>` cells keep the token and path in the copies (today the loaded content is masked).
 
 ### Verification checklist
 

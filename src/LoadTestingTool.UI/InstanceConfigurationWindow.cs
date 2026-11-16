@@ -119,7 +119,7 @@ public sealed class InstanceConfigurationWindow : Window
         panel.Children.Add(DashboardStyle.Text("Select the worksheets that should be written to each Excel History workbook.", 12, false, DashboardStyle.Muted));
         panel.Children.Add(_aggregateHistory);
         panel.Children.Add(_rowHistory);
-        foreach (var name in new[] { "RunSummary", "Metrics", "TestcaseSummary", "RequestHistory", "RuntimeReferenceErrors", "AssertionHistory", "Variables", "CorrelationHistory", "DataEngineRequestRows", "DataEngineConfig" })
+        foreach (var name in new[] { "RunSummary", "Metrics", "TestcaseSummary", "RequestHistory", "RuntimeReferenceErrors", "AssertionHistory", "Variables", "CorrelationHistory", "DataEngineRequestRows", "DataEngineConfig", "Config", "Request", "Response" })
         {
             var enabled = !_item.HistorySheets.TryGetValue(name, out var value) || value;
             var check = new CheckBox { Content = name, IsChecked = enabled };

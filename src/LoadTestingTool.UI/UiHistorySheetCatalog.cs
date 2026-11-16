@@ -5,7 +5,8 @@ internal static class UiHistorySheetCatalog
     public static readonly string[] Names =
     [
         "RunSummary", "Metrics", "TestcaseSummary", "RequestHistory", "RuntimeReferenceErrors",
-        "AssertionHistory", "Variables", "CorrelationHistory", "DataEngineRequestRows", "DataEngineConfig"
+        "AssertionHistory", "Variables", "CorrelationHistory", "DataEngineRequestRows", "DataEngineConfig",
+        "Config", "Request", "Response"
     ];
 
     public static Dictionary<string, bool> CreateDefaults() => Names.ToDictionary(x => x, _ => true, StringComparer.OrdinalIgnoreCase);
