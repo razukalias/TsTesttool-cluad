@@ -366,6 +366,7 @@
             </Button.Flyout>
           </Button>
           <Button Content="Edit cell…" Click="OnEditCellClick" MinHeight="36" ToolTip.Tip="Open the cell you last clicked in a large text box" />
+          <Button Content="Re-run from history…" Click="OnRerunClick" MinHeight="36" ToolTip.Tip="Pick an earlier run of this testcase by date and time and re-run its failed (or any) rows, with old or fresh data per step" />
           <Button Content="Compare runs…" Command="{Binding OpenHistoryCommand}" ToolTip.Tip="Open the History Explorer filtered to this instance and testcase" MinHeight="36" />
           <ToggleButton Content="Preview request" IsChecked="{Binding PreviewVisible, Mode=TwoWay}" ToolTip.Tip="Show what a step sends for the selected row" MinHeight="36" />
           <Border Width="1" Background="#22364D" Margin="4,6" />

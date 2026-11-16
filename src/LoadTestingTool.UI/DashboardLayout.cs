@@ -1043,6 +1043,7 @@ public sealed partial class MainWindow
             editor.Shell.RunHandler = RunFromEditorAsync;
             editor.Shell.EnvironmentSettings = new EditorEnvironmentSettings(this);
             editor.Shell.HistoryHandler = LaunchHistoryWorkspace;
+            editor.Shell.RerunContextProvider = name => _instances.FirstOrDefault(x => x.Name == name) is { } target ? new DataEditor.RerunContext(target.HistoryFolder, target.EnvironmentOptions.ToList()) : null;
             editor.Shell.WorkbookSaved += path => Dispatcher.UIThread.Post(() => _ = RevalidateAfterSaveAsync(path));
             editor.Shell.RunDetails = new EditorRunDetails(this);
             _hostWindow = editor;

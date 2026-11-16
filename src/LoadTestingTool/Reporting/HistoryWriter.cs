@@ -12,6 +12,9 @@ public sealed class HistoryWriter
     /// <summary>What this run remembered for a re-run; written into each history file as the hidden RunState sheet.</summary>
     public RunValueMemory.Snapshot? RunState { get; set; }
 
+    /// <summary>The run this one re-runs, if any (recorded in RunState and in RunSummary).</summary>
+    public string? RerunOf { get; set; }
+
     public IReadOnlyList<string> WritePerTestcase(RunResult run, WorkbookModel? workbookModel = null)
     {
         var paths = new List<string>();
@@ -59,8 +62,8 @@ public sealed class HistoryWriter
         if (Enabled("RunSummary"))
         {
             var summary = workbook.AddWorksheet("RunSummary");
-            WriteTable(summary, "runid", "starttime", "endtime", "durationms", "selectionSource", "selectionInput", "selectedIndexes", "totalTestcases", "totalRequests", "passedRequests", "failedRequests", "p95DurationMs", "p99DurationMs", "requestsPerSecond", "overallResult");
-            summary.AddRow(run.RunId, run.StartedAt, run.EndedAt, (run.EndedAt - run.StartedAt).TotalMilliseconds, run.Selection.Source, run.Selection.Input, string.Join(",", run.Selection.Indexes), run.Testcases.Count, requests.Count, passed, failed, metrics.P95DurationMs, metrics.P99DurationMs, metrics.RequestsPerSecond, run.Cancelled ? "CANCELLED" : failed == 0 ? "PASSED" : "FAILED");
+            WriteTable(summary, "runid", "starttime", "endtime", "durationms", "selectionSource", "selectionInput", "selectedIndexes", "totalTestcases", "totalRequests", "passedRequests", "failedRequests", "p95DurationMs", "p99DurationMs", "requestsPerSecond", "overallResult", "rerunof");
+            summary.AddRow(run.RunId, run.StartedAt, run.EndedAt, (run.EndedAt - run.StartedAt).TotalMilliseconds, run.Selection.Source, run.Selection.Input, string.Join(",", run.Selection.Indexes), run.Testcases.Count, requests.Count, passed, failed, metrics.P95DurationMs, metrics.P99DurationMs, metrics.RequestsPerSecond, run.Cancelled ? "CANCELLED" : failed == 0 ? "PASSED" : "FAILED", RerunOf ?? string.Empty);
         }
         if (Enabled("Metrics"))
         {
@@ -127,7 +130,7 @@ public sealed class HistoryWriter
             }
         }
         WriteResolvedCopies(workbook, run, requests);
-        HistoryRunStateStore.WriteSheet(workbook, RunState, run.Testcases.Select(t => RunValueMemory.RowKey(t.TestcaseIndex, t.DataId, t.Iteration, t.Environment)).Distinct().ToList());
+        HistoryRunStateStore.WriteSheet(workbook, RunState, run, RerunOf);
         foreach (var sheet in workbook.Worksheets) { sheet.Columns().AdjustToContents(1, 80); sheet.SheetView.FreezeRows(1); sheet.Row(1).Style.Font.Bold = true; sheet.Row(1).Style.Fill.SetBackgroundColor(XLColor.LightBlue); }
         workbook.SaveAs(path); return path;
     }

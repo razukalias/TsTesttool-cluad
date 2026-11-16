@@ -1075,6 +1075,8 @@ public sealed partial class MainWindow : Window
         if (request.Rerun) overrides.Add(("--rerun", "true"));
         else if (request.RerunSteps is { Count: > 0 } rerunSteps) overrides.Add(("--rerun-steps", System.Text.Json.JsonSerializer.Serialize(rerunSteps.ToDictionary(p => p.Key, p => p.Value.ToArray()))));
         if (request.TestcasesParallel is { } parallel) overrides.Add(("--scenarios-parallel", parallel ? "true" : "false"));
+        if (!string.IsNullOrWhiteSpace(request.RerunOf)) overrides.Add(("--rerun-of", request.RerunOf));
+        if (request.Environments is { Count: > 0 } chosenEnvironments) overrides.Add(("--environments-json", System.Text.Json.JsonSerializer.Serialize(chosenEnvironments)));
         item.TestcaseSelection = selection;
         item.StepSelectionJson = stepsJson;
         item.DataIdSelection = ids;

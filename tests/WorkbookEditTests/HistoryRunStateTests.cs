@@ -100,4 +100,54 @@ public class HistoryRunStateTests
         Assert.Equal("made-1", rerun.GeneratedFor(Key(), "tok", null, () => "made-2"));
         Assert.Equal("abc", rerun.PreviousRow(Key())["token"]);
     }
+
+    private static void WriteResults(AppConfig config, string runId, DateTimeOffset started, string? rerunOf, params (string DataId, int Iteration, string Result)[] rows)
+    {
+        var run = new RunResult { RunId = runId, StartedAt = started, EndedAt = started };
+        foreach (var (dataId, iteration, result) in rows)
+        {
+            var testcase = new TestcaseResult { TestcaseIndex = 1, Testcase = "Order", DataId = dataId, Iteration = iteration, Environment = "qa", StartedAt = started, EndedAt = started };
+            testcase.Requests.Add(new RequestResult { Testcase = "Order", StepName = "S", HttpStatus = result == "FAILED" ? 500 : 200 });
+            run.Testcases.Add(testcase);
+        }
+        new HistoryWriter(config) { RerunOf = rerunOf }.Write(run, Path.Combine(config.HistoryFolder, runId), $"{runId}.xlsx");
+    }
+
+    [Fact]
+    public void The_index_lists_runs_with_their_failed_rows_and_the_run_each_one_re_ran()
+    {
+        using var dir = new TempDir();
+        var config = new AppConfig { HistoryFolder = dir.Combine("history") };
+        var t0 = new DateTimeOffset(2026, 11, 16, 10, 0, 0, TimeSpan.Zero);
+        WriteResults(config, "runA", t0, null, ("d1", 1, "PASSED"), ("d2", 1, "FAILED"), ("d3", 2, "FAILED"));
+        WriteResults(config, "runB", t0.AddHours(1), "runA", ("d2", 1, "PASSED"));
+
+        var rows = RunHistoryIndex.Scan(config.HistoryFolder);
+        var runs = RunHistoryIndex.Runs(rows);
+
+        Assert.Equal(["runB", "runA"], runs.Select(r => r.RunId));          // newest first
+        Assert.Equal(("runA", 3, 2, (string?)null), (runs[1].RunId, runs[1].Rows, runs[1].Failed, runs[1].RerunOf));
+        Assert.Equal("runA", runs[0].RerunOf);
+        var failed = rows.Where(r => r.RunId == "runA" && r.Failed).Select(r => (r.DataId, r.Iteration, r.Environment)).ToList();
+        Assert.Equal([("d2", 1, "qa"), ("d3", 2, "qa")], failed);
+    }
+
+    [Fact]
+    public void Old_data_can_be_taken_from_one_chosen_run_instead_of_the_newest()
+    {
+        using var dir = new TempDir();
+        var config = new AppConfig { HistoryFolder = dir.Combine("history") };
+        WriteRun(config, State("d1", "from-A", "tokA"), "runA", ("d1", 1));
+        File.SetLastWriteTimeUtc(Path.Combine(config.HistoryFolder, "runA", "runA.xlsx"), DateTime.UtcNow.AddMinutes(-10));
+        WriteRun(config, State("d1", "from-B", "tokB"), "runB", ("d1", 1));
+
+        var newest = new HistoryRunStateStore(config.HistoryFolder).Load()!;
+        var chosen = new HistoryRunStateStore(config.HistoryFolder, "runA").Load()!;
+        var unknown = new HistoryRunStateStore(config.HistoryFolder, "nope").Load()!;
+
+        Assert.Equal("tokB", newest.Rows[Key()]["token"]);
+        Assert.Equal("tokA", chosen.Rows[Key()]["token"]);
+        Assert.Equal("from-A", chosen.Generated[$"{Key()}|sheet|2|abc|def|0"]);
+        Assert.Empty(unknown.Rows);
+    }
 }

@@ -489,13 +489,15 @@ Example row:
 
 #### Re-run and history
 
-- [ ] 14. Re-run failed rows of a testcase, with fresh data or with the same data (decisions agreed 2026-11-16):
+- [x] 14. Re-run failed rows of a testcase, with fresh data or with the same data (decisions agreed 2026-11-16):
   - **Blocked by item 16.** Old values come from run history, so the history report must first contain everything needed (all resolved sheets). Discuss and build item 16 first, then revisit this item.
   - "Failed" means status FAIL only. Skipped/stopped rows are not included.
   - A "Re-run failed rows..." dialog on the testcase Overview panel shows the affected rows, with **steps selectable (default: all steps)**, **environments selectable**, and the choice **Fresh data / Old data** per selected step.
   - Old data is taken from the run history (not only `values.json`). Depends on the "earlier steps keep their values" fix in the re-run reuse section above.
   - Each re-run creates a new run entry in history, linked to the original run; nothing is overwritten.
-- [ ] 15. In the Overview panel, load the status of a run by date and time, and re-run it with fresh data or with the old data. Same dialog and rules as item 14 (selectable steps and environments, new linked history entry); the old data must come from history because `values.json` holds only the last run.
+  - Done 2026-11-17: toolbar button **Re-run from history…** opens a dialog for the selected testcase: earlier run (newest with failed rows preselected), rows (failed ticked; every iteration and environment of a ticked data row runs, because the runner picks rows by data id), steps (default all) each with **Old data / Fresh data**, environments. The run starts with `--rerun-of <runId>` (+ `--rerun` / `--rerun-steps`, `--steps`, `--environments-json`); old data comes from that run's RunState, and the new history records `rerunof` (RunSummary column and hidden RunState). Failed = status FAILED only.
+- [x] 15. In the Overview panel, load the status of a run by date and time, and re-run it with fresh data or with the old data. Same dialog and rules as item 14 (selectable steps and environments, new linked history entry); the old data must come from history because `values.json` holds only the last run.
+  - Done 2026-11-17: the same dialog lists every earlier run of the testcase by date and time (rows and failed counts, re-runs marked), so any run can be loaded and re-run with old or fresh data. Not done: showing an old run's status in the Overview panel itself (the dialog shows the per-row results instead); one place to filter by date range like the History Explorer.
 - [ ] 16. (part 2 done) The history report should include an exact copy of all sheets after resolving the variables (decisions agreed 2026-11-16):
   - Copies are shaped like the workbook (same sheet names and columns: Config, Request, Response) with resolved values, plus extra columns for run id, iteration and environment. No separate "original cell" copy.
   - One row per row-and-iteration actually executed in that run, not the whole workbook.

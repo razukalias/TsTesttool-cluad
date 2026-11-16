@@ -298,6 +298,16 @@ public partial class DataEditorWindow : Window
 
     private void OnSaveClick(object? sender, RoutedEventArgs e) => Save();
 
+    private async void OnRerunClick(object? sender, RoutedEventArgs e)
+    {
+        if (_shell.Current is not { } editor) return;
+        if (editor.SelectedTestcase is not { } testcase) { editor.ShowProblem("Select a testcase to re-run first."); return; }
+        if (editor.RerunContextProvider?.Invoke() is not { } context) { editor.ShowProblem("Re-running from history is only available when the editor is opened from the dashboard."); return; }
+        var dialog = new RerunWindow(testcase, context);
+        await dialog.ShowDialog(this);
+        if (dialog.Result is { } chosen) await editor.StartRerunAsync(chosen.Request, chosen.Label);
+    }
+
     private void OnBackupsClick(object? sender, RoutedEventArgs e)
     {
         if (_shell.Current is not { } editor) return;

@@ -1,4 +1,5 @@
 using ClosedXML.Excel;
+using LoadTestingTool.Domain;
 using LoadTestingTool.Execution;
 
 namespace LoadTestingTool.Reporting;
@@ -15,7 +16,11 @@ public sealed class HistoryRunStateStore : IRunStateStore
     private const int MaxFilesScanned = 400;
 
     private readonly string _historyFolder;
-    public HistoryRunStateStore(string historyFolder) => _historyFolder = historyFolder;
+    private readonly string? _runId;
+
+    /// <param name="historyFolder">Where the history files are.</param>
+    /// <param name="runId">Read only what this run left (to re-run an older run with its own data); null takes the newest data of every row.</param>
+    public HistoryRunStateStore(string historyFolder, string? runId = null) { _historyFolder = historyFolder; _runId = string.IsNullOrWhiteSpace(runId) ? null : runId; }
 
     /// <summary>Number of data rows found by the last <see cref="Load"/>.</summary>
     public int RowsFound { get; private set; }
@@ -38,6 +43,7 @@ public sealed class HistoryRunStateStore : IRunStateStore
                 foreach (var row in sheet.RowsUsed().Skip(1))
                 {
                     var rowKey = row.Cell(1).GetString();
+                    if (_runId is not null && !string.Equals(row.Cell(7).GetString(), _runId, StringComparison.Ordinal)) continue;
                     if (seenRows.Contains(rowKey)) continue;          // a newer file already supplied this data row
                     var id = (rowKey, row.Cell(2).GetString(), row.Cell(3).GetString(), row.Cell(4).GetString());
                     if (!chunks.TryGetValue(id, out var parts)) chunks[id] = parts = [];
@@ -67,12 +73,15 @@ public sealed class HistoryRunStateStore : IRunStateStore
     /// <summary>History files carry their own state (see <see cref="WriteSheet"/>), so there is nothing to save separately.</summary>
     public void Save(RunValueMemory.Snapshot snapshot) { }
 
-    /// <summary>Adds the hidden RunState sheet to a history workbook, for the data rows (<paramref name="rowKeys"/>) that workbook covers.</summary>
-    public static void WriteSheet(XLWorkbook workbook, RunValueMemory.Snapshot? state, IReadOnlyCollection<string> rowKeys)
+    /// <summary>
+    /// Adds the hidden RunState sheet to a history workbook: what the run remembered for the data rows the workbook covers, how each of those rows
+    /// ended, and which run this is (and which run it re-ran). <see cref="RunHistoryIndex"/> reads the last two without the user's sheet choices mattering.
+    /// </summary>
+    public static void WriteSheet(XLWorkbook workbook, RunValueMemory.Snapshot? state, RunResult run, string? rerunOf = null)
     {
-        if (state is null || rowKeys.Count == 0) return;
+        if (run.Testcases.Count == 0) return;
         var sheet = workbook.AddWorksheet(SheetName);
-        string[] headers = ["rowkey", "kind", "key", "name", "part", "value"];
+        string[] headers = ["rowkey", "kind", "key", "name", "part", "value", "runid"];
         for (var i = 0; i < headers.Length; i++) sheet.Cell(1, i + 1).Value = headers[i];
         var next = 2;
         void Put(string rowKey, string kind, string key, string name, string value)
@@ -82,11 +91,18 @@ public sealed class HistoryRunStateStore : IRunStateStore
                 sheet.Cell(next, 1).Value = rowKey; sheet.Cell(next, 2).Value = kind; sheet.Cell(next, 3).Value = key; sheet.Cell(next, 4).Value = name;
                 sheet.Cell(next, 5).Value = part;
                 sheet.Cell(next, 6).Value = value.Substring(part * ChunkLength, Math.Min(ChunkLength, value.Length - part * ChunkLength));
+                sheet.Cell(next, 7).Value = run.RunId;
                 next++;
             }
         }
+        var rowKeys = run.Testcases.Select(t => RunValueMemory.RowKey(t.TestcaseIndex, t.DataId, t.Iteration, t.Environment)).Distinct().ToList();
+        Put(rowKeys[0], "run", run.RunId, "startedat", run.StartedAt.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+        if (!string.IsNullOrWhiteSpace(rerunOf)) Put(rowKeys[0], "run", run.RunId, "rerunof", rerunOf);
+        foreach (var t in run.Testcases)
+            Put(RunValueMemory.RowKey(t.TestcaseIndex, t.DataId, t.Iteration, t.Environment), "result", t.Testcase, t.StartedAt.ToString("O", System.Globalization.CultureInfo.InvariantCulture), t.Result);
         foreach (var rowKey in rowKeys)
         {
+            if (state is null) { Put(rowKey, "marker", rowKey, "", ""); continue; }
             var prefix = rowKey + "|";
             foreach (var pair in state.Generated.Where(p => p.Key.StartsWith(prefix, StringComparison.Ordinal))) Put(rowKey, "generated", pair.Key, "", pair.Value);
             foreach (var pair in state.Steps.Where(p => p.Key.StartsWith(prefix, StringComparison.Ordinal))) Put(rowKey, "step", pair.Key, "", pair.Value);
@@ -96,4 +112,58 @@ public sealed class HistoryRunStateStore : IRunStateStore
         }
         sheet.Visibility = XLWorksheetVisibility.Hidden;
     }
+}
+
+/// <summary>One data row of one run, as found in the history.</summary>
+public sealed record RunHistoryRow(string RunId, DateTimeOffset StartedAt, string? RerunOf, int TestcaseIndex, string Testcase, string DataId, int Iteration, string Environment, string Result)
+{
+    public bool Failed => Result.Equals("FAILED", StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>Lists the runs and data rows found in an instance's history, for choosing what to re-run.</summary>
+public static class RunHistoryIndex
+{
+    public static IReadOnlyList<RunHistoryRow> Scan(string historyFolder, int maxFiles = 400)
+    {
+        var rows = new List<RunHistoryRow>();
+        if (!Directory.Exists(historyFolder)) return rows;
+        var seen = new HashSet<(string, string)>();
+        foreach (var file in new DirectoryInfo(historyFolder).EnumerateFiles("*.xlsx", SearchOption.AllDirectories)
+                     .Where(f => !f.Name.StartsWith("~$", StringComparison.Ordinal)).OrderByDescending(f => f.LastWriteTimeUtc).Take(maxFiles))
+        {
+            try
+            {
+                using var stream = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var book = new XLWorkbook(stream);
+                if (!book.TryGetWorksheet(HistoryRunStateStore.SheetName, out var sheet)) continue;
+                string? runId = null, rerunOf = null; DateTimeOffset started = default;
+                var results = new List<(string RowKey, string Testcase, string Result)>();
+                foreach (var row in sheet.RowsUsed().Skip(1))
+                {
+                    var kind = row.Cell(2).GetString();
+                    if (kind == "run")
+                    {
+                        runId = row.Cell(3).GetString();
+                        if (row.Cell(4).GetString() == "startedat") DateTimeOffset.TryParse(row.Cell(6).GetString(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out started);
+                        else if (row.Cell(4).GetString() == "rerunof") rerunOf = row.Cell(6).GetString();
+                    }
+                    else if (kind == "result") results.Add((row.Cell(1).GetString(), row.Cell(3).GetString(), row.Cell(6).GetString()));
+                }
+                if (string.IsNullOrEmpty(runId)) continue;
+                foreach (var (rowKey, testcase, result) in results)
+                {
+                    var parts = rowKey.Split('|');
+                    if (parts.Length < 4 || !int.TryParse(parts[0], out var index) || !int.TryParse(parts[2], out var iteration) || !seen.Add((runId, rowKey))) continue;
+                    rows.Add(new RunHistoryRow(runId, started, string.IsNullOrEmpty(rerunOf) ? null : rerunOf, index, testcase, parts[1], iteration, parts[3] == "default" ? string.Empty : parts[3], result));
+                }
+            }
+            catch (Exception) { /* unreadable history files are skipped */ }
+        }
+        return rows.OrderByDescending(r => r.StartedAt).ThenBy(r => r.TestcaseIndex).ThenBy(r => r.DataId).ThenBy(r => r.Iteration).ToList();
+    }
+
+    /// <summary>The runs found, newest first.</summary>
+    public static IReadOnlyList<(string RunId, DateTimeOffset StartedAt, int Rows, int Failed, string? RerunOf)> Runs(IEnumerable<RunHistoryRow> rows)
+        => rows.GroupBy(r => r.RunId).Select(g => (g.Key, g.Min(r => r.StartedAt), g.Count(), g.Count(r => r.Failed), g.Select(r => r.RerunOf).FirstOrDefault(x => x is not null)))
+            .OrderByDescending(r => r.Item2).ToList();
 }

@@ -49,6 +49,8 @@ internal static class Program
             var rerunAll = args.Any(a => a.Equals("--rerun", StringComparison.OrdinalIgnoreCase)) && !string.Equals(GetCommandLineValue(args, "--rerun"), "false", StringComparison.OrdinalIgnoreCase);
             var rerunSteps = ParseRerunSteps(GetCommandLineValue(args, "--rerun-steps"));
             var rerun = rerunAll || rerunSteps.Count > 0;
+            // --rerun-of <runId>: this run re-runs that run. Old data (when --rerun / --rerun-steps ask for it) is then the data of that run, not the newest; the history records the link.
+            var rerunOf = GetCommandLineValue(args, "--rerun-of");
             if (!config.RowsExecutionMode.Equals("parallel", StringComparison.OrdinalIgnoreCase) && !config.RowsExecutionMode.Equals("sequential", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("rows-execution-mode must be 'parallel' or 'sequential'.");
             var runId = string.IsNullOrWhiteSpace(config.RunId) ? $"{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}"[..25] : config.RunId;
             loadedRunId = runId;
@@ -73,7 +75,7 @@ internal static class Program
             HistoryRunStateStore? historyState = null;
             try
             {
-                RunValueMemory.Active = new RunValueMemory(historyState = new HistoryRunStateStore(config.HistoryFolder));
+                RunValueMemory.Active = new RunValueMemory(historyState = new HistoryRunStateStore(config.HistoryFolder, rerunOf));
                 RunValueMemory.Active.BeginRead(reuse: false);
                 workbook = new WorkbookReader().Read(workbookPath);
             }
@@ -102,7 +104,7 @@ internal static class Program
                 work = new RunSelectionPlanner().Build(workbook, indexes, stepSelection, config.EnvironmentSelection, GetCommandLineValue(args, "--environments-json"), config.Environments);
                 Console.WriteLine(rerunAll ? "Rerun: reusing the generated values (random numbers, GUIDs, dates, script results) and saved response values from the last run for unchanged data." : $"Rerun: reusing the last run's generated values for {string.Join(", ", rerunSteps)}; other steps generate new values.");
             }
-            else if (rerun) Console.WriteLine("Rerun: no history found for this workbook (it may have been cleaned up), so new values are generated.");
+            else if (rerun) Console.WriteLine(string.IsNullOrWhiteSpace(rerunOf) ? "Rerun: no history found for this workbook (it may have been cleaned up), so new values are generated." : $"Rerun: no history found for run {rerunOf} (it may have been cleaned up), so new values are generated.");
             Console.WriteLine("Selected work: " + string.Join("; ", work.Select(x => $"{x.Testcase.TestcaseIndex} [{(string.IsNullOrEmpty(x.Environment) ? "default" : x.Environment)}]: {string.Join(", ", x.Testcase.Steps.Select(s => s.StepName))}")));
             var filters = ParseDataIdSelection(dataIdSelection);
             try
@@ -130,7 +132,7 @@ internal static class Program
                 var historyFiles = Array.Empty<string>();
                 try
                 {
-                    var historyWriter = new HistoryWriter(config) { RunState = runState };
+                    var historyWriter = new HistoryWriter(config) { RunState = runState, RerunOf = rerunOf };
                     historyFiles = config.GenerateRowHistory ? historyWriter.WritePerTestcase(overall, workbook).ToArray() : Array.Empty<string>();
                     if (config.GenerateAggregateHistory)
                     {

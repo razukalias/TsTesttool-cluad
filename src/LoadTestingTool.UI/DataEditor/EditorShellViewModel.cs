@@ -347,6 +347,9 @@ public sealed partial class EditorShellViewModel : ObservableObject
     /// <summary>Opens the History Explorer filtered to an instance and, optionally, a testcase name; set by the dashboard.</summary>
     public Action<string, string?>? HistoryHandler { get; set; }
 
+    /// <summary>Where an instance's history is and which environments it has (for re-running from history): the instance name.</summary>
+    public Func<string, RerunContext?>? RerunContextProvider { get; set; }
+
     /// <summary>Starts a run of one instance: its name and what to run.</summary>
     public Func<string, RunRequest, Task<string?>>? RunHandler { get; set; }
 
@@ -360,6 +363,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
         node.Editor!.CreateTestcaseHandler = draft => CreateTestcaseHandler?.Invoke(node.Name, draft);
         node.Editor!.CloseRequested += (_, _) => OnEditorClosed();
         node.Editor.HistoryHandler = testcase => HistoryHandler?.Invoke(node.Name, testcase);
+        node.Editor.RerunContextProvider = () => RerunContextProvider?.Invoke(node.Name);
         node.SelectedTestcaseChanged += (_, _) =>
         {
             if (ReferenceEquals(Current, node.Editor) && node.Editor!.SelectedTestcase is { } chosen2 && !ReferenceEquals(SelectedNode, chosen2) && !(SelectedNode is StepNode sn && ReferenceEquals(sn.Owner, chosen2))) SelectedNode = chosen2;

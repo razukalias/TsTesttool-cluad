@@ -9,7 +9,7 @@ namespace LoadTestingTool.UI.DataEditor;
 /// <param name="RowsMode">"parallel", "sequential", or null to use the instance's own setting.</param>
 /// <param name="TestcasesParallel">Run the chosen testcases at the same time (true) or one after another (false); null keeps the instance setting.</param>
 /// <param name="Steps">Step names to run per testcase index; null runs every enabled step. When given it must list every testcase in <see cref="Testcases"/>.</param>
-public sealed record RunRequest(IReadOnlyList<int> Testcases, IReadOnlyList<string> DataIds, string? RowsMode = null, bool? TestcasesParallel = null, IReadOnlyDictionary<int, IReadOnlyList<string>>? Steps = null, bool Rerun = false, IReadOnlyDictionary<int, IReadOnlyList<string>>? RerunSteps = null);
+public sealed record RunRequest(IReadOnlyList<int> Testcases, IReadOnlyList<string> DataIds, string? RowsMode = null, bool? TestcasesParallel = null, IReadOnlyDictionary<int, IReadOnlyList<string>>? Steps = null, bool Rerun = false, IReadOnlyDictionary<int, IReadOnlyList<string>>? RerunSteps = null, string? RerunOf = null, IReadOnlyList<string>? Environments = null);
 
 /// <summary>Asks the host to run part of an instance. Returns null when the run was started, otherwise why it was not.</summary>
 public delegate Task<string?> RunHandler(RunRequest request);
@@ -239,6 +239,17 @@ public sealed partial class DataEditorViewModel
         return StartRunAsync(request, label);
     }
 
+    /// <summary>What the "Re-run from history" dialog needs: where the instance's history is and which environments it has; set by whoever hosts the editor.</summary>
+    public Func<RerunContext?>? RerunContextProvider { get; set; }
+
+    /// <summary>Shows a problem in the editor's status line.</summary>
+    public void ShowProblem(string message) => ShowStatus(message, isError: true);
+
+    public bool CanRerunFromHistory => RerunContextProvider is not null;
+
+    /// <summary>Starts a run built by the "Re-run from history" dialog; its own old/fresh choices are used as they are.</summary>
+    public Task StartRerunAsync(RunRequest request, string label) => StartRunAsync(request, label, applyReuseChoices: false);
+
     [RelayCommand]
     private Task RunTestcaseAsync() => StartRunAsync(new RunRequest([SelectedTestcase?.Index ?? 0], []), $"testcase {SelectedTestcase?.Name}");
 
@@ -249,7 +260,7 @@ public sealed partial class DataEditorViewModel
         return StartRunAsync(new RunRequest([testcase.Index], [row.Cells[0]]), $"{row.Cells[0]} in {testcase.Name}");
     }
 
-    private async Task StartRunAsync(RunRequest request, string label)
+    private async Task StartRunAsync(RunRequest request, string label, bool applyReuseChoices = true)
     {
         if (RunHandler is not { } handler) { ShowStatus("Running is only available when the editor is opened from the dashboard.", isError: true); return; }
         if (IsRunning) { ShowStatus("This instance is already running. Wait for it to finish or stop it first.", isError: true); return; }
@@ -258,10 +269,13 @@ public sealed partial class DataEditorViewModel
         try
         {
             // The box is for the next run only: it clears as soon as that run is started (or refused).
-            var reuseSteps = Testcases.Where(t => t.StepNodes.Any(n => n.ReuseValues))
-                .ToDictionary(t => t.Index, t => (IReadOnlyList<string>)t.StepNodes.Where(n => n.ReuseValues).Select(n => n.Name).ToList());
-            request = request with { Rerun = ReuseLastValues, RerunSteps = reuseSteps.Count > 0 ? reuseSteps : null };
-            ClearReuseChoices();
+            if (applyReuseChoices)
+            {
+                var reuseSteps = Testcases.Where(t => t.StepNodes.Any(n => n.ReuseValues))
+                    .ToDictionary(t => t.Index, t => (IReadOnlyList<string>)t.StepNodes.Where(n => n.ReuseValues).Select(n => n.Name).ToList());
+                request = request with { Rerun = ReuseLastValues, RerunSteps = reuseSteps.Count > 0 ? reuseSteps : null };
+                ClearReuseChoices();
+            }
             var problem = await handler(request);
             RunOptionsVisible = problem is not null && RunOptionsVisible;
             ShowStatus(problem ?? $"Started {label}. Results appear in the Result column as it runs.", isError: problem is not null);
@@ -318,3 +332,6 @@ public sealed partial class DataEditorViewModel
         ShowStatus(created ? $"Created testcase {index}. Add its data rows below." : $"The testcase was not created — see the dashboard for the reason.", isError: !created);
     }
 }
+
+/// <summary>Where an instance's history is and which environments it can run in.</summary>
+public sealed record RerunContext(string HistoryFolder, IReadOnlyList<string> Environments);
