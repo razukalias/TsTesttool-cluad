@@ -395,11 +395,11 @@ Example row:
 
 #### Navigation and views
 
-- [ ] 1. Clicking the instance root in the tree shows the last selected testcase. It should list all available testcases/steps of the instance.
-- [ ] 2. Selecting an instance, testcase or step should open **data mode** by default, not step mode.
-- [ ] 3. Data mode should show the config sheet and all other sheets. Rename "Data" to **Table view** and "Step mode" to **Config edit mode** (or a similar fitting name), each with an icon.
-- [ ] 4. Add a filter for all sheets so one or many sheets can be selected for viewing.
-- [ ] 13. When an instance, testcase or step is selected, show the instance name in every Overview panel tab.
+- [ ] 1. Clicking the instance root must not show the last selected testcase. What it shows depends on the view mode (agreed 2026-11-16): in **Table view** it shows the full table of the instance; in **Config edit mode** it lists all testcases and their steps.
+- [ ] 2. Selecting an instance, testcase or step opens **Table view** by default, not step mode. The chosen mode stays while you click other items and resets to Table view when a new instance is opened.
+- [ ] 3. Table view shows the Config sheet and all other sheets of the workbook. Rename "Data" to **Table view** and "Step mode" to **Config edit mode**, with icons (grid for Table, form/sliders for Config) and the full names as tooltips.
+- [ ] 4. Add a sheet filter: a multi-select dropdown in the toolbar listing every sheet in the workbook ("All sheets" by default). Each selected sheet is shown as its own tab. For a selected testcase or step the table shows only its rows, with a "Show all rows" toggle. The filter is remembered per instance.
+- [ ] 13. Show the instance name (its folder name) in every Overview panel tab, as a header line above the tabs, for example `DataEngine_Example › Testcase 1 › GetUser`.
 
 #### Bugs and checks
 
