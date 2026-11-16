@@ -474,7 +474,7 @@ Example row:
 
 #### New tokens
 
-- [ ] 11. New file tokens for request cells (decisions agreed 2026-11-16):
+- [x] 11. New file tokens for request cells (decisions agreed 2026-11-16):
   - `<from_filepath>path` loads the file content into the cell; `<from_filepath_base64>path` loads the raw bytes of any file type as base64.
   - **Whole cell only.** The token replaces the entire cell and does not work inside longer text. To combine it with other text, build the text in another cell and reference that cell with `<from_...>`.
   - **Request cells only** (all step types: HTTP, GraphQL, SQL, script, ...). Not for expected/response cells.
@@ -485,6 +485,7 @@ Example row:
   - **Validation:** a missing file is reported in the editor and Problems list before the run, like the Wait/Timeout field checks.
   - **Editor helper:** an "Insert file..." button next to the cell/step field opens a file picker and writes the token with the path (first piece of the wizard in item 12).
   - Exists alongside the Read file step; it does not replace it.
+  - Done 2026-11-16: `FileTokens` (whole-cell `<from_filepath>` / `<from_filepath_base64>`, bare name from `Files\`, other relative paths in `Files\` then the instance folder, absolute as is, case-insensitive). Read when the step runs, text as is (BOM dropped), content never logged (log shows file name and bytes), validation error when the file is missing.
 
 #### Re-run and history
 

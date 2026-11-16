@@ -1,0 +1,96 @@
+using LoadTestingTool.Editing;
+using LoadTestingTool.Execution;
+using Xunit;
+
+namespace WorkbookEditTests;
+
+public class FileTokenTests
+{
+    [Theory]
+    [InlineData("<from_filepath>payload.json", false, "payload.json")]
+    [InlineData("  <From_FilePath>  C:\\data\\a b.bin  ", false, "C:\\data\\a b.bin")]
+    [InlineData("<from_filepath_base64>logo.png", true, "logo.png")]
+    public void The_token_is_the_whole_cell_and_carries_the_path(string cell, bool base64, string path)
+    {
+        Assert.True(FileTokens.TryParse(cell, out var isBase64, out var parsed));
+        Assert.Equal(base64, isBase64);
+        Assert.Equal(path, parsed);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("plain text")]
+    [InlineData("prefix <from_filepath>a.txt")]       // only the whole cell counts
+    [InlineData("<from_filepath>")]                   // no path
+    [InlineData("<From_request_title_r>")]
+    public void Other_text_is_not_a_file_token(string cell) => Assert.False(FileTokens.TryParse(cell, out _, out _));
+
+    [Fact]
+    public void A_bare_name_is_read_from_the_Files_folder_without_regard_to_letter_case()
+    {
+        using var dir = new TempDir();
+        Directory.CreateDirectory(dir.Combine("Files"));
+        File.WriteAllText(dir.Combine("Files", "Payload.JSON"), "x");
+
+        Assert.Equal(dir.Combine("Files", "Payload.JSON"), FileTokens.Find(dir.Path, "payload.json"));
+        File.WriteAllText(dir.Combine("elsewhere.txt"), "y");
+        Assert.Null(FileTokens.Find(dir.Path, "elsewhere.txt"));             // a bare name is not looked for beside the workbook
+    }
+
+    [Fact]
+    public void A_relative_path_with_folders_is_tried_in_Files_then_in_the_instance_folder_and_an_absolute_path_is_used_as_it_is()
+    {
+        using var dir = new TempDir();
+        Directory.CreateDirectory(dir.Combine("Files", "sub"));
+        Directory.CreateDirectory(dir.Combine("data"));
+        File.WriteAllText(dir.Combine("Files", "sub", "a.txt"), "1");
+        File.WriteAllText(dir.Combine("data", "b.txt"), "2");
+        using var other = new TempDir();
+        File.WriteAllText(other.Combine("c.txt"), "3");
+
+        Assert.Equal(dir.Combine("Files", "sub", "a.txt"), FileTokens.Find(dir.Path, "sub/a.txt"));
+        Assert.Equal(dir.Combine("Files", "sub", "a.txt"), FileTokens.Find(dir.Path, "SUB\\a.txt"));
+        Assert.Equal(Path.Combine(dir.Path, "data", "b.txt"), FileTokens.Find(dir.Path, "data/b.txt"));
+        Assert.Equal(other.Combine("c.txt"), FileTokens.Find(dir.Path, other.Combine("c.txt")));
+        Assert.Null(FileTokens.Find(dir.Path, "nope/missing.txt"));
+    }
+
+    [Fact]
+    public async Task Text_is_used_exactly_as_it_is_and_base64_works_for_any_file()
+    {
+        using var dir = new TempDir();
+        Directory.CreateDirectory(dir.Combine("Files"));
+        var text = "  {\"a\":\"_var_\", \"b\":\"<randomnumber>\"}\r\n  ";
+        File.WriteAllBytes(dir.Combine("Files", "t.json"), [0xEF, 0xBB, 0xBF, .. System.Text.Encoding.UTF8.GetBytes(text)]);
+        byte[] binary = [0, 1, 2, 250, 251, 252, 255];
+        File.WriteAllBytes(dir.Combine("Files", "x.bin"), binary);
+
+        var asText = await FileTokens.LoadAsync(dir.Path, base64: false, "t.json", CancellationToken.None);
+        Assert.Equal(text, asText.Value);                       // not trimmed, variables and tokens left alone, BOM dropped
+        var asBase64 = await FileTokens.LoadAsync(dir.Path, base64: true, "x.bin", CancellationToken.None);
+        Assert.Equal(Convert.ToBase64String(binary), asBase64.Value);
+        Assert.Equal(7, asBase64.Bytes);
+        await Assert.ThrowsAsync<FileNotFoundException>(() => FileTokens.LoadAsync(dir.Path, false, "missing.txt", CancellationToken.None));
+    }
+
+    [Fact]
+    public void Validation_flags_a_file_token_whose_file_is_missing_and_accepts_one_that_exists()
+    {
+        using var dir = new TempDir();
+        var path = Workbooks.CreateSmall(dir, (_, request, _) =>
+        {
+            request.Cell(2, 5).Value = "<from_filepath>present.txt";
+            request.Cell(3, 5).Value = "<from_filepath_base64>absent.bin";
+        });
+        Directory.CreateDirectory(dir.Combine("Files"));
+        File.WriteAllText(dir.Combine("Files", "present.txt"), "hi");
+
+        var problems = WorkbookDocument.Load(path).Validate().Where(p => p.Message.Contains("was not found")).ToList();
+
+        var problem = Assert.Single(problems);
+        Assert.Equal(ProblemSeverity.Error, problem.Severity);
+        Assert.Equal("request", problem.Sheet);
+        Assert.Equal(3, problem.RowNumber);
+        Assert.Contains("absent.bin", problem.Message);
+    }
+}

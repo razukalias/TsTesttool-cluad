@@ -17,6 +17,12 @@ internal sealed class RuntimeReferenceException : Exception
         Reference = reference;
     }
 
+    public RuntimeReferenceException(string key, string reference, string message) : base(message)
+    {
+        Key = key;
+        Reference = reference;
+    }
+
     public string Key { get; }
     public string Reference { get; }
 }
@@ -74,6 +80,7 @@ public sealed class TestRunner
                         RunValueMemory.StepName.Value = request.StepName;
                         variables = StepVariables(data, request.StepName);
                         redactedVariables = StepRedactedVariables(data, request.StepName);
+                        var cellVariables = variables.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);   // the step's own request cells (not env or earlier responses)
                         if (!string.IsNullOrWhiteSpace(environment)) variables["env"] = environment;
                         foreach (var pair in correlation)
                         {
@@ -85,7 +92,28 @@ public sealed class TestRunner
                             variables[pair.Key] = pair.Value;
                         }
                         foreach (var variable in variables) executionContext.Set(variable.Key, variable.Value, VariableScope.Iteration);
-                        foreach (var key in variables.Keys.ToList()) variables[key] = await ResolveDynamicValueAsync(variables[key], correlation, requestReferences, executionContext, token);
+                        var fileVariables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var key in variables.Keys.ToList())
+                        {
+                            // <from_filepath>name / <from_filepath_base64>name: the whole cell is the content of a file, read now.
+                            if (cellVariables.Contains(key) && FileTokens.TryParse(variables[key], out var asBase64, out var filePath))
+                            {
+                                try
+                                {
+                                    var loaded = await FileTokens.LoadAsync(_features.WorkspaceRoot, asBase64, filePath, token);
+                                    variables[key] = loaded.Value;
+                                    fileVariables.Add(key);
+                                    _logger.Info($"FILE VALUE | step={request.StepName} | variable={key} | file={loaded.FileName} | {(asBase64 ? "base64 of " : string.Empty)}{loaded.Bytes} bytes | content not logged");
+                                }
+                                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                                {
+                                    throw new RuntimeReferenceException(key, $"{(asBase64 ? "<from_filepath_base64>" : "<from_filepath>")}{filePath}", ex.Message);
+                                }
+                                continue;
+                            }
+                            variables[key] = await ResolveDynamicValueAsync(variables[key], correlation, requestReferences, executionContext, token);
+                        }
+                        if (fileVariables.Count > 0) redactedVariables = new HashSet<string>(redactedVariables.Concat(fileVariables), StringComparer.OrdinalIgnoreCase);   // file content never goes to the log or the history
                     }
                     catch (RuntimeReferenceException ex)
                     {

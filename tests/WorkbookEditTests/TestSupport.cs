@@ -15,6 +15,12 @@ internal sealed class TempDir : IDisposable
         return System.IO.Path.Combine(Path, name);
     }
 
+    public string Combine(params string[] parts)
+    {
+        Directory.CreateDirectory(Path);
+        return System.IO.Path.Combine([Path, .. parts]);
+    }
+
     public void Dispose()
     {
         try { if (Directory.Exists(Path)) Directory.Delete(Path, recursive: true); } catch (IOException) { }

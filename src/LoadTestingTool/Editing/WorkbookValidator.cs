@@ -21,6 +21,7 @@ public static class WorkbookValidator
         var requestKeys = ValidateDataSheet(document.Request, problems, duplicateSeverity: ProblemSeverity.Error);
         var responseKeys = ValidateDataSheet(document.Response, problems, duplicateSeverity: ProblemSeverity.Warning);
         ValidateResponseColumns(document.Response, stepsByTestcase, problems);
+        ValidateFileTokens(document, problems);
         ValidateCrossSheet(document, stepsByTestcase, requestKeys, responseKeys, problems);
         return problems;
     }
@@ -221,6 +222,24 @@ public static class WorkbookValidator
     }
 
     private static string Text(TableRow row, string header) => row.Get(header).Trim();
+
+    /// <summary>A request cell that is <c>&lt;from_filepath&gt;name</c> (or the base64 form) must point at a file that exists.</summary>
+    private static void ValidateFileTokens(WorkbookDocument document, List<WorkbookProblem> problems)
+    {
+        var instanceFolder = Path.GetDirectoryName(Path.GetFullPath(document.FilePath)) ?? string.Empty;
+        var table = document.Request;
+        foreach (var row in table.Rows)
+        {
+            if (row.IsBlank) continue;
+            for (var column = 0; column < table.ColumnCount; column++)
+            {
+                if (!LoadTestingTool.Execution.FileTokens.TryParse(row.GetAt(column), out _, out var path)) continue;
+                if (LoadTestingTool.Execution.GeneratedTokens.HasMarkers(path) || path.Contains('<') || path.Contains('{')) continue;   // a path built at run time cannot be checked now
+                if (LoadTestingTool.Execution.FileTokens.Find(instanceFolder, path) is null)
+                    Add(problems, ProblemSeverity.Error, table, row, $"{table.Headers[column]}: the file '{path}' was not found. Put it in the instance's {LoadTestingTool.Execution.FileTokens.FilesFolder} folder or give its full path.");
+            }
+        }
+    }
 
     private static void Add(List<WorkbookProblem> problems, ProblemSeverity severity, SheetTable table, TableRow row, string message)
         => problems.Add(new WorkbookProblem(severity, table.SheetName, row.SourceRow, message, row));
