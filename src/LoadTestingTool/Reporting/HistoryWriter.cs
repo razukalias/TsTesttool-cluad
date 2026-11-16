@@ -9,6 +9,9 @@ public sealed class HistoryWriter
     private readonly AppConfig _config;
     public HistoryWriter(AppConfig config) => _config = config;
 
+    /// <summary>What this run remembered for a re-run; written into each history file as the hidden RunState sheet.</summary>
+    public RunValueMemory.Snapshot? RunState { get; set; }
+
     public IReadOnlyList<string> WritePerTestcase(RunResult run, WorkbookModel? workbookModel = null)
     {
         var paths = new List<string>();
@@ -124,6 +127,7 @@ public sealed class HistoryWriter
             }
         }
         WriteResolvedCopies(workbook, run, requests);
+        HistoryRunStateStore.WriteSheet(workbook, RunState, run.Testcases.Select(t => RunValueMemory.RowKey(t.TestcaseIndex, t.DataId, t.Iteration, t.Environment)).Distinct().ToList());
         foreach (var sheet in workbook.Worksheets) { sheet.Columns().AdjustToContents(1, 80); sheet.SheetView.FreezeRows(1); sheet.Row(1).Style.Font.Bold = true; sheet.Row(1).Style.Fill.SetBackgroundColor(XLColor.LightBlue); }
         workbook.SaveAs(path); return path;
     }
@@ -142,8 +146,7 @@ public sealed class HistoryWriter
         WriteTable(values, "runid", "testcaseindex", "testcase", "dataid", "iteration", "environment", "stepname", "cell", "value");
         foreach (var r in executed)
         {
-            var fromEarlierResponses = r.Correlations.Select(c => c.Variable).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            foreach (var variable in r.Variables.Where(v => !fromEarlierResponses.Contains(v.Key) && !v.Key.Equals("env", StringComparison.OrdinalIgnoreCase)))
+            foreach (var variable in r.Variables.Where(v => IsRequestCell(r, v.Key)))
                 values.AddRow(run.RunId, r.TestcaseIndex, r.Testcase, r.DataId, r.Iteration, r.Environment, r.StepName, variable.Key, Cell(r, variable.Key, variable.Value));
         }
 
@@ -157,7 +160,7 @@ public sealed class HistoryWriter
         if (Enabled("Request"))
         {
             var sheet = workbook.AddWorksheet("Request");
-            var names = executed.SelectMany(r => r.Variables.Keys.Where(k => !r.Correlations.Any(c => c.Variable.Equals(k, StringComparison.OrdinalIgnoreCase)) && !k.Equals("env", StringComparison.OrdinalIgnoreCase)))
+            var names = executed.SelectMany(r => r.Variables.Keys.Where(k => IsRequestCell(r, k)))
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             WriteTable(sheet, ["runid", "iteration", "environment", "testcaseindex", "testcase", "dataid", "stepname", .. names]);
             foreach (var r in executed)
@@ -178,6 +181,10 @@ public sealed class HistoryWriter
                     sheet.AddRow(run.RunId, r.Iteration, r.Environment, a.TestcaseIndex, a.Testcase, a.DataId, a.StepName, a.ResponsePath, a.AssertionVerb, Mask(a.ExpectedValue), a.ExtractVariable);
         }
     }
+
+    /// <summary>True for a step's own request cell; false for <c>env</c> and for values taken from earlier responses (named like Step.path).</summary>
+    private static bool IsRequestCell(RequestResult r, string name)
+        => !name.Equals("env", StringComparison.OrdinalIgnoreCase) && !name.Contains('.') && !r.Correlations.Any(c => c.Variable.Equals(name, StringComparison.OrdinalIgnoreCase));
 
     private string Mask(string value) => InternalLogger.MaskSensitiveData(value, _config.MaskSensitiveData);
     private string MaskVariableContent(string value, IReadOnlySet<string> redactedVariables, IReadOnlyDictionary<string, string> variables)

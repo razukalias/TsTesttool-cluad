@@ -8,6 +8,10 @@ namespace WorkbookEditTests;
 [Collection("RunValueMemory")]
 public class RunValueMemoryTests
 {
+    // One store per workbook path, so a later memory finds what an earlier one saved (as a later run finds the history of an earlier one).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, MemoryRunStateStore> Stores = new();
+    private static RunValueMemory Mem(string path) => new(Stores.GetOrAdd(path, _ => new MemoryRunStateStore()));
+
     private static string Workbook(TempDir dir) => Workbooks.CreateSmall(dir, (_, request, _) =>
     {
         request.Cell(2, 5).Value = "order-<randomnumber:000000>-<guid>";
@@ -25,7 +29,7 @@ public class RunValueMemoryTests
 
     private static string ReadWith(string path, bool reuse, bool save = true, string dataId = "D1")
     {
-        var memory = new RunValueMemory(path);
+        var memory = Mem(path);
         RunValueMemory.Active = memory;
         try { memory.BeginRead(reuse); var value = Title(path, dataId); if (save) memory.Save(); return value; }
         finally { RunValueMemory.Active = null; }
@@ -71,11 +75,11 @@ public class RunValueMemoryTests
     {
         using var dir = new TempDir();
         var path = Workbook(dir);
-        var memory = new RunValueMemory(path);
+        var memory = Mem(path);
         memory.SetRow(RunValueMemory.RowKey(1, "D1", 1, ""), new Dictionary<string, string> { ["token"] = "abc", ["orderId"] = "42" });
         memory.Save();
 
-        var next = new RunValueMemory(path);
+        var next = Mem(path);
         Assert.True(next.HasPrevious);
         Assert.Equal("abc", next.PreviousRow(RunValueMemory.RowKey(1, "D1", 1, ""))["token"]);
         Assert.Empty(next.PreviousRow(RunValueMemory.RowKey(1, "D1", 2, "")));   // another iteration
@@ -87,17 +91,17 @@ public class RunValueMemoryTests
     {
         using var dir = new TempDir();
         var path = Workbook(dir);
-        var first = new RunValueMemory(path);
+        var first = Mem(path);
         first.SetRow("1|D1|1|default", new Dictionary<string, string> { ["a"] = "1" });
         first.SetRow("1|D2|1|default", new Dictionary<string, string> { ["a"] = "2" });
         first.Save();
 
-        var partial = new RunValueMemory(path);
+        var partial = Mem(path);
         partial.BeginRead(reuse: true);
         partial.SetRow("1|D1|1|default", new Dictionary<string, string> { ["a"] = "1", ["b"] = "new" });
         partial.Save();
 
-        var check = new RunValueMemory(path);
+        var check = Mem(path);
         Assert.Equal("new", check.PreviousRow("1|D1|1|default")["b"]);
         Assert.Equal("2", check.PreviousRow("1|D2|1|default")["a"]);
     }
@@ -122,14 +126,14 @@ public class RunValueMemoryTests
         var calls = 0;
         Task<string> Resolve() => Task.FromResult($"value-{++calls}");
 
-        var first = new RunValueMemory(path);
+        var first = Mem(path);
         first.BeginRead(reuse: false);
         RunValueMemory.StepScope.Value = "1|D1|1|default|CreatePost";
         Assert.Equal("value-1", await first.StepTextAsync("body <script>", Resolve));
         Assert.Equal("plain", await first.StepTextAsync("plain", () => Task.FromResult("plain")));   // unchanged text is not stored
         first.Save();
 
-        var rerun = new RunValueMemory(path);
+        var rerun = Mem(path);
         rerun.BeginRead(reuse: true);
         Assert.Equal("value-1", await rerun.StepTextAsync("body <script>", Resolve));          // replayed, resolver not called
         Assert.Equal(1, calls);
@@ -152,7 +156,7 @@ public class RunValueMemoryTests
         });
         (string First, string Second) Read(bool reuse, string[]? only)
         {
-            var memory = new RunValueMemory(path);
+            var memory = Mem(path);
             memory.ReuseOnly(only);
             RunValueMemory.Active = memory;
             try

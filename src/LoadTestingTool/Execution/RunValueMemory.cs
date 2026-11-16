@@ -1,18 +1,18 @@
-using System.Text.Json;
-
 namespace LoadTestingTool.Execution;
 
 /// <summary>
 /// Remembers the values a run generated for itself, so a re-run of one failed step can use the same ones:
 /// the &lt;randomnumber&gt; / &lt;guid&gt; values written into the data cells, and the values earlier steps
-/// extracted from their responses (per data row and iteration). One file per workbook, beside it.
+/// extracted from their responses (per data row and iteration). Where it is kept is up to the <see cref="IRunStateStore"/>:
+/// the runner keeps it in the history workbooks (<see cref="HistoryRunStateStore"/>), so history is the only source for re-run data.
 /// </summary>
 public sealed class RunValueMemory
 {
     /// <summary>The memory of the run in progress, or null (the workbook reader and the runner both look here).</summary>
     public static RunValueMemory? Active { get; set; }
 
-    private sealed class Snapshot
+    /// <summary>Everything a run remembers for a re-run, per data row.</summary>
+    public sealed class Snapshot
     {
         public Dictionary<string, string> Generated { get; set; } = new(StringComparer.Ordinal);
         public Dictionary<string, Dictionary<string, string>> Rows { get; set; } = new(StringComparer.Ordinal);
@@ -20,17 +20,17 @@ public sealed class RunValueMemory
         public Dictionary<string, string> Steps { get; set; } = new(StringComparer.Ordinal);
     }
 
-    private readonly string _path;
+    private readonly IRunStateStore _store;
     private readonly object _gate = new();
     private Snapshot _previous = new();
     private Snapshot _current = new();
     private readonly Dictionary<string, int> _occurrences = new(StringComparer.Ordinal);
 
-    public RunValueMemory(string workbookPath)
+    public RunValueMemory(IRunStateStore store)
     {
-        _path = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(workbookPath))!, ".last-run-state", "values.json");
-        try { if (File.Exists(_path)) _previous = JsonSerializer.Deserialize<Snapshot>(File.ReadAllText(_path)) ?? new Snapshot(); }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { _previous = new Snapshot(); }
+        _store = store;
+        try { _previous = store.Load() ?? new Snapshot(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException) { _previous = new Snapshot(); }
     }
 
     /// <summary>True while generated values should come from the last run instead of being made new.</summary>
@@ -135,9 +135,9 @@ public sealed class RunValueMemory
     }
 
     /// <summary>
-    /// Writes the memory. A reusing (partial) run keeps what it did not touch from the last run; a normal run replaces everything it generated.
+    /// What the next re-run needs. A reusing (partial) run keeps what it did not touch from the last run; a normal run replaces everything it generated.
     /// </summary>
-    public void Save()
+    public Snapshot Export()
     {
         lock (_gate)
         {
@@ -146,14 +146,29 @@ public sealed class RunValueMemory
             foreach (var pair in _current.Generated) merged.Generated[pair.Key] = pair.Value;
             foreach (var pair in _current.Rows) merged.Rows[pair.Key] = pair.Value;
             foreach (var pair in _current.Steps) merged.Steps[pair.Key] = pair.Value;
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-                var temp = _path + ".tmp";
-                File.WriteAllText(temp, JsonSerializer.Serialize(merged));
-                File.Move(temp, _path, overwrite: true);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* the memory is a convenience; a run must not fail over it */ }
+            return merged;
         }
     }
+
+    /// <summary>Hands the memory to the store (for stores that keep it themselves).</summary>
+    public void Save()
+    {
+        try { _store.Save(Export()); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* the memory is a convenience; a run must not fail over it */ }
+    }
+}
+
+/// <summary>Where a run's re-run memory is kept between runs.</summary>
+public interface IRunStateStore
+{
+    RunValueMemory.Snapshot? Load();
+    void Save(RunValueMemory.Snapshot snapshot);
+}
+
+/// <summary>Keeps the memory in the object, for runs that need no persistence and for tests.</summary>
+public sealed class MemoryRunStateStore : IRunStateStore
+{
+    private RunValueMemory.Snapshot? _snapshot;
+    public RunValueMemory.Snapshot? Load() => _snapshot;
+    public void Save(RunValueMemory.Snapshot snapshot) => _snapshot = snapshot;
 }

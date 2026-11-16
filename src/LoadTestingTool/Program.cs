@@ -70,9 +70,10 @@ internal static class Program
             var stopMonitor = MonitorStopFileAsync(stopFile, cancellation, stopMonitorCancellation.Token);
             using var http = new HttpClient(new HttpClientHandler { UseDefaultCredentials = true, AutomaticDecompression = DecompressionMethods.All }) { Timeout = Timeout.InfiniteTimeSpan };
             WorkbookModel workbook;
+            HistoryRunStateStore? historyState = null;
             try
             {
-                RunValueMemory.Active = new RunValueMemory(workbookPath);
+                RunValueMemory.Active = new RunValueMemory(historyState = new HistoryRunStateStore(config.HistoryFolder));
                 RunValueMemory.Active.BeginRead(reuse: false);
                 workbook = new WorkbookReader().Read(workbookPath);
             }
@@ -101,7 +102,7 @@ internal static class Program
                 work = new RunSelectionPlanner().Build(workbook, indexes, stepSelection, config.EnvironmentSelection, GetCommandLineValue(args, "--environments-json"), config.Environments);
                 Console.WriteLine(rerunAll ? "Rerun: reusing the generated values (random numbers, GUIDs, dates, script results) and saved response values from the last run for unchanged data." : $"Rerun: reusing the last run's generated values for {string.Join(", ", rerunSteps)}; other steps generate new values.");
             }
-            else if (rerun) Console.WriteLine("Rerun: there is no earlier run to take values from, so new values are generated.");
+            else if (rerun) Console.WriteLine("Rerun: no history found for this workbook (it may have been cleaned up), so new values are generated.");
             Console.WriteLine("Selected work: " + string.Join("; ", work.Select(x => $"{x.Testcase.TestcaseIndex} [{(string.IsNullOrEmpty(x.Environment) ? "default" : x.Environment)}]: {string.Join(", ", x.Testcase.Steps.Select(s => s.StepName))}")));
             var filters = ParseDataIdSelection(dataIdSelection);
             try
@@ -120,7 +121,7 @@ internal static class Program
             }
             finally
             {
-                RunValueMemory.Active?.Save();
+                var runState = RunValueMemory.Active?.Export();
                 RunValueMemory.Active = null;
                 overall.Cancelled |= cancellation.IsCancellationRequested;
                 overall.EndedAt = DateTimeOffset.Now;
@@ -129,7 +130,7 @@ internal static class Program
                 var historyFiles = Array.Empty<string>();
                 try
                 {
-                    var historyWriter = new HistoryWriter(config);
+                    var historyWriter = new HistoryWriter(config) { RunState = runState };
                     historyFiles = config.GenerateRowHistory ? historyWriter.WritePerTestcase(overall, workbook).ToArray() : Array.Empty<string>();
                     if (config.GenerateAggregateHistory)
                     {
