@@ -413,7 +413,12 @@ Example row:
 
 #### Step editor
 
-- [ ] 7. Add an `ActionManualTimeout` field to the step editor. Add an info icon next to every field in the editor with an explanation of that field.
+- [ ] 7. Manual timeout field and info icons (investigated and agreed 2026-11-16):
+  - The `manualtimeoutminutes` column already exists and the runner uses it (default 15; for manual steps it falls back to Timeout converted to minutes when 0). The new data editor's step form already shows it for Action Manual steps, but under the label "Wait limit (min)". The old step wizard (`TestStepConfigurationEditor`) creates the box and saves it, but never adds it to the form.
+  - Rename the label in the new form to **Manual timeout (min)**.
+  - Add the field to the old wizard, shown only for Action Manual steps.
+  - Add an info icon next to every field label in both forms (tooltip on hover, also on click or keyboard focus), with a one or two sentence explanation and an example where useful. Keep the texts in one central list of field names and explanations, reused for the table column headers and validation messages. Cover all step form fields: Step type, Stage, Enabled, Stop on failure, Verb, Target URL, Content type, Template source, Expected status, Timeout, Wait, Assert, Ignore empty, Only response, Manual timeout, Step config. English only for now.
+  - Open question for later: also show the explanations as tooltips on the column headers in Table view.
 - [ ] 12. Advanced data-table view/editor: a wizard that builds `{eq}` and `<from_...>` expressions.
 
 #### Settings and logging
