@@ -108,7 +108,7 @@ try
     }
     var compiledConfig = new WorkbookReader().Read(workbookPath);
     var compiledHeader = compiledConfig.Testcases.Single(x => x.TestcaseIndex == 1).Steps.First().Headers["x-request-id"];
-    Check(Guid.TryParse(compiledHeader, out _), "Config HTTP header compiles <guid> before execution");
+    Check(Guid.TryParse(LoadTestingTool.Execution.GeneratedTokens.Resolve(compiledHeader), out _), "Config HTTP header compiles <guid> before execution");
     File.WriteAllText(Path.Combine(temporary, "appsettings.json"), JsonSerializer.Serialize(new { WorkspaceRoot = ".", PromptForTestcaseSelection = false, RequestTimeoutSeconds = 5 }));
     int Run(string cases, string? stepsJson, string env, string runId)
     {

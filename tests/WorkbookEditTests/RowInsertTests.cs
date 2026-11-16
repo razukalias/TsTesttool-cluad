@@ -1,3 +1,4 @@
+using LoadTestingTool.Execution;
 using ClosedXML.Excel;
 using LoadTestingTool.Editing;
 using LoadTestingTool.Excel;
@@ -132,11 +133,12 @@ public class RowInsertOnRealWorkbooksTests
         Assert.Equal(before.RequestData.Count + 1, after.RequestData.Count);
         foreach (var (key, row) in before.RequestData)
         {
-            var stable = row.Variables.Where(v => again.RequestData[key].Variables[v.Key] == v.Value).ToDictionary(v => v.Key, v => v.Value);
+            // Generated values (<randomnumber> etc.) are made when a step runs, so compare them as the author wrote them.
+            var stable = row.Variables.Where(v => again.RequestData[key].Variables[v.Key] == v.Value).ToDictionary(v => v.Key, v => GeneratedTokens.ToDisplay(v.Value));
             Assert.NotEmpty(stable);
-            foreach (var (name, value) in stable) Assert.Equal(value, after.RequestData[key].Variables[name]); // every existing row resolves to the same values
+            foreach (var (name, value) in stable) Assert.Equal(value, GeneratedTokens.ToDisplay(after.RequestData[key].Variables[name])); // every existing row resolves to the same values
         }
-        Assert.Equal(before.Testcases.SelectMany(t => t.Steps).Select(s => s.TargetUrl), after.Testcases.SelectMany(t => t.Steps).Select(s => s.TargetUrl));
+        Assert.Equal(before.Testcases.SelectMany(t => t.Steps).Select(s => GeneratedTokens.ToDisplay(s.TargetUrl)), after.Testcases.SelectMany(t => t.Steps).Select(s => GeneratedTokens.ToDisplay(s.TargetUrl)));
         Assert.Empty(WorkbookDocument.Load(path).Validate().Where(p => p.Severity == ProblemSeverity.Error));
     }
 }

@@ -1,3 +1,4 @@
+using LoadTestingTool.Execution;
 using ClosedXML.Excel;
 using LoadTestingTool.Domain;
 
@@ -110,7 +111,7 @@ public sealed class HistoryWriter
                 foreach (var row in workbookModel.RequestData.Values.OrderBy(x => x.TestcaseIndex).ThenBy(x => x.DataId))
                 {
                     if (row.Variables.Count == 0) data.AddRow(row.TestcaseIndex, row.Testcase, row.DataId, string.Join(',', row.Dontrun), "", "", "DataEngine request row");
-                    foreach (var variable in row.Variables.OrderBy(x => x.Key)) data.AddRow(row.TestcaseIndex, row.Testcase, row.DataId, string.Join(',', row.Dontrun), variable.Key, row.RedactedVariables.Contains(variable.Key) ? $"[redacted:{variable.Key}]" : Mask(variable.Value), "DataEngine request row");
+                    foreach (var variable in row.Variables.OrderBy(x => x.Key)) data.AddRow(row.TestcaseIndex, row.Testcase, row.DataId, string.Join(',', row.Dontrun), variable.Key, row.RedactedVariables.Contains(variable.Key) ? $"[redacted:{variable.Key}]" : Mask(GeneratedTokens.ToDisplay(variable.Value)), "DataEngine request row");
                 }
             }
             if (Enabled("DataEngineConfig"))
@@ -119,7 +120,7 @@ public sealed class HistoryWriter
                 WriteTable(config, "testcaseindex", "testcase", "stepname", "steptype", "stage", "enabled", "sequence", "templetsource", "targeturl", "verb", "contenttype", "manualtimeoutminutes", "stepconfig", "headers", "stoponfailure", "assertonlyresponse");
                 foreach (var testcase in workbookModel.Testcases)
                     foreach (var step in testcase.Steps)
-                        config.AddRow(step.TestcaseIndex, testcase.Testcase, step.StepName, step.StepType.WireName(), step.Stage.ToString(), step.Enabled, step.Sequence, step.TemplateSource, step.TargetUrl, step.Verb, step.ContentType, step.ManualTimeoutMinutes, Mask(step.StepConfig), Mask(string.Join("; ", step.Headers.Select(h => $"{h.Key}={h.Value}"))), step.StopOnFailure, step.AssertOnlyResponse);
+                        config.AddRow(step.TestcaseIndex, testcase.Testcase, step.StepName, step.StepType.WireName(), step.Stage.ToString(), step.Enabled, step.Sequence, step.TemplateSource, GeneratedTokens.ToDisplay(step.TargetUrl), step.Verb, step.ContentType, step.ManualTimeoutMinutes, Mask(GeneratedTokens.ToDisplay(step.StepConfig)), Mask(GeneratedTokens.ToDisplay(string.Join("; ", step.Headers.Select(h => $"{h.Key}={h.Value}")))), step.StopOnFailure, step.AssertOnlyResponse);
             }
         }
         foreach (var sheet in workbook.Worksheets) { sheet.Columns().AdjustToContents(1, 80); sheet.SheetView.FreezeRows(1); sheet.Row(1).Style.Font.Bold = true; sheet.Row(1).Style.Fill.SetBackgroundColor(XLColor.LightBlue); }

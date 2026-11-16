@@ -14,8 +14,14 @@ public class RunValueMemoryTests
         request.Cell(3, 5).Value = "second-<randomnumber:000000>";
     });
 
-    private static string Title(string path, string dataId = "D1")
-        => new WorkbookReader().Read(path).RequestData[(1, dataId)].Variables.First(v => v.Key.Equals("title", StringComparison.OrdinalIgnoreCase)).Value;
+    /// <summary>The value the runner would send for the "title" cell of a row: the workbook is read, then the generated tokens are made for that row and iteration.</summary>
+    private static string Title(string path, string dataId = "D1", int iteration = 1)
+    {
+        var raw = new WorkbookReader().Read(path).RequestData[(1, dataId)].Variables.First(v => v.Key.Equals("title", StringComparison.OrdinalIgnoreCase)).Value;
+        GeneratedTokens.Scope.Value = new GeneratedTokens.RowScope(RunValueMemory.RowKey(1, dataId, iteration, ""));
+        try { return GeneratedTokens.Resolve(raw); }
+        finally { GeneratedTokens.Scope.Value = null; }
+    }
 
     private static string ReadWith(string path, bool reuse, bool save = true, string dataId = "D1")
     {
@@ -153,8 +159,11 @@ public class RunValueMemoryTests
             {
                 memory.BeginRead(reuse);
                 var vars = new WorkbookReader().Read(path).RequestData[(1, "D1")].Variables;
+                GeneratedTokens.Scope.Value = new GeneratedTokens.RowScope(RunValueMemory.RowKey(1, "D1", 1, ""));
+                var result = (GeneratedTokens.Resolve(vars["CreatePost.code"]), GeneratedTokens.Resolve(vars["Second.code"]));
+                GeneratedTokens.Scope.Value = null;
                 memory.Save();
-                return (vars["CreatePost.code"], vars["Second.code"]);
+                return result;
             }
             finally { RunValueMemory.Active = null; }
         }

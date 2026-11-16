@@ -198,7 +198,8 @@ public static class StepConfig
 {
     public static JsonDocument Parse(RequestStep step)
     {
-        var raw = string.IsNullOrWhiteSpace(step.StepConfig) ? "{}" : step.StepConfig.Trim();
+        var configText = LoadTestingTool.Execution.GeneratedTokens.Resolve(step.StepConfig);   // random numbers, GUIDs and dates are made now
+        var raw = string.IsNullOrWhiteSpace(configText) ? "{}" : configText.Trim();
         if (!raw.StartsWith("{"))
         {
             var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

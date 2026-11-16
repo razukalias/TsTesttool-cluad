@@ -69,6 +69,21 @@ public sealed class RunValueMemory
         lock (_gate) { Reuse = reuse; _current.Generated.Clear(); _occurrences.Clear(); _stepOccurrences.Clear(); }
     }
 
+    /// <summary>
+    /// The value for one generated token of one data row and iteration: the last run's value when reusing (and the owning step is chosen),
+    /// else the one just made. Either way it is remembered for the next run.
+    /// </summary>
+    public string GeneratedFor(string rowKey, string tokenId, string? owner, Func<string> make)
+    {
+        var key = $"{rowKey}|{tokenId}";
+        lock (_gate)
+        {
+            var value = Reuse && Applies(owner) && _previous.Generated.TryGetValue(key, out var old) ? old : make();
+            _current.Generated[key] = value;
+            return value;
+        }
+    }
+
     /// <summary>The value for one generated token: the old one when reusing and the cell is unchanged, else a new one (remembered).</summary>
     public string Generated(string sheet, int? row, string rawCellText, string token, Func<string> make)
     {

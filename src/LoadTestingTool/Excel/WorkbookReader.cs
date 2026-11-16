@@ -13,6 +13,7 @@ public sealed class WorkbookReader
         if (!File.Exists(path)) throw new FileNotFoundException("Excel workbook was not found.", path);
         using var workbookFile = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         using var workbook = new XLWorkbook(workbookFile);
+        GeneratedTokens.BeginRead();
         var compiledCellCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var config = RequireSheet(workbook, "config");
         var configHeaders = Headers(config);
@@ -219,16 +220,16 @@ public sealed class WorkbookReader
                 ? m.Value
                 : Cell(workbook, currentSheet.Name, m.Groups[1].Value, int.Parse(m.Groups[2].Value), compiledCellCache, resolving), RegexOptions.IgnoreCase);
         var rawText = value ?? string.Empty;
-        string Remember(Match m, Func<string> make) => RunValueMemory.Active is { } memory ? memory.Generated(currentSheet.Name, currentRowNumber, rawText, m.Value, make) : make();
-        result = Regex.Replace(result, @"<(datum|currentdatum|currenttime|currentdatetime|currenttimestamp)(?::([^>]+))?>", m => Remember(m, () => FormatDateToken(m.Groups[1].Value, m.Groups[2].Success ? m.Groups[2].Value : null)), RegexOptions.IgnoreCase);
-        result = Regex.Replace(result, @"<randomnumber(?::([^>]+))?>", m => Remember(m, () => FormatRandomNumberToken(m.Groups[1].Success ? m.Groups[1].Value : null)), RegexOptions.IgnoreCase);
-        result = Regex.Replace(result, @"<guid(?::([NnDdBbPp]))?>", m => Remember(m, () => FormatGuidToken(m.Groups[1].Success ? m.Groups[1].Value : null)), RegexOptions.IgnoreCase);
-        result = Regex.Replace(result, @"<randomnumber_(\d+)>", m => Remember(m, () => FormatRandomNumberToken(m.Groups[1].Value)), RegexOptions.IgnoreCase);
+        string Mark(Match m, string kind, string? argument) => GeneratedTokens.Marker(currentSheet.Name, currentRowNumber, rawText, m.Value, kind, argument, RunValueMemory.CellOwner);
+        result = Regex.Replace(result, @"<(datum|currentdatum|currenttime|currentdatetime|currenttimestamp)(?::([^>]+))?>", m => Mark(m, m.Groups[1].Value, m.Groups[2].Success ? m.Groups[2].Value : null), RegexOptions.IgnoreCase);
+        result = Regex.Replace(result, @"<randomnumber(?::([^>]+))?>", m => Mark(m, "randomnumber", m.Groups[1].Success ? m.Groups[1].Value : null), RegexOptions.IgnoreCase);
+        result = Regex.Replace(result, @"<guid(?::([NnDdBbPp]))?>", m => Mark(m, "guid", m.Groups[1].Success ? m.Groups[1].Value : null), RegexOptions.IgnoreCase);
+        result = Regex.Replace(result, @"<randomnumber_(\d+)>", m => Mark(m, "randomnumber", m.Groups[1].Value), RegexOptions.IgnoreCase);
         result = result.Replace("<datum>", DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase).Replace("<currentdatum>", DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase).Replace("<currenttime>", DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase).Replace("<currentdatetime>", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase).Replace("<currenttimestamp>", DateTimeOffset.Now.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
         return result;
     }
 
-    private static string FormatDateToken(string token, string? format)
+    internal static string FormatDateToken(string token, string? format)
     {
         var now = DateTime.Now;
         if (token.Equals("currenttimestamp", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(format))
@@ -237,7 +238,7 @@ public sealed class WorkbookReader
         return now.ToString(format, CultureInfo.InvariantCulture);
     }
 
-    private static string FormatRandomNumberToken(string? format)
+    internal static string FormatRandomNumberToken(string? format)
     {
         if (string.IsNullOrWhiteSpace(format)) return Random.Shared.Next(0, 1_000_000).ToString(CultureInfo.InvariantCulture);
         format = format.Trim();
@@ -254,7 +255,7 @@ public sealed class WorkbookReader
         throw new InvalidDataException($"Invalid randomnumber format '{format}'. Use digits, 000000, or min-max.");
     }
 
-    private static string FormatGuidToken(string? format) => Guid.NewGuid().ToString(string.IsNullOrWhiteSpace(format) ? "D" : format.Trim().ToUpperInvariant());
+    internal static string FormatGuidToken(string? format) => Guid.NewGuid().ToString(string.IsNullOrWhiteSpace(format) ? "D" : format.Trim().ToUpperInvariant());
     private static int CorrespondingRow(XLWorkbook workbook, IXLWorksheet currentSheet, IXLRow currentRow, string sourceSheetName)
     {
         var source = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals(sourceSheetName, StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidDataException($"Referenced sheet '{sourceSheetName}' was not found.");

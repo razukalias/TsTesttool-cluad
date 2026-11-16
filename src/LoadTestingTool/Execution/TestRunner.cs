@@ -54,6 +54,7 @@ public sealed class TestRunner
                 var correlation = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); var correlationSources = new Dictionary<string, CorrelationRecord>(StringComparer.OrdinalIgnoreCase); var requestReferences = data.Variables.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase); var stepOrder = 0;
                 var executionContext = new LoadTestingTool.Domain.ExecutionContext();
                 var rowKey = RunValueMemory.RowKey(testcase.TestcaseIndex, data.DataId, iteration, environment);
+                GeneratedTokens.Scope.Value = new GeneratedTokens.RowScope(rowKey);   // random numbers, GUIDs and dates are made when a step needs them, fresh for every row and iteration
                 if (RunValueMemory.Active is { Reuse: true } rowMemory)
                     foreach (var saved in rowMemory.PreviousRow(rowKey)) correlation[saved.Key] = saved.Value;   // what earlier steps extracted in the last run
                 foreach (var request in testcase.Steps)
@@ -132,7 +133,7 @@ public sealed class TestRunner
     {
         var started = DateTimeOffset.Now;
         var environmentKey = string.IsNullOrWhiteSpace(environment) ? "default" : environment;
-        var request = new RequestResult { RunId = run.RunId, RequestId = $"MANUAL-{SafeManualId(environmentKey)}-{Guid.NewGuid():N}", TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, EndedAt = started, Verb = step.StepType.WireName(), StepConfig = step.StepConfig, HttpStatus = 200, Environment = environment, ManualAction = true, WaitExpression = step.WaitExpression };
+        var request = new RequestResult { RunId = run.RunId, RequestId = $"MANUAL-{SafeManualId(environmentKey)}-{Guid.NewGuid():N}", TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, EndedAt = started, Verb = step.StepType.WireName(), StepConfig = GeneratedTokens.Resolve(step.StepConfig), HttpStatus = 200, Environment = environment, ManualAction = true, WaitExpression = step.WaitExpression };
         request.ManualInfo = manualInfo;
         var timeoutMinutes = waitDriven
             ? (step.TimeoutSeconds > 0 ? Math.Max(1, (int)Math.Ceiling(step.TimeoutSeconds / 60d)) : Math.Max(1, step.ManualTimeoutMinutes))
@@ -218,7 +219,7 @@ public sealed class TestRunner
             EndedAt = now,
             Verb = step.StepType.WireName(),
             TemplateSource = step.TemplateSource,
-            StepConfig = step.StepConfig,
+            StepConfig = GeneratedTokens.Resolve(step.StepConfig),
             HttpStatus = 0,
             ErrorMessage = message,
             FailureCategory = "RuntimeReference",
@@ -233,7 +234,7 @@ public sealed class TestRunner
         if (step.StepType != StepType.Http) return await ExecuteNonHttpAsync(run, testcase, dataId, step, variables, redactedVariables, definitions, requestReferences, sequence, thread, iteration, correlation, correlationSources, executionContext, cancellationToken, environment);
         var started = DateTimeOffset.Now; var sw = Stopwatch.StartNew(); var requestId = $"REQ-{Interlocked.Increment(ref _sequence):D8}"; var templatePath = Path.Combine(_templatesFolder, step.TemplateSource);
         _logger.Info($"Request starting. RequestId={requestId}; testcase={testcase.TestcaseIndex}; dataid={dataId}; stepName={step.StepName}; thread={thread}; iteration={iteration}; verb={step.Verb}; url={step.TargetUrl}; template={templatePath}; ignoreempty={step.IgnoreEmpty}");
-        var result = new RequestResult { RunId = run.RunId, RequestId = requestId, TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, WaitMs = step.WaitMs, WaitExpression = step.WaitExpression, Verb = step.Verb, TargetUrl = step.TargetUrl, TemplateSource = step.TemplateSource, StepConfig = step.StepConfig, ContentType = ResolveContentType(step), RequestHeaders = string.Join("; ", step.Headers.Select(h => $"{h.Key}={h.Value}")), Variables = new Dictionary<string, string>(variables, StringComparer.OrdinalIgnoreCase), RedactedVariables = redactedVariables, Environment = environment };
+        var result = new RequestResult { RunId = run.RunId, RequestId = requestId, TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, WaitMs = step.WaitMs, WaitExpression = step.WaitExpression, Verb = step.Verb, TargetUrl = GeneratedTokens.ToDisplay(step.TargetUrl), TemplateSource = step.TemplateSource, StepConfig = GeneratedTokens.Resolve(step.StepConfig), ContentType = ResolveContentType(step), RequestHeaders = string.Join("; ", step.Headers.Select(h => $"{h.Key}={h.Value}")), Variables = new Dictionary<string, string>(variables, StringComparer.OrdinalIgnoreCase), RedactedVariables = redactedVariables, Environment = environment };
         try
         {
             foreach (var runtimeVariable in executionContext.Snapshot())
@@ -292,15 +293,16 @@ public sealed class TestRunner
             foreach (var assertion in failedAssertions)
                 _logger.Warn($"ASSERTION FAILED [{requestId}] testcase={testcase.TestcaseIndex}; testcaseName={testcase.Testcase}; dataid={dataId}; stepName={step.StepName}; responsePath={assertion.ResponsePath}; operator={assertion.AssertionVerb}; expected={assertion.ExpectedValue}; actual={assertion.ActualValue}; message={assertion.FailureMessage}");
             foreach (var assertion in result.Assertions.Where(a => a.Result == "PASS" && !string.IsNullOrWhiteSpace(a.ExtractVariable))) { var record = new CorrelationRecord { DataId = dataId, SourceStepName = step.StepName, ResponsePath = assertion.ResponsePath, Variable = assertion.ExtractVariable!, ExtractedValue = assertion.ActualValue }; result.Correlations.Add(record); correlation[record.Variable] = record.ExtractedValue; correlationSources[record.Variable] = record; }
-            var hasExpectedStatus = !string.IsNullOrWhiteSpace(step.ExpectedStatus);
-            var expectedStatusMatches = hasExpectedStatus && StatusMatches(result.HttpStatus, step.ExpectedStatus);
+            var expectedStatus = GeneratedTokens.Resolve(step.ExpectedStatus);
+            var hasExpectedStatus = !string.IsNullOrWhiteSpace(expectedStatus);
+            var expectedStatusMatches = hasExpectedStatus && StatusMatches(result.HttpStatus, expectedStatus);
             if ((hasExpectedStatus && !expectedStatusMatches) || (!hasExpectedStatus && !response.IsSuccessStatusCode))
             {
                 result.ErrorMessage = hasExpectedStatus
-                    ? $"Expected status '{step.ExpectedStatus}' but received '{result.HttpStatus}'."
+                    ? $"Expected status '{expectedStatus}' but received '{result.HttpStatus}'."
                     : $"Unexpected HTTP status {(int)response.StatusCode} {response.StatusCode}.";
                 result.FailureCategory = FailureCategories.HttpStatus;
-                _logger.Error($"HTTP STATUS FAILURE [{requestId}] | testcase={testcase.TestcaseIndex} | dataid={dataId} | step={step.StepName} | actual={result.HttpStatus} | expected={(hasExpectedStatus ? step.ExpectedStatus : "2xx/3xx")}");
+                _logger.Error($"HTTP STATUS FAILURE [{requestId}] | testcase={testcase.TestcaseIndex} | dataid={dataId} | step={step.StepName} | actual={result.HttpStatus} | expected={(hasExpectedStatus ? expectedStatus : "2xx/3xx")}");
             }
         }
         catch (Exception ex)
@@ -328,7 +330,7 @@ public sealed class TestRunner
     {
         var started = DateTimeOffset.Now; var requestId = $"STEP-{Interlocked.Increment(ref _sequence):D8}";
         var templatePath = string.IsNullOrWhiteSpace(step.TemplateSource) ? string.Empty : Path.Combine(_templatesFolder, step.TemplateSource);
-        var result = new RequestResult { RunId = run.RunId, RequestId = requestId, TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, WaitMs = step.WaitMs, WaitExpression = step.WaitExpression, Verb = step.StepType.WireName(), TargetUrl = step.TargetUrl, TemplateSource = step.TemplateSource, StepConfig = step.StepConfig, ContentType = step.ContentType, Variables = new Dictionary<string, string>(variables, StringComparer.OrdinalIgnoreCase), RedactedVariables = redactedVariables, Environment = environment };
+        var result = new RequestResult { RunId = run.RunId, RequestId = requestId, TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, WaitMs = step.WaitMs, WaitExpression = step.WaitExpression, Verb = step.StepType.WireName(), TargetUrl = GeneratedTokens.ToDisplay(step.TargetUrl), TemplateSource = step.TemplateSource, StepConfig = GeneratedTokens.Resolve(step.StepConfig), ContentType = step.ContentType, Variables = new Dictionary<string, string>(variables, StringComparer.OrdinalIgnoreCase), RedactedVariables = redactedVariables, Environment = environment };
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -347,7 +349,7 @@ public sealed class TestRunner
                 templateText = TemplateRenderer.Render(templateText, result.ContentType, variables);
             }
             _logger.Info($"STEP RESOLUTION [{requestId}]\nSTEP TYPE: {step.StepType.WireName()}\nORIGINAL TARGET: {step.TargetUrl}\nRESOLVED TARGET: {result.TargetUrl}\nORIGINAL TEMPLATE:\n{originalTemplate}\nRESOLVED TEMPLATE:\n{InternalLogger.RedactVariableValues(templateText, redactedVariables, variables)}\nVARIABLES:\n{FormatVariables(variables, redactedVariables)}");
-            _logger.Info($"STEP REQUEST [{requestId}]\nTYPE: {step.StepType.WireName()}\nSTEP: {step.StepName}\nENVIRONMENT: {environment}\nCONFIGURED URL: {step.TargetUrl}\nRESOLVED URL: {result.TargetUrl}\nTEMPLATE: {step.TemplateSource}\nREQUEST:\n{InternalLogger.RedactVariableValues(templateText, redactedVariables, variables)}\nMETADATA:\n{step.StepConfig}");
+            _logger.Info($"STEP REQUEST [{requestId}]\nTYPE: {step.StepType.WireName()}\nSTEP: {step.StepName}\nENVIRONMENT: {environment}\nCONFIGURED URL: {GeneratedTokens.ToDisplay(step.TargetUrl)}\nRESOLVED URL: {result.TargetUrl}\nTEMPLATE: {step.TemplateSource}\nREQUEST:\n{InternalLogger.RedactVariableValues(templateText, redactedVariables, variables)}\nMETADATA:\n{step.StepConfig}");
             var execution = await _pipeline.ExecuteAsync(new StepExecutionRequest { Step = step, Context = context, WorkspaceRoot = _features.WorkspaceRoot, TemplateText = templateText, CancellationToken = timeout.Token });
             StepExecutionResultMapper.PublishOutputs(execution, context);
             result.RequestBody = InternalLogger.RedactVariableValues(execution.RequestText, redactedVariables, variables); result.ResponseBody = execution.ResponseText; result.HttpStatus = execution.StatusCode == 0 && execution.Succeeded ? 200 : execution.StatusCode; result.ErrorMessage = execution.ErrorMessage;
@@ -442,6 +444,7 @@ public sealed class TestRunner
     private async Task<string> ResolveDynamicValueAsync(string value, IReadOnlyDictionary<string, string> correlation, IReadOnlyDictionary<string, string>? requestReferences, LoadTestingTool.Domain.ExecutionContext context, CancellationToken cancellationToken)
     {
         var resolved = ResolveRuntimeReferences(value, correlation, requestReferences, context);
+        resolved = GeneratedTokens.Resolve(resolved);
         // Inline scripts and random/time tokens can give a different answer every time; when a few steps are re-run, they give the last run's answer.
         // The text after the references are filled in is the key, so a changed reference (an earlier step ran again) still resolves anew.
         return RunValueMemory.Active is { } memory
