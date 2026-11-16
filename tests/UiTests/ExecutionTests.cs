@@ -187,7 +187,7 @@ public class RunDetailsTests
         window.Show();
         var details = new Details();
         shell.RunDetails = details;
-        var tabs = window.FindControl<Border>("RightHost")!.Child as TabControl;
+        var tabs = window.FindControl<Border>("RightHost")!.Child is DockPanel framed ? framed.Children.OfType<TabControl>().Single() : null;
         Assert.NotNull(tabs);
         Assert.Equal(["Workbook", "Overview", "Assertions"], tabs!.Items.Cast<TabItem>().Select(t => t.Header?.ToString()).ToArray());
         Assert.Contains("Sample", details.Shown);

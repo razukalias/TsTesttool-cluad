@@ -26,7 +26,7 @@ public class RealDashboardTests
             var editor = (DataEditorWindow?)method.Invoke(dashboard, null);
             Assert.NotNull(editor);
             editor!.Show();
-            var tabs = editor.FindControl<Border>("RightHost")!.Child as TabControl;
+            var tabs = editor.FindControl<Border>("RightHost")!.Child is DockPanel framed ? framed.Children.OfType<TabControl>().Single() : null;
             Assert.NotNull(tabs);
             var headers = tabs!.Items.Cast<TabItem>().Select(t => t.Header?.ToString() ?? "?").ToList();
             Assert.Equal("Workbook", headers[0]);

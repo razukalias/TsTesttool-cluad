@@ -18,6 +18,7 @@ public class StepTypeTests
         window.Width = 1300; window.Height = 900;
         window.Show();
         var shell = window.Shell;
+        shell.Current!.ShowSteps = true;   // these tests are about Config edit mode
         shell.SelectedNode = shell.Instances[0].Testcases[0].StepNodes[0];
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         return (window, shell, shell.Current!.FocusedStep!);

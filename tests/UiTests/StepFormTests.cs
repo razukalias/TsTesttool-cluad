@@ -40,6 +40,7 @@ public class StepFormTests
         using var dir = new TempDir();
         var (window, shell) = Open(dir);
         shell.SelectedNode = shell.Instances[0];
+        shell.Current!.ShowSteps = true;   // these tests are about Config edit mode
         shell.SelectedNode = shell.Instances[0].Testcases[0];
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         var vm = shell.Current!;
@@ -64,6 +65,7 @@ public class StepFormTests
         using var dir = new TempDir();
         var (window, shell) = Open(dir);
         var testcase = shell.Instances[0].Testcases[0];
+        shell.Current!.ShowSteps = true;   // these tests are about Config edit mode
         shell.SelectedNode = testcase.StepNodes[0];
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         var form = Assert.Single(window.GetVisualDescendants().OfType<StepFormView>());

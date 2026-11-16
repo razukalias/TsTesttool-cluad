@@ -48,8 +48,7 @@ public sealed partial class DataEditorViewModel
     /// <summary>From the tree: clicking a testcase shows all of its steps as a list.</summary>
     public void ShowTestcaseSteps()
     {
-        FocusedStep = null;
-        ShowSteps = true;
+        FocusedStep = null;   // the view mode (Table view or Config edit mode) stays as it was
     }
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowData))]

@@ -396,10 +396,15 @@ Example row:
 #### Navigation and views
 
 - [ ] 1. Clicking the instance root must not show the last selected testcase. What it shows depends on the view mode (agreed 2026-11-16): in **Table view** it shows the full table of the instance; in **Config edit mode** it lists all testcases and their steps.
-- [ ] 2. Selecting an instance, testcase or step opens **Table view** by default, not step mode. The chosen mode stays while you click other items and resets to Table view when a new instance is opened.
+  - Open: the editor is built around one selected testcase (rows, columns and steps are built per testcase), so "whole instance" in Table view and "all testcases and steps" in Config edit mode need an instance-level mode. Build together with item 4.
+- [x] 2. Selecting an instance, testcase or step opens **Table view** by default, not step mode. The chosen mode stays while you click other items and resets to Table view when a new instance is opened.
+  - Done 2026-11-17: Table view is the default; clicking a testcase or step no longer switches the mode (Config edit mode shows the step form, Table view narrows to the step's columns). Each instance keeps its own mode, which starts as Table view.
 - [ ] 3. Table view shows the Config sheet and all other sheets of the workbook. Rename "Data" to **Table view** and "Step mode" to **Config edit mode**, with icons (grid for Table, form/sliders for Config) and the full names as tooltips.
+  - Part done 2026-11-17: tabs renamed **Table view** and **Config edit mode** with icons (▦, ⚙) and tooltips. Open: showing the Config sheet and every other workbook sheet in Table view.
 - [ ] 4. Add a sheet filter: a multi-select dropdown in the toolbar listing every sheet in the workbook ("All sheets" by default). Each selected sheet is shown as its own tab. For a selected testcase or step the table shows only its rows, with a "Show all rows" toggle. The filter is remembered per instance.
-- [ ] 13. Show the instance name (its folder name) in every Overview panel tab, as a header line above the tabs, for example `DataEngine_Example › Testcase 1 › GetUser`.
+  - Open: needs the same instance-level mode, plus a grid for arbitrary sheets (today's rows pair a request row with a response row).
+- [x] 13. Show the instance name (its folder name) in every Overview panel tab, as a header line above the tabs, for example `DataEngine_Example › Testcase 1 › GetUser`.
+  - Done 2026-11-17: a header line above the run-view tabs shows `Instance › Testcase › Step` (instance = folder name), following the tree selection.
 
 #### Bugs and checks
 

@@ -24,12 +24,13 @@ public class StepNodeTests
     }
 
     [Fact]
-    public void Choosing_a_step_node_shows_only_that_step_as_a_form_and_keeps_the_selection()
+    public void Choosing_a_step_node_in_Config_edit_mode_shows_only_that_step_as_a_form_and_keeps_the_selection()
     {
         using var dir = new TempDir();
         var shell = Shell(dir, out _);
         var testcase = shell.Instances[0].Testcases[0];
         var node = testcase.StepNodes[0];
+        shell.Current!.ShowSteps = true;
         shell.SelectedNode = node;
         var vm = shell.Current!;
         Assert.True(vm.ShowSteps);
@@ -39,12 +40,51 @@ public class StepNodeTests
     }
 
     [Fact]
+    public void The_view_mode_stays_as_chosen_when_other_tree_items_are_clicked_and_starts_as_Table_view()
+    {
+        using var dir = new TempDir();
+        var shell = Shell(dir, out _);
+        var testcase = shell.Instances[0].Testcases[0];
+        var vm = shell.Current!;
+        Assert.False(vm.ShowSteps);                                  // opens on Table view
+
+        shell.SelectedNode = testcase.StepNodes[0];
+        Assert.False(vm.ShowSteps);                                  // a step does not flip the mode
+        shell.SelectedNode = testcase;
+        Assert.False(vm.ShowSteps);
+
+        vm.ShowSteps = true;                                         // the user picks Config edit mode
+        shell.SelectedNode = testcase.StepNodes[0];
+        Assert.True(vm.ShowSteps);
+        shell.SelectedNode = testcase;
+        Assert.True(vm.ShowSteps);
+        Assert.Null(vm.FocusedStep);                                 // the testcase lists all its steps
+    }
+
+    [Fact]
+    public void The_selection_title_names_the_instance_testcase_and_step()
+    {
+        using var dir = new TempDir();
+        var shell = Shell(dir, out _);
+        var instance = shell.Instances[0];
+        var testcase = instance.Testcases[0];
+
+        shell.SelectedNode = instance;
+        Assert.Equal(instance.Name, shell.SelectionTitle);
+        shell.SelectedNode = testcase;
+        Assert.Equal($"{instance.Name} › {testcase.Name}", shell.SelectionTitle);
+        shell.SelectedNode = testcase.StepNodes[0];
+        Assert.Equal($"{instance.Name} › {testcase.Name} › {testcase.StepNodes[0].Name}", shell.SelectionTitle);
+    }
+
+    [Fact]
     public void Renaming_a_step_from_the_tree_menu_updates_the_nodes()
     {
         using var dir = new TempDir();
         var shell = Shell(dir, out _);
         var testcase = shell.Instances[0].Testcases[0];
         var old = testcase.StepNodes[0].Name;
+        shell.Current!.ShowSteps = true;   // these tests are about Config edit mode
         shell.SelectedNode = testcase.StepNodes[0];
         var vm = shell.Current!;
         vm.OpenRenameStepCommand.Execute(null);

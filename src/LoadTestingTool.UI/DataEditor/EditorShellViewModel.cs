@@ -296,8 +296,20 @@ public sealed partial class EditorShellViewModel : ObservableObject
     /// <summary>True when a step is selected in the tree, so the step menu applies.</summary>
     public bool StepNodeSelected => SelectedNode is StepNode;
 
+    /// <summary>The path of the selected item for the header above the run views, e.g. <c>DataEngine_Example › Testcase 1 › GetUser</c>.</summary>
+    public string SelectionTitle => SelectedNode switch
+    {
+        StepNode step => $"{InstanceNameOf(step.Owner)} › {step.Owner.Name} › {step.Name}",
+        TestcaseItem testcase => $"{InstanceNameOf(testcase)} › {testcase.Name}",
+        InstanceNode instance => instance.Name,
+        _ => string.Empty,
+    };
+
+    private string InstanceNameOf(TestcaseItem testcase) => Instances.FirstOrDefault(n => n.Testcases.Contains(testcase))?.Name ?? string.Empty;
+
     partial void OnSelectedNodeChanged(object? value)
     {
+        OnPropertyChanged(nameof(SelectionTitle));
         OnPropertyChanged(nameof(TestcaseNodeSelected));
         OnPropertyChanged(nameof(StepNodeSelected));
         ShowRunDetails();
@@ -308,7 +320,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
                 if (stepOwner?.Editor is not { } stepEditor) return;
                 Current = stepEditor;
                 if (!ReferenceEquals(stepEditor.SelectedTestcase, step.Owner)) stepEditor.SelectedTestcase = step.Owner;
-                stepEditor.SelectStepNamed(step.Name, showSettings: true);
+                stepEditor.SelectStepNamed(step.Name, showSettings: stepEditor.ShowSteps);   // the view mode stays as chosen: Config edit mode shows the step form, Table view its columns
                 break;
             case InstanceNode { Editor: { } editor }:
                 Current = editor;

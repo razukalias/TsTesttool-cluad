@@ -65,7 +65,16 @@ public partial class DataEditorWindow : Window
         if (tabs.ItemsSource is not null) items.AddRange(tabs.ItemsSource.Cast<object>());
         tabs.ItemsSource = items;
         tabs.SelectedIndex = 0;
-        host.Child = tabs;
+        // The instance (folder) name and the selected testcase / step, above every run view.
+        var title = new TextBlock { FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Avalonia.Thickness(12, 8, 12, 6), TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis };
+        void ShowTitle() { title.Text = _shell.SelectionTitle; ToolTip.SetTip(title, _shell.SelectionTitle); title.IsVisible = title.Text.Length > 0; }
+        _shell.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(EditorShellViewModel.SelectionTitle)) ShowTitle(); };
+        ShowTitle();
+        var framed = new DockPanel();
+        DockPanel.SetDock(title, Avalonia.Controls.Dock.Top);
+        framed.Children.Add(title);
+        framed.Children.Add(tabs);
+        host.Child = framed;
         _shell.ShowRunDetails();
     }
 
