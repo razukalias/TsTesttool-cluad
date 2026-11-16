@@ -406,6 +406,9 @@ Example row:
 - [ ] 5. After a validation error in a step is fixed and saved, the validation mark still shows the old error. Re-validate on save and clear stale marks.
 - [ ] 6. The ActionManual title must be gray like the others when it is not active.
 - [ ] 8. **Crash:** deleting a testcase and saving makes the whole app hang and crash. Reproduce, find the cause and add a regression test.
+  - **Investigation 2026-11-16:** a headless test deleted every testcase one by one, saving after each, on `DataEngine_IntegrationScenarios` and `FileHttpScenarios`. Delete, save, backup and reload all worked, with no hang. So the cause is probably in the window after the delete or save (tree/table refresh with the selected testcase gone, the validation re-check after save, see item 5), or specific to the user's instance.
+  - **Needs from the user:** which instance, the exact steps, whether an error or Windows crash dialog appeared (or only a freeze), and ideally the failing `.xlsx` (private data removed).
+  - Once reproduced, add a regression test with that workbook.
 - [ ] 17. Check that `<datetime>` used in several rows or several columns of the same row gives a fresh time each time.
 
 #### Step editor
