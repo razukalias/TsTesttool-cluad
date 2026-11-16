@@ -60,6 +60,9 @@ public sealed partial class DataEditorViewModel : ObservableObject
     /// <summary>Raised just before the workbook is written, so open template editors can write their files in the same click.</summary>
     public event Action? SavingWorkbook;
 
+    /// <summary>Raised after the workbook was written to disk, with its path, so the dashboard can recheck the instance.</summary>
+    public event Action<string>? WorkbookSaved;
+
     /// <summary>Raised when the window should close (after saving or discarding).</summary>
     public event EventHandler? CloseRequested;
 
@@ -500,6 +503,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             IsDirty = _document.IsDirty;
             if (result.BackupPath is not null) LastBackupPath = result.BackupPath;
             Revalidate();
+            if (result.Saved) WorkbookSaved?.Invoke(WorkbookPath);
             var moved = result.RowsInserted == 0 ? (result.ReferencesRenumbered > 0 ? $" Updated {result.ReferencesRenumbered} {(result.ReferencesRenumbered == 1 ? "reference" : "references")}." : string.Empty)
                 : $" Inserted {result.RowsInserted / 2} {(result.RowsInserted / 2 == 1 ? "row" : "rows")} in the request and response sheets and renumbered {result.ReferencesRenumbered} {(result.ReferencesRenumbered == 1 ? "reference" : "references")}.";
             ShowStatus(result.Saved

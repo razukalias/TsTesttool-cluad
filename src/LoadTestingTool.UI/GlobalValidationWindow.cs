@@ -30,7 +30,7 @@ internal static class GlobalValidationService
         return list.Select(instance => ValidateInstance(instance, globalEnvironments)).ToList();
     }
 
-    private static InstanceValidationResult ValidateInstance(InstanceInfo item, IReadOnlyList<string> globalEnvironments)
+    internal static InstanceValidationResult ValidateInstance(InstanceInfo item, IReadOnlyList<string> globalEnvironments)
     {
         var issues = new List<ValidationIssue>();
         var name = string.IsNullOrWhiteSpace(item.Name) ? "Unnamed instance" : item.Name;

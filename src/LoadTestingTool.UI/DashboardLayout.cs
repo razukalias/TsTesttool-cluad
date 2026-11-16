@@ -570,6 +570,7 @@ public sealed partial class MainWindow
     private static Control BuildActionManualTabHeader(int pendingCount)
     {
         var title = DashboardStyle.Text("ActionManual", 12, true);
+        title.ClearValue(TextBlock.ForegroundProperty);   // follow the tab's own colour: gray when inactive, like the other tabs
         var count = DashboardStyle.Badge(pendingCount.ToString());
         count.Background = DashboardStyle.Brush(pendingCount > 0 ? "#E05260" : "#8EA5BC");
         count.Padding = new Thickness(6, 2);
@@ -895,12 +896,7 @@ public sealed partial class MainWindow
             foreach (var result in results)
             {
                 var instance = _instances.FirstOrDefault(x => x.Name.Equals(result.Instance, StringComparison.OrdinalIgnoreCase));
-                if (instance is not null)
-                {
-                    instance.Issues.RemoveAll(x => x.Category.Equals("Validation", StringComparison.OrdinalIgnoreCase));
-                    foreach (var issue in result.Issues)
-                        instance.Issues.Add(new RunIssueInfo { Severity = issue.Severity.Equals("WARNING", StringComparison.OrdinalIgnoreCase) ? "Warning" : "Error", Category = "Validation", Message = $"{issue.Location}: {issue.Problem} Fix: {issue.Fix}", Testcase = issue.Location, OccurredAt = DateTimeOffset.Now });
-                }
+                if (instance is not null) ApplyValidationIssues(instance, result);
                 _validationLog.Add(($"\n{(result.HasErrors ? "FAILED" : result.HasWarnings ? "WARNINGS" : "PASSED")}  {result.Instance}", result.HasErrors ? "ERROR" : result.HasWarnings ? "WARNING" : "PASS"));
                 foreach (var issue in result.Issues)
                     _validationLog.Add((issue.ToString(), issue.Severity));
@@ -922,6 +918,34 @@ public sealed partial class MainWindow
             _validateButton.IsEnabled = true;
             RenderUnifiedLog();
         }
+    }
+
+    /// <summary>Replaces an instance's earlier validation issues with a fresh result. Issues from runs stay as they are.</summary>
+    internal static void ApplyValidationIssues(InstanceInfo instance, InstanceValidationResult result)
+    {
+        instance.Issues.RemoveAll(x => x.Category.Equals("Validation", StringComparison.OrdinalIgnoreCase));
+        foreach (var issue in result.Issues)
+            instance.Issues.Add(new RunIssueInfo { Severity = issue.Severity.Equals("WARNING", StringComparison.OrdinalIgnoreCase) ? "Warning" : "Error", Category = "Validation", Message = $"{issue.Location}: {issue.Problem} Fix: {issue.Fix}", Testcase = issue.Location, OccurredAt = DateTimeOffset.Now });
+    }
+
+    /// <summary>After a save in the editor: validates just that instance again (no requests are sent), replaces its validation issues and refreshes the Validate all button count.</summary>
+    internal async Task RevalidateAfterSaveAsync(string workbookPath)
+    {
+        var full = Path.GetFullPath(workbookPath);
+        var instance = _instances.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.WorkbookPath) && Path.GetFullPath(x.WorkbookPath) == full);
+        if (instance is null) return;
+        try
+        {
+            var environments = _config.Environments.ToList();
+            var result = await Task.Run(() => GlobalValidationService.ValidateInstance(instance, environments));
+            ApplyValidationIssues(instance, result);
+            var errors = _instances.Sum(x => x.Issues.Count(i => i.Category.Equals("Validation", StringComparison.OrdinalIgnoreCase) && i.Severity.Equals("Error", StringComparison.OrdinalIgnoreCase)));
+            var warnings = _instances.Sum(x => x.Issues.Count(i => i.Category.Equals("Validation", StringComparison.OrdinalIgnoreCase) && i.Severity.Equals("Warning", StringComparison.OrdinalIgnoreCase)));
+            SetValidationButton(errors > 0 ? "ERROR" : warnings > 0 ? "WARNING" : "PASS", errors, warnings);
+            RefreshDashboardDetails(force: true);
+            UiLog($"Revalidated {instance.Name} after save. errors={result.Issues.Count(i => i.Severity == "ERROR")}; warnings={result.Issues.Count(i => i.Severity == "WARNING")}");
+        }
+        catch (Exception ex) { UiLog($"Revalidation after save failed for {instance.Name}: {ex.Message}"); }
     }
 
     private void SetValidationButton(string status, int errors, int warnings)
@@ -1019,6 +1043,7 @@ public sealed partial class MainWindow
             editor.Shell.RunHandler = RunFromEditorAsync;
             editor.Shell.EnvironmentSettings = new EditorEnvironmentSettings(this);
             editor.Shell.HistoryHandler = LaunchHistoryWorkspace;
+            editor.Shell.WorkbookSaved += path => Dispatcher.UIThread.Post(() => _ = RevalidateAfterSaveAsync(path));
             editor.Shell.RunDetails = new EditorRunDetails(this);
             _hostWindow = editor;
             editor.Shell.CreateTestcaseHandler = (name, draft) => { if (_instances.FirstOrDefault(x => x.Name == name) is { } target) CreateTestcaseForInstance(target, draft); };

@@ -81,11 +81,15 @@ public sealed partial class InstanceNode : ObservableObject
         }
     }
 
+    /// <summary>Raised after this instance's workbook was saved, with the workbook path.</summary>
+    public event Action<string>? WorkbookSaved;
+
     internal void Attach(DataEditorViewModel editor)
     {
         Editor = editor;
         editor.PropertyChanged += OnEditorChanged;
         editor.TickedChanged += (_, _) => OnPropertyChanged(nameof(ChosenState));
+        editor.WorkbookSaved += path => WorkbookSaved?.Invoke(path);
         IsDirty = editor.IsDirty;
         NotifyLoadedChanged();
     }
@@ -120,10 +124,18 @@ public sealed partial class InstanceNode : ObservableObject
 /// </summary>
 public sealed partial class EditorShellViewModel : ObservableObject
 {
+    /// <summary>Raised after any instance's workbook was saved in the editor, with the workbook path.</summary>
+    public event Action<string>? WorkbookSaved;
+
     public EditorShellViewModel(IEnumerable<(string Name, string Path)> instances, string? selectedPath = null, bool lazyLoading = false)
     {
         _lazyLoading = lazyLoading;
-        foreach (var (name, path) in instances) Instances.Add(new InstanceNode(name, path));
+        foreach (var (name, path) in instances)
+        {
+            var node = new InstanceNode(name, path);
+            node.WorkbookSaved += saved => WorkbookSaved?.Invoke(saved);
+            Instances.Add(node);
+        }
         if (Instances.Count == 0) throw new ArgumentException("There are no instances to edit.", nameof(instances));
 
         var full = selectedPath is null ? null : System.IO.Path.GetFullPath(selectedPath);
