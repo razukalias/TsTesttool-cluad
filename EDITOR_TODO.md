@@ -434,7 +434,17 @@ Example row:
 
 #### Settings and logging
 
-- [ ] 9. History reports configuration form: add a way to see it and to enable or disable the internal log.
+- [ ] 9. History & logs settings form (investigated and agreed 2026-11-16):
+  - **Finding:** `HistorySettingsWindow` (sheet checkboxes, presets, aggregate/row history) exists but nothing in the app opens it. The internal log switch lives only in the instance configuration window ("Enable internal logging") and the old window's per-run checkbox. `SaveRequestBodyToHistory`, `SaveResponseBodyToHistory` and `MaskSensitiveData` can only be changed in `appsettings.json`.
+  - **Form:** a **"History & logs..."** button in the dashboard toolbar (for the selected instance) and in the editor toolbar next to Storage. It contains: internal log on/off, history sheet checkboxes with presets, aggregate and row history, save request bodies, save response bodies, mask sensitive data. Each option has the info icon from item 7. The ResolvedValues sheet (item 16) is shown but cannot be unticked. A note at the bottom: "Applies from the next run; existing history files are not changed."
+  - **Scope:** per instance (saved in the instance's entry in `appsettings.json`); no global default for now.
+  - **Profiles** (a "Custom" profile appears when any single option is changed; Functional is the default):
+    - **Functional:** internal log on, all history sheets, bodies saved, row history on.
+    - **Debug:** same as Functional with everything on and nothing omitted.
+    - **Load test:** internal log for errors only; sheets RunSummary, Metrics, TestcaseSummary and the details of failed requests; bodies and assertion details only for failed requests plus a configurable sample of passing requests (default 1 in 100); row history off, aggregate on; ResolvedValues only for failed rows.
+  - Show a hint when the run size (threads x iterations x rows) is large and the Functional profile is on. The profile is chosen by hand, never automatically.
+  - **Per-run checkbox:** the "Enable internal log" checkbox next to Run is replaced by this setting (the setting lives only in the form).
+  - Test the Load test profile: failed requests keep full detail, passing requests are only counted, and Metrics are still complete.
 - [ ] 10. Very large cell values (for example a file read by a Read file step and passed to other steps): above a configurable number of characters, leave the value out of the log and history and show its size in bytes instead.
 
 #### New tokens
