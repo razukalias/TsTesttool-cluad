@@ -403,7 +403,13 @@ Example row:
 
 #### Bugs and checks
 
-- [ ] 5. After a validation error in a step is fixed and saved, the validation mark still shows the old error. Re-validate on save and clear stale marks.
+- [ ] 5. Stale validation marks (investigated and agreed 2026-11-16):
+  - **Cause:** "Validate all" or a run stores validation issues on the instance (`instance.Issues`, category "Validation") and keeps them until the next global validation. Saving in the editor does not clear or recheck them, so a fixed error stays marked. The editor's own Problems list is fine; it revalidates on every change.
+  - **Fix:** after a save in the editor, re-run validation for that instance only (no requests are sent) and replace its old "Validation" issues with the new result.
+  - Issues from earlier runs (failed steps) are history and stay until the next run; only validation issues are refreshed.
+  - Update the "Validate all (N errors)" button count after the recheck, summed across all instances.
+  - No automatic recheck on selecting an instance (avoids slowdowns); rechecks happen on save and on "Validate all".
+  - Test: validate an instance with an error, fix it in the editor, save, and assert that the instance has no validation issues left.
 - [ ] 6. The ActionManual title must be gray like the others when it is not active.
 - [ ] 8. **Crash:** deleting a testcase and saving makes the whole app hang and crash. Reproduce, find the cause and add a regression test.
   - **Investigation 2026-11-16:** a headless test deleted every testcase one by one, saving after each, on `DataEngine_IntegrationScenarios` and `FileHttpScenarios`. Delete, save, backup and reload all worked, with no hang. So the cause is probably in the window after the delete or save (tree/table refresh with the selected testcase gone, the validation re-check after save, see item 5), or specific to the user's instance.
