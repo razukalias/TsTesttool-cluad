@@ -434,8 +434,13 @@ Example row:
 
 #### Re-run and history
 
-- [ ] 14. Re-run the failed rows of a testcase, with fresh data or with the same data. (Related: the re-run reuse item above.)
-- [ ] 15. In the Overview panel, load the status of a run by date and time, and re-run it with fresh data or with the old data.
+- [ ] 14. Re-run failed rows of a testcase, with fresh data or with the same data (decisions agreed 2026-11-16):
+  - **Blocked by item 16.** Old values come from run history, so the history report must first contain everything needed (all resolved sheets). Discuss and build item 16 first, then revisit this item.
+  - "Failed" means status FAIL only. Skipped/stopped rows are not included.
+  - A "Re-run failed rows..." dialog on the testcase Overview panel shows the affected rows, with **steps selectable (default: all steps)**, **environments selectable**, and the choice **Fresh data / Old data** per selected step.
+  - Old data is taken from the run history (not only `values.json`). Depends on the "earlier steps keep their values" fix in the re-run reuse section above.
+  - Each re-run creates a new run entry in history, linked to the original run; nothing is overwritten.
+- [ ] 15. In the Overview panel, load the status of a run by date and time, and re-run it with fresh data or with the old data. Same dialog and rules as item 14 (selectable steps and environments, new linked history entry); the old data must come from history because `values.json` holds only the last run.
 - [ ] 16. The history report should include an exact copy of all sheets after variables are resolved.
 
 ### Verification checklist
