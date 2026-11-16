@@ -34,7 +34,7 @@ public sealed class StepFormView : UserControl
         ["steptype"] = "Type", ["stage"] = "Stage", ["enabled"] = "Enabled", ["verb"] = "Verb", ["targeturl"] = "Target URL",
         ["templetsource"] = "Template", ["stoponfailure"] = "Stop on failure", ["contenttype"] = "Content type", ["timeout"] = "Timeout (s)",
         ["wait"] = "Wait before (ms or message)", ["expectedstatus"] = "Expected status", ["assert"] = "Assertions", ["ignoreempty"] = "Ignore empty",
-        ["assertonlyresponse"] = "Only response", ["manualtimeoutminutes"] = "Wait limit (min)",
+        ["assertonlyresponse"] = "Only response", ["manualtimeoutminutes"] = "Manual timeout (min)",
     };
 
     private static readonly string[] Formats = ["JSON", "XML", "SQL", "GraphQL", "C# script", "Plain text"];
@@ -161,8 +161,8 @@ public sealed class StepFormView : UserControl
 
     private Control NameField()
     {
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("100,*") };
-        row.Children.Add(Text("Name", 12, Muted, vertical: VerticalAlignment.Center));
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("120,*") };
+        row.Children.Add(StepFieldHelp.Labelled(Text("Name", 12, Muted, vertical: VerticalAlignment.Center), StepFieldHelp.TextFor("stepname")));
         var box = new TextBox { Text = _step.Cells[0], HorizontalAlignment = HorizontalAlignment.Stretch };
         void Commit() { var value = box.Text ?? string.Empty; if (value != _step.Cells[0]) _step.Cells[0] = value; }
         box.LostFocus += (_, _) => Commit();
@@ -179,8 +179,8 @@ public sealed class StepFormView : UserControl
     private Control Field(string title)
     {
         var label = Labels.GetValueOrDefault(title, title.StartsWith("header_", StringComparison.OrdinalIgnoreCase) ? "Header " + title[7..] : title);
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("100,*") };
-        row.Children.Add(Text(label, 12, Muted, vertical: VerticalAlignment.Center));
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("120,*") };
+        row.Children.Add(StepFieldHelp.Labelled(Text(label, 12, Muted, vertical: VerticalAlignment.Center), StepFieldHelp.TextFor(title)));
         Control input;
         var options = title.Equals("contenttype", StringComparison.OrdinalIgnoreCase) ? ContentTypeChoices : StepOptions.For(title)?.ToArray();
         var current = _step.Value(title);

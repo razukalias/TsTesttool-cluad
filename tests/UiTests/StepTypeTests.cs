@@ -63,7 +63,7 @@ public class StepTypeTests
         step.Write("steptype", "ActionManual");
         Pump();
         form = window.GetVisualDescendants().OfType<StepFormView>().Single();
-        Assert.Contains("Wait limit (min)", Labels(form));
+        Assert.Contains("Manual timeout (min)", Labels(form));
         Assert.DoesNotContain("Template", Labels(form));
         window.Close();
     }
