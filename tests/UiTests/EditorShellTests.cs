@@ -18,6 +18,17 @@ public class EditorShellTests
     }
 
     [Fact]
+    public void The_tree_hides_the_DataEngine_prefix_but_the_real_name_stays()
+    {
+        using var dir = new TempDir();
+        var (shell, _) = Open(dir);
+        Assert.Equal("IntegrationScenarios", shell.Instances[0].DisplayName);
+        Assert.Equal("DataEngine_IntegrationScenarios", shell.Instances[0].Name);
+        Assert.Equal("Customers", shell.Instances[1].DisplayName);
+        Assert.Equal("DataEngine_", new InstanceNode("DataEngine_", "x").DisplayName);   // nothing left to show: keep the name
+    }
+
+    [Fact]
     public void Instances_are_parents_and_open_on_the_requested_one()
     {
         using var dir = new TempDir();

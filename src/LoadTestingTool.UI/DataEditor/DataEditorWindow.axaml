@@ -64,7 +64,30 @@
     </Style>
     <Style Selector="TreeViewItem">
       <Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}" />
-      <Setter Property="Padding" Value="2,1" />
+      <Setter Property="Padding" Value="0,1" />
+    </Style>
+    <!-- Expand / collapse as a small box with ＋ and − instead of the arrow, narrow so the tick box and name sit close to it -->
+    <Style Selector="TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron">
+      <Setter Property="Width" Value="16" />
+      <Setter Property="Height" Value="16" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Margin" Value="0,0,4,0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="box" Width="16" Height="16" CornerRadius="3" BorderThickness="1" BorderBrush="#3A5373" Background="#13233A">
+            <TextBlock Name="glyph" Text="＋" FontSize="11" FontWeight="Bold" Foreground="#9DB4CF" HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron:checked /template/ TextBlock#glyph">
+      <Setter Property="Text" Value="−" />
+    </Style>
+    <Style Selector="TreeViewItem /template/ ToggleButton#PART_ExpandCollapseChevron:pointerover /template/ Border#box">
+      <Setter Property="BorderBrush" Value="#5AA9FF" />
     </Style>
     <Style Selector="Button.treemove">
       <Setter Property="MinWidth" Value="0" />
@@ -117,7 +140,7 @@
     <Style Selector="CheckBox.treecheck">
       <Setter Property="MinWidth" Value="0" />
       <Setter Property="MinHeight" Value="0" />
-      <Setter Property="Margin" Value="0,0,6,0" />
+      <Setter Property="Margin" Value="0,0,4,0" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
@@ -231,7 +254,7 @@
                 <CheckBox Classes="treecheck" IsChecked="{Binding ChosenState, Mode=TwoWay}" IsEnabled="{Binding IsLoaded}" ToolTip.Tip="Tick to run this instance's testcases together with the other ticked items" />
                 <Ellipse Grid.Column="1" Width="8" Height="8" Margin="0,0,8,0" Fill="{Binding DirtyColor}" IsVisible="{Binding IsDirty}" />
                 <StackPanel Grid.Column="2" Spacing="1">
-                  <TextBlock Text="{Binding Name}" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding DisplayName}" FontWeight="Bold" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
                   <TextBlock Text="{Binding Subtitle}" FontSize="11" Foreground="#8EA4BC" TextTrimming="CharacterEllipsis" />
                   <TextBlock Text="{Binding RunSummary}" FontSize="11" Foreground="#6F87A1" TextWrapping="Wrap" />
                   <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding HasEnvironments}">

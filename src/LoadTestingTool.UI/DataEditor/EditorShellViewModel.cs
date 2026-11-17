@@ -17,6 +17,15 @@ public sealed partial class InstanceNode : ObservableObject
     }
 
     public string Name { get; }
+
+    /// <summary>The name as the tree shows it: without the default "DataEngine_" prefix (the real name, folder and file keep it).</summary>
+    public string DisplayName => HidePrefix(Name);
+
+    public const string DefaultPrefix = "DataEngine_";
+
+    internal static string HidePrefix(string name)
+        => name.StartsWith(DefaultPrefix, StringComparison.OrdinalIgnoreCase) && name.Length > DefaultPrefix.Length ? name[DefaultPrefix.Length..] : name;
+
     public string Path { get; }
     public DataEditorViewModel? Editor { get; private set; }
     public string? Error { get; private set; }
