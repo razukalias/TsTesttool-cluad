@@ -582,8 +582,18 @@ public sealed partial class MainWindow
 
     private void RefreshActionManualPanel()
     {
-        if (_manualItems is null) return;
-        _manualItems.Children.Clear();
+        if (_manualItems is null || _refreshingManual) return;
+        // Filling the two filter lists raises SelectionChanged, which calls this method again. Without the guard that inner call
+        // built the cards and the outer one then built them a second time, so every pending action showed twice.
+        _refreshingManual = true;
+        try { RefreshActionManualPanelCore(); }
+        finally { _refreshingManual = false; }
+    }
+
+    private bool _refreshingManual;
+
+    private void RefreshActionManualPanelCore()
+    {
         var item = _selectedInstance;
         var actions = item?.ManualActions ?? [];
         var environments = new[] { "All environments" }.Concat(actions.Select(x => string.IsNullOrWhiteSpace(x.Environment) ? "default" : x.Environment).Distinct(StringComparer.OrdinalIgnoreCase)).ToList();
@@ -596,6 +606,7 @@ public sealed partial class MainWindow
             .Where(x => tc is null or "All testcases" || x.Testcase.Equals(tc, StringComparison.OrdinalIgnoreCase))
             .Where(x => MatchesTerms($"{x.Environment} {x.Testcase} {x.DataId} {x.StepName} {x.ManualInfo}", _manualFilter.Text)).ToList();
         var pendingCount = actions.Count(x => x.Status.Equals("Pending", StringComparison.OrdinalIgnoreCase));
+        _manualItems.Children.Clear();
         _manualTab.Header = BuildActionManualTabHeader(pendingCount);
         if (visible.Count == 0) { _manualItems.Children.Add(DashboardStyle.Text(actions.Count == 0 ? "No pending manual actions." : "No actions match the current filters.", 12, false, DashboardStyle.Muted)); return; }
         foreach (var action in visible)
