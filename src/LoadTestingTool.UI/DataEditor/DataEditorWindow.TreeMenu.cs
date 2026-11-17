@@ -162,4 +162,15 @@ public partial class DataEditorWindow
             box.SelectAll();
         }, DispatcherPriority.Background);
     }
+
+    private void OnAddEnvironmentClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (this.FindControl<TextBox>("NewEnvironmentBox") is not { } box) return;
+        if (_shell.AddEnvironment(box.Text) is null) box.Text = string.Empty;
+    }
+
+    private void OnRemoveEnvironmentClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string name }) _shell.RemoveEnvironment(name);
+    }
 }

@@ -150,9 +150,35 @@
           <Button x:Name="CollapseAllButton" Content="⊟" Classes="treemove" FontSize="14" ToolTip.Tip="Collapse everything to the instance rows" />
           <TextBlock Text="{Binding TickedText}" VerticalAlignment="Center" FontSize="11" Foreground="#8EA4BC" />
         </StackPanel>
-        <StackPanel DockPanel.Dock="Top" Margin="6,0,0,10" Spacing="4" IsVisible="{Binding HasEnvironments}">
-          <TextBlock Classes="caption" Text="ENVIRONMENTS · ALL INSTANCES" />
+        <StackPanel DockPanel.Dock="Top" Margin="6,0,0,10" Spacing="4" IsVisible="{Binding CanManageEnvironments}">
           <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Classes="caption" Text="ENVIRONMENTS · ALL INSTANCES" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Content="＋ / ✕" Classes="treemove" FontSize="12" ToolTip.Tip="Add or remove environments (the central list in appsettings.json)">
+              <Button.Flyout>
+                <Flyout Placement="BottomEdgeAlignedRight">
+                  <StackPanel Width="260" Spacing="8">
+                    <TextBlock Classes="caption" Text="ENVIRONMENTS" />
+                    <ItemsControl ItemsSource="{Binding GlobalEnvironmentChoices}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:EnvironmentChoice">
+                          <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Content="✕" Classes="treemove" Tag="{Binding Name}" Click="OnRemoveEnvironmentClick" ToolTip.Tip="Remove this environment from the list and from every instance" />
+                          </Grid>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBox x:Name="NewEnvironmentBox" Watermark="New environment, e.g. qa" />
+                      <Button Grid.Column="1" Content="Add" Classes="primary" Margin="6,0,0,0" Click="OnAddEnvironmentClick" />
+                    </Grid>
+                    <TextBlock Text="{Binding EnvironmentEditMessage}" TextWrapping="Wrap" FontSize="11.5" Foreground="#8EA4BC" />
+                  </StackPanel>
+                </Flyout>
+              </Button.Flyout>
+            </Button>
+          </Grid>
+          <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasEnvironments}">
             <Button Classes="treeenv" ToolTip.Tip="Set the environments of every instance at once (saved to appsettings.json)">
               <Grid ColumnDefinitions="Auto,*,Auto">
                 <TextBlock Text="Env" Foreground="#8EA4BC" Margin="0,0,6,0" />

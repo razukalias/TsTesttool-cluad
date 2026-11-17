@@ -206,6 +206,43 @@ public sealed partial class MainWindow
             }
         }
 
+        public string? SaveEnvironmentList(IReadOnlyList<string> environments)
+        {
+            try
+            {
+                var root = ReadRoot();
+                root["Environments"] = new JsonArray(environments.Select(e => (JsonNode?)JsonValue.Create(e)).ToArray());
+                var kept = new Dictionary<string, List<string>>();
+                if (root["Instances"] is JsonObject instances)
+                    foreach (var (name, node) in instances.ToList())
+                    {
+                        if (node is not JsonObject instance || instance["EnvironmentSelection"]?.GetValue<string>() is not { Length: > 0 } selection) continue;
+                        // Names that no longer exist cannot stay selected; "Default" (steps with no environment) always can.
+                        var remaining = selection.Split([',', '|'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                            .Where(x => x.Equals("Default", StringComparison.OrdinalIgnoreCase) || environments.Contains(x, StringComparer.OrdinalIgnoreCase)).ToList();
+                        instance["EnvironmentSelection"] = string.Join(',', remaining);
+                        if (instance["EnvironmentSelectionJson"] is not null) instance["EnvironmentSelectionJson"] = remaining.Count == 0 ? "" : JsonSerializer.Serialize(remaining);
+                        kept[name] = remaining;
+                    }
+                Write(root);
+                window._config.Environments = environments.ToList();
+                foreach (var (name, remaining) in kept)
+                {
+                    if (window._config.Instances.TryGetValue(name, out var central)) central.EnvironmentSelection = string.Join(',', remaining);
+                    if (window._instances.FirstOrDefault(x => x.Name == name) is not { } item) continue;
+                    item.EnvironmentSelection = string.Join(',', remaining);
+                    item.EnvironmentSelectionJson = remaining.Count == 0 ? "" : JsonSerializer.Serialize(remaining);
+                }
+                window.UiLog($"Environment list saved from the data editor: {string.Join(", ", environments)}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                window.UiLog($"Could not save the environment list: {ex}");
+                return $"Could not save the environments to {Path.GetFileName(window._config.SettingsFile)}: {ex.Message}";
+            }
+        }
+
         public string? SaveRunParallel(bool value)
         {
             try

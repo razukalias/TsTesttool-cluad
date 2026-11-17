@@ -34,6 +34,9 @@ public interface IEnvironmentSettings
     /// <summary>Lists a new instance folder in appsettings.json, copying the settings of <paramref name="copyFrom"/> when given. Returns null on success, otherwise why not.</summary>
     string? RegisterInstance(string name, string? copyFrom);
 
+    /// <summary>Replaces the central list of environment names (after an add or a remove) and drops removed names from every instance's selection. Returns null on success, otherwise why not.</summary>
+    string? SaveEnvironmentList(IReadOnlyList<string> environments) => "Changing the environment list is not supported here.";
+
     /// <summary>Saves the central parallel flag. Returns null on success, otherwise why not.</summary>
     string? SaveRunParallel(bool value);
 

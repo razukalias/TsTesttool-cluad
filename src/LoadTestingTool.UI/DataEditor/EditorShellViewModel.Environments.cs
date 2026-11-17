@@ -29,6 +29,7 @@ public sealed partial class EditorShellViewModel
             LoadExecution();
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasEnvironments));
+            OnPropertyChanged(nameof(CanManageEnvironments));
         }
     }
 
@@ -124,4 +125,59 @@ public sealed partial class EditorShellViewModel
 
     private void ReportEnvironmentProblem(string message)
         => (Current ?? Instances.FirstOrDefault(i => i.Editor is not null)?.Editor)?.Report(message, isError: true);
+
+    /// <summary>True when the central settings are available, so environments can be added or removed (also when none exist yet).</summary>
+    public bool CanManageEnvironments => _environmentSettings is not null;
+
+    private string _environmentEditMessage = string.Empty;
+
+    /// <summary>The result of the last add or remove, shown in the manage flyout.</summary>
+    public string EnvironmentEditMessage
+    {
+        get => _environmentEditMessage;
+        private set { _environmentEditMessage = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>Why a name cannot be used as an environment, or null when it can.</summary>
+    internal static string? EnvironmentNameProblem(string name)
+    {
+        if (name.Length == 0) return "Type a name first.";
+        if (name.Equals("Default", StringComparison.OrdinalIgnoreCase)) return "\"Default\" is reserved for steps that have no environment.";
+        if (!name.All(c => char.IsLetterOrDigit(c) || c is '_' or '-' or '.')) return "Use letters, digits, _ - and . only (no spaces or commas).";
+        return null;
+    }
+
+    /// <summary>Adds an environment to the central list. Returns why not, or null.</summary>
+    public string? AddEnvironment(string? name)
+    {
+        if (_environmentSettings is not { } settings) return EnvironmentEditMessage = "Environments are not available here.";
+        name = (name ?? string.Empty).Trim();
+        if (EnvironmentNameProblem(name) is { } invalid) return EnvironmentEditMessage = invalid;
+        var list = settings.Environments.ToList();
+        if (list.Contains(name, StringComparer.OrdinalIgnoreCase)) return EnvironmentEditMessage = $"{name} already exists.";
+        list.Add(name);
+        return ApplyEnvironmentList(list, $"Added {name}. Tick it under Env (here or per instance) to run in it.");
+    }
+
+    /// <summary>Removes an environment from the central list and from every instance's selection. Returns why not, or null.</summary>
+    public string? RemoveEnvironment(string? name)
+    {
+        if (_environmentSettings is not { } settings) return EnvironmentEditMessage = "Environments are not available here.";
+        var list = settings.Environments.ToList();
+        if (list.RemoveAll(e => string.Equals(e, name, StringComparison.OrdinalIgnoreCase)) == 0) return EnvironmentEditMessage = $"{name} is not in the list.";
+        return ApplyEnvironmentList(list, $"Removed {name}. Steps tagged {name} will not run until you retag them.");
+    }
+
+    private string? ApplyEnvironmentList(List<string> list, string done)
+    {
+        var settings = _environmentSettings!;
+        var problem = settings.SaveEnvironmentList(list);
+        if (problem is not null) { ReportEnvironmentProblem(problem); return EnvironmentEditMessage = problem; }
+        foreach (var instance in Instances) instance.LoadEnvironments(settings);
+        RebuildGlobalEnvironments();
+        OnPropertyChanged(nameof(HasEnvironments));
+        EnvironmentEditMessage = done;
+        (Current ?? Instances.FirstOrDefault(i => i.Editor is not null)?.Editor)?.Report(done, isError: false);
+        return null;
+    }
 }
