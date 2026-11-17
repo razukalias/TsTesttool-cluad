@@ -335,6 +335,8 @@ public sealed partial class MainWindow
     private readonly ComboBox _manualTestcase = new() { Width = 220 };
     private readonly TextBox _manualFilter = new() { Width = 280, Watermark = "Filter actions: term1 & term2…" };
     private TabItem _manualTab = null!;
+    private readonly ComboBox _overviewRun = new() { Width = 300, Tag = "overview-run" };
+    private bool _overviewRunRefreshing;
     private readonly TextBox _overviewFilter = new() { Watermark = "Filter overview: term1 & term2…", Width = 260 };
     private readonly TextBox _assertionSearch = new() { Watermark = "Filter assertions: term1 & term2…", Width = 260 };
     private readonly TextBlock _selectedTitle = DashboardStyle.Text("Selected instance", 16, true);
@@ -1427,6 +1429,38 @@ public sealed partial class MainWindow
 
     private static string ScopeText(DataEditor.RunScope scope) => scope.Step is null ? $"testcase {scope.Testcase}" : $"step {scope.Step} of {scope.Testcase}";
 
+    /// <summary>"Run:" with every saved run of the instance by date and time; choosing one shows its status below.</summary>
+    private Control RunPicker(InstanceInfo item)
+    {
+        var runs = SavedRuns(item);
+        _overviewRunRefreshing = true;
+        var labels = runs.Select(r => r.Label).ToList();
+        if (_overviewRun.ItemsSource is not List<string> shown || !shown.SequenceEqual(labels)) _overviewRun.ItemsSource = labels;   // a refresh must not close an open list
+        _overviewRun.SelectedIndex = runs.ToList().FindIndex(r => r.RunId.Equals(item.CurrentRunId, StringComparison.OrdinalIgnoreCase));
+        _overviewRun.IsEnabled = runs.Count > 0 && item.Process is not { HasExited: false };
+        _overviewRunRefreshing = false;
+        _overviewRun.SelectionChanged -= OnOverviewRunChosen;
+        _overviewRun.SelectionChanged += OnOverviewRunChosen;
+        var newest = runs.FirstOrDefault();
+        var older = newest is not null && !newest.RunId.Equals(item.CurrentRunId, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(item.CurrentRunId);
+        var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 4, 0, 0) };
+        line.Children.Add(DashboardStyle.Text("Run", color: DashboardStyle.Muted));
+        line.Children.Add(_overviewRun);
+        if (older) line.Children.Add(DashboardStyle.Action("Show the latest run", () => { if (newest is not null && LoadSavedRun(item, newest)) RefreshDashboardDetails(true); }));
+        if (older) line.Children.Add(DashboardStyle.Text("Showing an earlier run, not the latest.", color: DashboardStyle.Muted));
+        return line;
+    }
+
+    private void OnOverviewRunChosen(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_overviewRunRefreshing || _selectedInstance is not { } item) return;
+        var runs = SavedRuns(item);
+        if (_overviewRun.SelectedIndex < 0 || _overviewRun.SelectedIndex >= runs.Count) return;
+        var run = runs[_overviewRun.SelectedIndex];
+        if (run.RunId.Equals(item.CurrentRunId, StringComparison.OrdinalIgnoreCase)) return;
+        if (LoadSavedRun(item, run)) RefreshDashboardDetails(true);
+    }
+
     private bool MatchesOverviewStep(DashboardRequest request)
     {
         var status = _overviewStepStatus.SelectedItem?.ToString() ?? "All statuses";
@@ -1485,7 +1519,9 @@ public sealed partial class MainWindow
         Detach(_overviewStepTestcase);
         Detach(_overviewStepFilter);
         _overviewPanel.Children.Clear();
+        Detach(_overviewRun);
         _overviewPanel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _overviewFilter, DashboardStyle.Action("Copy overview", () => _ = CopyOverviewAsync()) } });
+        if (item is not null) _overviewPanel.Children.Add(RunPicker(item));
         if (item is null)
         {
             _overviewPanel.Children.Add(DashboardStyle.Text("Select an instance to inspect its run.", color: DashboardStyle.Muted));

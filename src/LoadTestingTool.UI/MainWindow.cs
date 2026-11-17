@@ -1146,13 +1146,11 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void PollEvents()
+    /// <summary>Replays the instance's current run's event files into its state; returns how many files and events it handled.</summary>
+    private (int Files, int Applied) ReadEvents(InstanceInfo item)
     {
-        var pollStarted = Stopwatch.GetTimestamp();
         var filesSeen = 0;
         var eventsApplied = 0;
-        foreach (var item in _instances)
-        {
             try
             {
                 var eventPattern = string.IsNullOrWhiteSpace(item.CurrentRunId) ? "events_*.ndjson" : $"events_{item.CurrentRunId}*.ndjson";
@@ -1179,6 +1177,19 @@ public sealed partial class MainWindow : Window
             }
             catch (IOException) { /* The runner may be rotating or opening the event file; retry on the next tick. */ }
             catch (UnauthorizedAccessException) { /* The file may be temporarily locked; retry on the next tick. */ }
+        return (filesSeen, eventsApplied);
+    }
+
+    private void PollEvents()
+    {
+        var pollStarted = Stopwatch.GetTimestamp();
+        var filesSeen = 0;
+        var eventsApplied = 0;
+        foreach (var item in _instances)
+        {
+            (int Files, int Applied) filesSeenAndApplied;
+            filesSeenAndApplied = ReadEvents(item);
+            filesSeen += filesSeenAndApplied.Files; eventsApplied += filesSeenAndApplied.Applied;
             if (item.Process is { HasExited: true } && (item.Status == "Running" || item.Status == "Stopping"))
             {
                 item.CurrentRunFolder = FindRunFolder(item, item.CurrentRunId) ?? item.CurrentRunFolder;

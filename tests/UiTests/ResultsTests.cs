@@ -320,3 +320,59 @@ public class ResultsTests
         window.Close();
     }
 }
+
+public class SavedRunSwitchTests
+{
+    private const string OldRun = "20261110_090000_aaaaaaaaa";
+
+    private static (LoadTestingTool.UI.MainWindow Dashboard, string Root, string Previous) Build()
+    {
+        var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "runs_" + Guid.NewGuid().ToString("N")[..8]);
+        var inst = System.IO.Path.Combine(root, "Instances", "Demo");
+        Directory.CreateDirectory(inst);
+        using (var dir = new TempDir()) File.Copy(Samples.CreateLarge(dir, rows: 3), System.IO.Path.Combine(inst, "DataEngine.xlsx"));
+        File.WriteAllText(System.IO.Path.Combine(root, "appsettings.json"), "{\"InstancesRoot\":\"Instances\",\"WorkbookName\":\"DataEngine.xlsx\"}");
+        var workbook = System.IO.Path.Combine(inst, "DataEngine.xlsx");
+        // An older run with one failed request, and a newer one with two passed requests.
+        FakeRun.Write(FakeRun.Folder(workbook, "failed", "Run_old"), $"events_{OldRun}.ndjson",
+            new { eventType = "request-completed", runId = OldRun, testcaseIndex = 1, dataId = "CUST001", stepName = "CreateCustomer", result = "FAIL", httpStatus = 500, durationMs = 90L, errorMessage = "boom", failureCategory = "HTTP", environment = "" });
+        FakeRun.Write(FakeRun.Folder(workbook, "passed", "Run_new"), $"events_{FakeRun.RunId}.ndjson", FakeRun.Request(1, "CUST001", "CreateCustomer"), FakeRun.Request(1, "CUST002", "CreateCustomer"));
+        var previous = Directory.GetCurrentDirectory();
+        Directory.SetCurrentDirectory(root);
+        return (new LoadTestingTool.UI.MainWindow(), root, previous);
+    }
+
+    private static object Item(string root)
+    {
+        var item = Activator.CreateInstance(typeof(LoadTestingTool.UI.MainWindow).Assembly.GetType("LoadTestingTool.UI.InstanceInfo")!, nonPublic: true)!;
+        item.GetType().GetProperty("FolderPath")!.SetValue(item, System.IO.Path.Combine(root, "Instances", "Demo"));
+        return item;
+    }
+
+    [AvaloniaFact]
+    public void Saved_runs_are_listed_by_date_and_time_and_loading_one_replays_its_status()
+    {
+        var (dashboard, root, previous) = Build();
+        try
+        {
+            var item = Item(root);
+            var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public;
+            var runs = ((System.Collections.IEnumerable)typeof(LoadTestingTool.UI.MainWindow).GetMethod("SavedRuns", flags)!.Invoke(null, [item])!).Cast<LoadTestingTool.UI.SavedRun>().ToList();
+
+            Assert.Equal([FakeRun.RunId, OldRun], runs.Select(r => r.RunId));          // newest first
+            Assert.Equal(new DateTime(2026, 11, 13, 20, 15, 0), runs[0].When);
+            Assert.StartsWith("2026-11-13 20:15:00", runs[0].Label);
+
+            var load = typeof(LoadTestingTool.UI.MainWindow).GetMethod("LoadSavedRun", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)!;
+            Assert.True((bool)load.Invoke(dashboard, [item, runs[1]])!);
+            var requests = (System.Collections.IList)item.GetType().GetProperty("Requests")!.GetValue(item)!;
+            Assert.Single(requests);                                                   // the old run: one request
+            Assert.Equal(OldRun, item.GetType().GetProperty("CurrentRunId")!.GetValue(item));
+
+            Assert.True((bool)load.Invoke(dashboard, [item, runs[0]])!);
+            Assert.Equal(2, ((System.Collections.IList)item.GetType().GetProperty("Requests")!.GetValue(item)!).Count);   // the new run replaces it, nothing is mixed
+            Assert.Equal(FakeRun.RunId, item.GetType().GetProperty("CurrentRunId")!.GetValue(item));
+        }
+        finally { Directory.SetCurrentDirectory(previous); }
+    }
+}
