@@ -206,6 +206,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
     private void BuildRows()
     {
         RefreshStepOptions();
+        RememberTicks();
         _allRows.Clear();
         SelectedRow = null;
         var testcase = SelectedTestcase;
@@ -216,6 +217,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             Columns = BuildColumns(steps, all, withTestcaseColumns: true);
             foreach (var pair in all) _allRows.Add(new DataRowViewModel(WorkbookDocument.EffectiveIndex(pair.Request), pair.Request, pair.Response, Columns, OnCellEdited, _document.Request, _document.Response));
             AssignOutcomes();
+            RestoreTicks();
             RefreshFilterColumns();
             ColumnsChanged?.Invoke(this, EventArgs.Empty);
             ApplyFilter();
@@ -240,6 +242,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         Columns = BuildColumns(testcase.Steps, pairs);
         foreach (var pair in pairs) _allRows.Add(new DataRowViewModel(testcase.Index, pair.Request, pair.Response, Columns, OnCellEdited, _document.Request, _document.Response));
         AssignOutcomes();
+        RestoreTicks();
         RefreshFilterColumns();
         ColumnsChanged?.Invoke(this, EventArgs.Empty);
         ApplyFilter();

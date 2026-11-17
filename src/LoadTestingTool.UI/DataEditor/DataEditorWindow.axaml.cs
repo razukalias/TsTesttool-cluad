@@ -370,6 +370,7 @@ public partial class DataEditorWindow : Window
         grid.CellPointerPressed += OnGridCellPointerPressed;
         editor.CurrentCellIndex = -1;
         grid.Columns.Clear();
+        grid.Columns.Add(CreateTickColumn(editor));
         grid.Columns.Add(CreateColumn(new GridColumn("Data ID", ColumnGroup.Id, 0, -1)));
         grid.Columns.Add(CreateResultColumn());
         foreach (var column in editor.Columns) grid.Columns.Add(CreateColumn(column));
@@ -416,6 +417,24 @@ public partial class DataEditorWindow : Window
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
             };
             box.Bind(ComboBox.SelectedItemProperty, new Binding($"Cells[{column.CellIndex}]") { Mode = BindingMode.TwoWay });
+            return box;
+        })
+    };
+
+    /// <summary>A tick box per row: the rows ticked here are what "Run ticked" runs.</summary>
+    private static DataGridTemplateColumn CreateTickColumn(DataEditorViewModel editor) => new()
+    {
+        Header = new TextBlock { Text = "Run", FontSize = 11.5, FontWeight = FontWeight.SemiBold },
+        Width = new DataGridLength(52),
+        CanUserSort = false,
+        CanUserResize = false,
+        Tag = -1,
+        CellTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<DataRowViewModel>((_, _) =>
+        {
+            var box = new CheckBox { HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Tag = "tick" };
+            box.Bind(CheckBox.IsCheckedProperty, new Binding("IsTicked") { Mode = BindingMode.TwoWay });
+            box.IsCheckedChanged += (_, _) => editor.NotifyTickChanged();
+            ToolTip.SetTip(box, "Tick to include this row in Run ticked");
             return box;
         })
     };

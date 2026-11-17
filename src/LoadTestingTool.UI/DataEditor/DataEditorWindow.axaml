@@ -319,6 +319,9 @@
           <Button Content="Duplicate" Command="{Binding DuplicateRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding SelectedRow, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
           <Button Content="Remove" Classes="danger" Command="{Binding RemoveRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding SelectedRow, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
           <Button Content="Run row" Command="{Binding RunRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding CanRun}" ToolTip.Tip="Run only the selected data row (save first)" MinHeight="36" />
+          <Button Content="{Binding TickText}" Command="{Binding RunTickedCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding CanRunTicked}" ToolTip.Tip="Run only the rows ticked in the Run column (save first)" MinHeight="36" />
+          <Button Content="Tick all shown" Command="{Binding TickAllShownCommand}" IsVisible="{Binding ShowData}" ToolTip.Tip="Tick every row currently shown (respects the filter)" MinHeight="36" />
+          <Button Content="Clear ticks" Command="{Binding ClearTicksCommand}" IsVisible="{Binding ShowData}" MinHeight="36" />
           <Button Content="▶ Run…" Classes="primary" IsEnabled="{Binding CanRun}" ToolTip.Tip="Run this testcase, several testcases or the whole instance (save first)" MinHeight="36">
             <Button.Flyout>
               <Flyout Placement="BottomEdgeAlignedLeft">

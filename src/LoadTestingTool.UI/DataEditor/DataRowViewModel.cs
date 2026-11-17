@@ -202,6 +202,9 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow
     private readonly Action<DataRowViewModel, int, string> _edited;
     private bool _suppress;
 
+    /// <summary>Ticked in the grid to be run next; a view-only choice, never written to the workbook.</summary>
+    [ObservableProperty] private bool _isTicked;
+
     public DataRowViewModel(int testcaseIndex, TableRow request, TableRow? response, IReadOnlyList<GridColumn> columns, Action<DataRowViewModel, int, string> edited, SheetTable? requestTable = null, SheetTable? responseTable = null)
     {
         _columns = columns;
