@@ -333,6 +333,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
                 break;
             case InstanceNode { Editor: { } editor }:
                 Current = editor;
+                editor.ShowWholeInstance();
                 break;
             case InstanceNode { CanLoad: true } unloaded:
                 WhenIdle = LoadThenShowAsync(unloaded);
@@ -422,8 +423,8 @@ public sealed partial class EditorShellViewModel : ObservableObject
     {
         await LoadAsync(node);
         if (node.Editor is null || !ReferenceEquals(SelectedNode, node)) return;
-        if (node.Editor.SelectedTestcase is { } testcase) SelectedNode = testcase;
-        else Current = node.Editor;
+        Current = node.Editor;
+        node.Editor.ShowWholeInstance();
     }
 
     private async Task LoadAllAsync()

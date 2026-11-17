@@ -68,7 +68,8 @@ public class LazyLoadingTests
         Assert.True(node.IsLoaded);
         Assert.False(node.IsLoading);
         Assert.Equal(paths[1], shell.Current!.WorkbookPath);
-        Assert.IsType<TestcaseItem>(shell.SelectedNode);
+        Assert.IsType<InstanceNode>(shell.SelectedNode);   // clicking the instance shows the whole instance
+        Assert.True(shell.Current.ShowInstance);
         Assert.Equal(30, shell.Current.VisibleRows.Count);
         Assert.Equal("1 testcase", node.Subtitle);
         Assert.Contains(nameof(InstanceNode.Testcases), changes);

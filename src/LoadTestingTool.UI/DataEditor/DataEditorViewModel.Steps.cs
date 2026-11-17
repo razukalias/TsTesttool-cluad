@@ -51,7 +51,7 @@ public sealed partial class DataEditorViewModel
         FocusedStep = null;   // the view mode (Table view or Config edit mode) stays as it was
     }
 
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowData))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowData), nameof(ShowDataGrid), nameof(ShowSheetGrid), nameof(SheetSummary))]
     private bool _showSteps;
 
     public bool ShowData => !ShowSteps;
@@ -66,6 +66,7 @@ public sealed partial class DataEditorViewModel
     partial void OnShowStepsChanged(bool value)
     {
         if (value) ColumnFiltersVisible = false;
+        if (value && _stepsStale && !_loading) { _stepsStale = false; BuildSteps(); }
         OnPropertyChanged(nameof(CurrentColumnTitle));
         CurrentCellIndex = -1;
         UpdateMatches();
@@ -90,6 +91,9 @@ public sealed partial class DataEditorViewModel
         if (SelectedTestcase is { } testcase)
             foreach (var row in _document.Config.Rows.Where(r => !r.IsBlank && WorkbookDocument.EffectiveIndex(r) == testcase.Index))
                 StepRows.Add(new StepRowViewModel(row, StepColumns, OnStepEdited, _document.Config) { Editor = this });
+        else if (ShowInstance)
+            foreach (var row in _document.Config.Rows.Where(r => !r.IsBlank))
+                StepRows.Add(new StepRowViewModel(row, StepColumns, OnStepEdited, _document.Config) { Editor = this });
         foreach (var step in StepRows) step.IsExpanded = open.Contains(step.CurrentName);
         FocusedStep = focused is null ? null : StepRows.FirstOrDefault(r => string.Equals(r.CurrentName, focused, StringComparison.OrdinalIgnoreCase));
         StepColumnsChanged?.Invoke(this, EventArgs.Empty);
@@ -97,6 +101,7 @@ public sealed partial class DataEditorViewModel
         SelectedStep = StepRows.FirstOrDefault();
         OnPropertyChanged(nameof(PreviewStepNames));
         RefreshPreview();
+        ReloadSheetIfShown();
     }
 
     /// <summary>Adds a config column the sheet lacks and sets this step's value in it; the step list is rebuilt around the new column.</summary>

@@ -108,6 +108,7 @@ public partial class DataEditorWindow : Window
         if (_subscribed is not null)
         {
             _subscribed.ColumnsChanged -= OnColumnsChanged;
+            _subscribed.SheetColumnsChanged -= OnSheetColumnsChanged;
             _subscribed.StepColumnsChanged -= OnStepColumnsChanged;
             _subscribed.PropertyChanged -= OnEditorPropertyChanged;
             _subscribed.RevealColumnRequested -= OnRevealColumn;
@@ -119,6 +120,7 @@ public partial class DataEditorWindow : Window
         if (_subscribed is null) return;
         Title = $"Data editor — {_subscribed.InstanceName}";
         _subscribed.ColumnsChanged += OnColumnsChanged;
+        _subscribed.SheetColumnsChanged += OnSheetColumnsChanged;
         _subscribed.StepColumnsChanged += OnStepColumnsChanged;
         _subscribed.PropertyChanged += OnEditorPropertyChanged;
         _subscribed.RevealColumnRequested += OnRevealColumn;
@@ -127,6 +129,25 @@ public partial class DataEditorWindow : Window
         _subscribed.NewTestcaseRequested += OnNewTestcaseRequested;
         RebuildColumns();
         RebuildStepColumns();
+        RebuildSheetColumns();
+    }
+
+    private void OnSheetColumnsChanged(object? sender, EventArgs e) => RebuildSheetColumns();
+
+    private void RebuildSheetColumns()
+    {
+        var grid = this.FindControl<DataGrid>("SheetGrid");
+        var editor = _shell?.Current;
+        if (grid is null || editor is null) return;
+        grid.Columns.Clear();
+        for (var i = 0; i < editor.SheetHeaders.Count; i++)
+            grid.Columns.Add(new DataGridTextColumn
+            {
+                Header = editor.SheetHeaders[i].Length == 0 ? $"({i + 1})" : editor.SheetHeaders[i],
+                Binding = new Avalonia.Data.Binding($"Cells[{i}]") { Mode = editor.SheetIsEditable ? Avalonia.Data.BindingMode.TwoWay : Avalonia.Data.BindingMode.OneWay },
+                IsReadOnly = !editor.SheetIsEditable,
+                MinWidth = 90,
+            });
     }
 
     private void OnColumnsChanged(object? sender, EventArgs e) => RebuildColumns();

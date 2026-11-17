@@ -8,6 +8,8 @@ namespace UiTests;
 
 public class EditorShellTests
 {
+    internal static (EditorShellViewModel Shell, string[] Paths) OpenForInstanceView(TempDir dir) => Open(dir);
+
     private static (EditorShellViewModel Shell, string[] Paths) Open(TempDir dir)
     {
         var a = Samples.Copy(dir, Samples.IntegrationScenarios);
@@ -110,5 +112,50 @@ public class EditorShellTests
         var shots = Environment.GetEnvironmentVariable("UI_SCREENSHOT_DIR") ?? System.IO.Path.GetTempPath();
         window.CaptureRenderedFrame()!.Save(System.IO.Path.Combine(shots, "editor-tree.png"));
         window.Close();
+    }
+}
+
+public sealed class InstanceViewTests
+{
+    [Fact]
+    public void Clicking_the_instance_shows_every_testcase_in_the_table_and_every_step_in_config_edit_mode()
+    {
+        using var dir = new TempDir();
+        var (shell, _) = EditorShellTests.OpenForInstanceView(dir);
+        var editor = shell.Instances[0].Editor!;
+        var first = shell.Instances[0].Testcases[0];
+        shell.SelectedNode = first;
+        var oneTestcaseRows = editor.VisibleRows.Count;
+        var oneTestcaseSteps = editor.StepRows.Count;
+
+        shell.SelectedNode = shell.Instances[0];
+
+        Assert.True(editor.ShowInstance);
+        Assert.Null(editor.SelectedTestcase);
+        Assert.True(editor.VisibleRows.Count > oneTestcaseRows);
+        Assert.Equal(shell.Instances[0].Testcases.Sum(t => t.RowCount), editor.VisibleRows.Count);
+        Assert.Equal(shell.Instances[0].Testcases.Sum(t => t.Steps.Count), editor.StepRows.Count);
+        Assert.True(editor.StepRows.Count > oneTestcaseSteps);
+        Assert.Equal(shell.Instances[0].Testcases.Select(t => t.Index).Distinct().Count(), editor.VisibleRows.Select(r => r.TestcaseIndex).Distinct().Count());
+
+        shell.SelectedNode = first;   // choosing a testcase leaves the instance view
+        Assert.False(editor.ShowInstance);
+        Assert.Equal(oneTestcaseRows, editor.VisibleRows.Count);
+    }
+
+    [Fact]
+    public void Editing_a_cell_in_the_instance_view_changes_the_row_of_its_own_testcase()
+    {
+        using var dir = new TempDir();
+        var (shell, _) = EditorShellTests.OpenForInstanceView(dir);
+        var editor = shell.Instances[0].Editor!;
+        shell.SelectedNode = shell.Instances[0];
+        var last = editor.VisibleRows[^1];
+        var cell = editor.Columns.First(c => c.Group == ColumnGroup.Request && !c.Title.StartsWith("testcase", StringComparison.OrdinalIgnoreCase));
+
+        last.Cells[cell.CellIndex] = "changed-in-instance-view";
+
+        Assert.Equal("changed-in-instance-view", last.Request.GetAt(cell.SheetColumn));
+        Assert.True(editor.IsDirty);
     }
 }

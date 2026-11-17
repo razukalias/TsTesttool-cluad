@@ -26,6 +26,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         _document = WorkbookDocument.Load(WorkbookPath);
         StepRows.CollectionChanged += (_, _) => { for (var i = 0; i < StepRows.Count; i++) StepRows[i].Position = i + 1; };
         LoadTestcases(null);
+        InitSheets();
     }
 
     /// <summary>Drops config columns that steps no longer use (see <see cref="LegacyColumns"/>). Done when saving, so opening a workbook never changes it.</summary>
@@ -96,8 +97,23 @@ public sealed partial class DataEditorViewModel : ObservableObject
 
     partial void OnSelectedTestcaseChanged(TestcaseItem? value)
     {
+        if (value is not null) ShowInstance = false;
         if (_loading) return;
         BuildRows();
+    }
+
+    /// <summary>
+    /// True while the instance itself is selected: the grid shows the rows of every testcase and the step list holds every
+    /// step, and no testcase is selected, so actions that need one do nothing until a testcase is chosen.
+    /// </summary>
+    [ObservableProperty] private bool _showInstance;
+
+    /// <summary>Shows the whole instance (all testcases) instead of one testcase.</summary>
+    public void ShowWholeInstance()
+    {
+        ShowInstance = true;
+        if (SelectedTestcase is not null) SelectedTestcase = null;   // rebuilds through OnSelectedTestcaseChanged
+        else BuildRows();
     }
 
     partial void OnShowAllColumnsChanged(bool value)
@@ -131,8 +147,8 @@ public sealed partial class DataEditorViewModel : ObservableObject
         {
             StepFilterOptions.Clear();
             StepFilterOptions.Add(AllSteps);
-            if (SelectedTestcase is { } testcase)
-                foreach (var row in _document.Config.Rows.Where(r => !r.IsBlank && WorkbookDocument.EffectiveIndex(r) == testcase.Index))
+            if (SelectedTestcase is not null || ShowInstance)
+                foreach (var row in _document.Config.Rows.Where(r => !r.IsBlank && (SelectedTestcase is not { } chosen || WorkbookDocument.EffectiveIndex(r) == chosen.Index)))
                 {
                     var name = row.Get("stepname").Trim();
                     if (name.Length > 0 && !StepFilterOptions.Contains(name, StringComparer.OrdinalIgnoreCase)) StepFilterOptions.Add(name);
@@ -178,7 +194,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             Testcases.Clear();
             foreach (var info in _document.GetTestcases())
                 Testcases.Add(Track(new TestcaseItem(info, _document.GetDataIds(info.Index).Count)));
-            SelectedTestcase = Testcases.FirstOrDefault(t => t.Index == keepIndex) ?? Testcases.FirstOrDefault();
+            SelectedTestcase = ShowInstance ? null : Testcases.FirstOrDefault(t => t.Index == keepIndex) ?? Testcases.FirstOrDefault();
         }
         finally { _loading = false; }
         UpdateTestcaseResults();
@@ -192,6 +208,20 @@ public sealed partial class DataEditorViewModel : ObservableObject
         _allRows.Clear();
         SelectedRow = null;
         var testcase = SelectedTestcase;
+        if (testcase is null && ShowInstance)
+        {
+            var all = _document.Request.Rows.Where(r => !r.IsBlank).Select(r => (Request: r, Response: FindResponse(r))).ToList();
+            var steps = _document.Config.Rows.Where(r => !r.IsBlank).Select(r => r.Get("stepname").Trim()).Where(n => n.Length > 0).ToList();
+            Columns = BuildColumns(steps, all, withTestcaseColumns: true);
+            foreach (var pair in all) _allRows.Add(new DataRowViewModel(WorkbookDocument.EffectiveIndex(pair.Request), pair.Request, pair.Response, Columns, OnCellEdited, _document.Request, _document.Response));
+            AssignOutcomes();
+            RefreshFilterColumns();
+            ColumnsChanged?.Invoke(this, EventArgs.Empty);
+            ApplyFilter();
+            SelectedRow = VisibleRows.FirstOrDefault();
+            BuildSteps();
+            return;
+        }
         if (testcase is null)
         {
             Columns = [];
@@ -206,7 +236,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             .Where(r => !r.IsBlank && WorkbookDocument.EffectiveIndex(r) == testcase.Index)
             .Select(r => (Request: r, Response: FindResponse(r)))
             .ToList();
-        Columns = BuildColumns(testcase, pairs);
+        Columns = BuildColumns(testcase.Steps, pairs);
         foreach (var pair in pairs) _allRows.Add(new DataRowViewModel(testcase.Index, pair.Request, pair.Response, Columns, OnCellEdited, _document.Request, _document.Response));
         AssignOutcomes();
         RefreshFilterColumns();
@@ -240,11 +270,14 @@ public sealed partial class DataEditorViewModel : ObservableObject
     /// any step, and any column that already holds a value in one of its rows. Everything else is hidden
     /// unless "show every column" is on.
     /// </summary>
-    private IReadOnlyList<GridColumn> BuildColumns(TestcaseItem testcase, List<(TableRow Request, TableRow? Response)> pairs)
+    private IReadOnlyList<GridColumn> BuildColumns(IEnumerable<string> stepNames, List<(TableRow Request, TableRow? Response)> pairs, bool withTestcaseColumns = false)
     {
-        var steps = new HashSet<string>(testcase.Steps, StringComparer.OrdinalIgnoreCase);
+        var steps = new HashSet<string>(stepNames, StringComparer.OrdinalIgnoreCase);
         var columns = new List<GridColumn>();
         var cell = 1;
+        if (withTestcaseColumns)   // with several testcases in the grid, say which one each row belongs to
+            foreach (var name in new[] { "testcaseindex", "testcase" })
+                if (_document.Request.FindColumn(name) is >= 0 and var at) columns.Add(new GridColumn(_document.Request.Headers[at], ColumnGroup.Request, cell++, at));
 
         var requestHeaders = _document.Request.Headers;
         for (var i = 0; i < requestHeaders.Count; i++)

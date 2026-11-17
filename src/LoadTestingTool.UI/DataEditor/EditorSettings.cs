@@ -8,6 +8,9 @@ public sealed class EditorSettings
     /// <summary>When on, an instance's workbook is read only when you first open it; when off, every workbook is read as the editor opens.</summary>
     public bool LazyLoading { get; set; }
 
+    /// <summary>Per workbook, the sheets whose tab is hidden in Table view (empty or missing = all sheets).</summary>
+    public Dictionary<string, List<string>> HiddenSheets { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     public static string FilePath { get; set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TSLoadTestingTool", "data-editor.json");
 

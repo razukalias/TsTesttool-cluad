@@ -194,6 +194,7 @@ public class CompareRunsTests
         var shell = new EditorShellViewModel([("Sample", Samples.CreateLarge(dir, rows: 2))]);
         string? instance = null, testcase = null;
         shell.HistoryHandler = (i, t) => { instance = i; testcase = t; };
+        shell.SelectedNode = shell.Instances[0].Testcases[0];
 
         shell.Current!.OpenHistoryCommand.Execute(null);
 

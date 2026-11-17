@@ -440,6 +440,24 @@
         </Grid>
         <StackPanel Grid.Row="1" Spacing="10" Margin="0,0,0,10">
         <WrapPanel IsVisible="{Binding ShowData}">
+          <Button x:Name="SheetFilterButton" MinHeight="36" Margin="0,0,10,8" ToolTip.Tip="Choose which sheets of the workbook are shown, each as its own tab. Remembered for this instance.">
+            <TextBlock Text="{Binding SheetFilterText, StringFormat='Sheets: {0} ▾'}" />
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedLeft">
+                <ItemsControl ItemsSource="{Binding SheetChoices}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SheetChoice">
+                      <CheckBox Content="{Binding Name}" IsChecked="{Binding IsShown, Mode=TwoWay}" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+          <CheckBox Content="Show all rows" IsChecked="{Binding ShowAllRows, Mode=TwoWay}" IsVisible="{Binding SheetHasRowToggle}" VerticalAlignment="Center" Margin="0,0,14,8" ToolTip.Tip="Config sheet: show every row, not only the selected testcase's or step's" />
+          <TextBlock Text="{Binding SheetSummary}" IsVisible="{Binding ShowSheetGrid}" Foreground="#8EA4BC" VerticalAlignment="Center" Margin="0,0,14,8" />
+        </WrapPanel>
+        <WrapPanel IsVisible="{Binding ShowDataGrid}">
           <TextBox Width="260" Text="{Binding HeaderFilter, Mode=TwoWay}" Watermark="Headers: header1 &amp; header2…" ToolTip.Tip="Keep columns whose header contains any term. Separate terms with &amp;" MinHeight="36" Margin="0,0,10,8" />
           <TextBox Width="130" Text="{Binding RowNumberFilter, Mode=TwoWay}" Watermark="Rows: 1,2,5-9…" ToolTip.Tip="Keep these rows only. 1 is the first row of the testcase" MinHeight="36" Margin="0,0,10,8" />
           <TextBox Width="240" Text="{Binding ValueFilter, Mode=TwoWay}" Watermark="Cell values: value1 &amp; value2…" ToolTip.Tip="Keep columns where a row shown has a cell containing any term. Separate terms with &amp;" MinHeight="36" Margin="0,0,10,8" />
@@ -551,7 +569,26 @@
         </Border>
       </StackPanel>
         <Border Grid.Row="2" IsVisible="{Binding ShowData}" Classes="panel" ClipToBounds="True">
+          <DockPanel>
+          <ListBox x:Name="SheetTabs" DockPanel.Dock="Top" ItemsSource="{Binding OpenSheets}" SelectedItem="{Binding ActiveSheet, Mode=TwoWay}" IsVisible="{Binding OpenSheets.Count, Converter={x:Static vm:SheetTabsConverters.MoreThanOne}}" Background="Transparent">
+            <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
+          </ListBox>
+          <DataGrid x:Name="SheetGrid"
+                    IsVisible="{Binding ShowSheetGrid}"
+                    ItemsSource="{Binding SheetRows}"
+                    AutoGenerateColumns="False"
+                    CanUserSortColumns="False"
+                    CanUserReorderColumns="False"
+                    CanUserResizeColumns="True"
+                    SelectionMode="Extended"
+                    GridLinesVisibility="All"
+                    HeadersVisibility="Column"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    HorizontalGridLinesBrush="#1B2D44"
+                    VerticalGridLinesBrush="#1B2D44" />
           <DataGrid x:Name="Grid"
+                    IsVisible="{Binding ShowDataGrid}"
                     ItemsSource="{Binding VisibleRows}"
                     SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
                     AutoGenerateColumns="False"
@@ -566,6 +603,7 @@
                     BorderThickness="0"
                     HorizontalGridLinesBrush="#1B2D44"
                     VerticalGridLinesBrush="#1B2D44" />
+          </DockPanel>
         </Border>
         <Border Grid.Row="2" IsVisible="{Binding ShowSteps}" Classes="panel" ClipToBounds="True">
           <DockPanel>
