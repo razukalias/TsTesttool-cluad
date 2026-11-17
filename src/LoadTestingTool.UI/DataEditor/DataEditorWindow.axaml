@@ -362,33 +362,6 @@
             <WrapPanel.Styles>
               <Style Selector="WrapPanel > :is(Control)"><Setter Property="Margin" Value="0,0,6,6" /></Style>
             </WrapPanel.Styles>
-          <Button Content="Remove" Classes="tool danger" Command="{Binding RemoveRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding SelectedRow, Converter={x:Static ObjectConverters.IsNotNull}}" />
-          <Button Content="Format ▾" Classes="tool" ToolTip.Tip="Highlight or wrap cells; saved in the workbook">
-            <Button.Flyout>
-              <Flyout Placement="BottomEdgeAlignedLeft">
-                <StackPanel Width="330" Spacing="10" x:DataType="vm:DataEditorViewModel">
-                  <TextBlock Classes="caption" Text="FORMAT" />
-                  <ComboBox ItemsSource="{x:Static vm:DataEditorViewModel.FormatScopes}" SelectedItem="{Binding FormatScope, Mode=TwoWay}" HorizontalAlignment="Stretch" />
-                  <WrapPanel>
-                    <Button Tag="fill:#FFEB9C" Click="OnFormatClick" Background="#FFEB9C" Width="34" Height="30" Margin="0,0,6,6" ToolTip.Tip="Yellow" />
-                    <Button Tag="fill:#C6EFCE" Click="OnFormatClick" Background="#C6EFCE" Width="34" Height="30" Margin="0,0,6,6" ToolTip.Tip="Green" />
-                    <Button Tag="fill:#FFC7CE" Click="OnFormatClick" Background="#FFC7CE" Width="34" Height="30" Margin="0,0,6,6" ToolTip.Tip="Red" />
-                    <Button Tag="fill:#BDD7EE" Click="OnFormatClick" Background="#BDD7EE" Width="34" Height="30" Margin="0,0,6,6" ToolTip.Tip="Blue" />
-                    <Button Tag="fill:#F8CBAD" Click="OnFormatClick" Background="#F8CBAD" Width="34" Height="30" Margin="0,0,6,6" ToolTip.Tip="Orange" />
-                    <Button Tag="fill:#D9C7F0" Click="OnFormatClick" Background="#D9C7F0" Width="34" Height="30" Margin="0,0,6,6" ToolTip.Tip="Purple" />
-                    <Button Tag="fill:#D9D9D9" Click="OnFormatClick" Background="#D9D9D9" Width="34" Height="30" Margin="0,0,6,6" ToolTip.Tip="Grey" />
-                    <Button Tag="fill:none" Click="OnFormatClick" Content="Clear highlight" Height="30" Margin="0,0,6,6" />
-                  </WrapPanel>
-                  <WrapPanel>
-                    <Button Tag="wrap:on" Click="OnFormatClick" Content="Wrap text" Margin="0,0,8,0" />
-                    <Button Tag="wrap:off" Click="OnFormatClick" Content="No wrap" />
-                  </WrapPanel>
-                  <TextBlock Text="Acts on the cell you last clicked, the selected rows, or the whole column of the rows shown." FontSize="12" Foreground="#8EA4BC" TextWrapping="Wrap" />
-                </StackPanel>
-              </Flyout>
-            </Button.Flyout>
-          </Button>
-          <Border Width="1" Background="#22364D" Margin="4,4,10,6" />
           <Button Classes="tool" Content="Re-run…" Click="OnRerunClick" ToolTip.Tip="Pick an earlier run of this testcase by date and time and re-run its failed (or any) rows, with old or fresh data per step" />
           <Button Classes="tool" Content="Compare runs…" Command="{Binding OpenHistoryCommand}" ToolTip.Tip="Open the History Explorer filtered to this instance and testcase" />
           <ToggleButton Classes="tool" Content="Preview request" IsChecked="{Binding PreviewVisible, Mode=TwoWay}" ToolTip.Tip="Show what a step sends for the selected row" />
