@@ -98,7 +98,7 @@ internal static class Program
             // Cells that were edited since still get new ones; a run without --rerun always generates new values.
             if (rerun && RunValueMemory.Active is { HasPrevious: true } memory)
             {
-                memory.ReuseOnly(rerunAll ? null : rerunSteps);
+                memory.ReuseOnly(rerunAll ? null : RerunPlan.StepsToReuse(workbook, RerunPlan.Parse(GetCommandLineValue(args, "--rerun-steps"))));   // ticked steps and the ones before them
                 memory.BeginRead(reuse: true);
                 workbook = new WorkbookReader().Read(workbookPath);
                 work = new RunSelectionPlanner().Build(workbook, indexes, stepSelection, config.EnvironmentSelection, GetCommandLineValue(args, "--environments-json"), config.Environments);

@@ -1,5 +1,6 @@
 using ClosedXML.Excel;
 using System.Globalization;
+using LoadTestingTool.Domain;
 using LoadTestingTool.Excel;
 using LoadTestingTool.Execution;
 using Xunit;
@@ -91,4 +92,63 @@ public class GeneratedTokensTests
         Assert.NotEqual(GeneratedTokens.Make("randomnumber", "000000000"), GeneratedTokens.Make("randomnumber", "000000000"));
         Assert.Equal(36, GeneratedTokens.Make("guid", null).Length);
     }
+}
+
+public class RerunPlanTests
+{
+    private static WorkbookModel Model() => new()
+    {
+        Testcases =
+        [
+            new TestcaseDefinition { TestcaseIndex = 1, Testcase = "Flow", Steps = [Step("Login"), Step("Create"), Step("Check"), Step("Cleanup")] },
+            new TestcaseDefinition { TestcaseIndex = 2, Testcase = "Other", Steps = [Step("A"), Step("B")] },
+        ]
+    };
+
+    private static RequestStep Step(string name) => new() { StepName = name };
+
+    [Fact]
+    public void Ticking_a_later_step_also_reuses_every_step_before_it()
+    {
+        var names = RerunPlan.StepsToReuse(Model(), new Dictionary<int, IReadOnlyList<string>> { [1] = ["Check"] });
+
+        Assert.Equal(["Check", "Create", "Login"], names.Order());      // not Cleanup, which comes after
+    }
+
+    [Fact]
+    public void The_lowest_ticked_step_decides_and_other_testcases_are_left_alone()
+    {
+        var names = RerunPlan.StepsToReuse(Model(), new Dictionary<int, IReadOnlyList<string>> { [1] = ["Cleanup", "Create"] });
+
+        Assert.Equal(["Cleanup", "Create", "Login"], names.Order());
+        Assert.DoesNotContain("A", names);
+    }
+
+    [Fact]
+    public void The_command_line_json_is_read_per_testcase_and_bad_json_means_nothing_is_reused()
+    {
+        Assert.Equal(["Check"], RerunPlan.Parse("{\"1\":[\"Check\"]}")[1]);
+        Assert.Empty(RerunPlan.Parse("not json"));
+        Assert.Empty(RerunPlan.Parse(null));
+    }
+
+    [Fact]
+    public void Re_running_only_step_2_keeps_the_random_number_step_1_sent_so_the_expected_cell_still_matches()
+    {
+        var memory = new RunValueMemory(new MemoryRunStateStore());
+        memory.BeginRead(reuse: false);
+        string First() { using var _ = Scope("Login"); return memory.GeneratedFor("1|d1|1|qa", "tok", "Login", () => "order-111"); }
+        var original = First();
+        memory.SetRow("1|d1|1|qa", new Dictionary<string, string> { ["x"] = "y" });
+        var store = new MemoryRunStateStore(); store.Save(memory.Export());
+
+        var rerun = new RunValueMemory(store);
+        rerun.ReuseOnly(RerunPlan.StepsToReuse(Model(), new Dictionary<int, IReadOnlyList<string>> { [1] = ["Create"] }));
+        rerun.BeginRead(reuse: true);
+
+        Assert.Equal(original, rerun.GeneratedFor("1|d1|1|qa", "tok", "Login", () => "order-999"));   // step 1 owns the number, only step 2 was ticked
+        static IDisposable Scope(string _) => new NoopScope();
+    }
+
+    private sealed class NoopScope : IDisposable { public void Dispose() { } }
 }
