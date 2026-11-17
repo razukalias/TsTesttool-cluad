@@ -1042,6 +1042,14 @@ public sealed partial class MainWindow
     private void OpenDataEditor()
     {
         if (_selectedInstance is null) { _details.Text = "Select an instance first."; return; }
+        // One editor at a time: a second click brings the open one forward instead of stacking another window.
+        if (_hostWindow is DataEditor.DataEditorWindow { IsVisible: true } open)
+        {
+            open.Activate();
+            if (open.Shell.Instances.FirstOrDefault(n => string.Equals(System.IO.Path.GetFullPath(n.Path), System.IO.Path.GetFullPath(_selectedInstance.WorkbookPath), StringComparison.OrdinalIgnoreCase)) is { } node)
+                open.Shell.SelectedNode = node;
+            return;
+        }
         CreateDataEditor()?.Show(Host);
     }
 
