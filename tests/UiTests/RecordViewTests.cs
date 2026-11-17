@@ -194,3 +194,92 @@ public class RecordViewWindowTests
         window.CaptureRenderedFrame()!.Save(System.IO.Path.Combine(shots, "editor-record-view.png"));
     }
 }
+
+public class RecordToolsTests
+{
+    private static DataEditorViewModel Open(TempDir dir, int rows = 3)
+    {
+        var path = Samples.CreateLarge(dir, rows);
+        Directory.CreateDirectory(dir.Combine("Templates"));
+        File.WriteAllText(System.IO.Path.Combine(dir.Combine("Templates"), "create.json"), "{\"name\":\"_name_\",\"extra\":\"_newField_\",\"again\":\"_newField_\",\"token\":\"_Login.token_\"}");
+        var editor = new DataEditorViewModel(path, "Customers");
+        editor.OpenRecordTabCommand.Execute(null);
+        return editor;
+    }
+
+    [Fact]
+    public void Template_placeholders_without_a_column_are_offered_and_added_as_Step_dot_variable()
+    {
+        using var dir = new TempDir();
+        var editor = Open(dir);
+
+        editor.FindTemplateColumns();
+        Assert.Equal(["CreateCustomer.newField"], editor.TemplateColumns.Select(c => c.Header));   // name has a column, Login.token is a response
+
+        Assert.Equal(1, editor.AddTemplateColumns());
+        Assert.Contains("CreateCustomer.newField", editor.RequestLines.Select(l => l.Title));
+        Assert.True(editor.IsDirty);
+        editor.FindTemplateColumns();
+        Assert.Empty(editor.TemplateColumns);
+    }
+
+    [Fact]
+    public void Copy_to_rows_writes_the_stored_text_into_the_same_column_of_the_other_rows()
+    {
+        using var dir = new TempDir();
+        var editor = Open(dir, rows: 4);
+        var line = editor.RequestLines.Single(l => l.Title == "CreateCustomer.email");
+        line.Add(ValuePart.Random("6"));
+        var column = editor.Columns.First(c => c.Title == "CreateCustomer.email").CellIndex;
+
+        var copied = editor.CopyLineToRows(line, DataEditorViewModel.CopyScope.TestcaseRows);
+
+        Assert.Equal(3, copied);
+        Assert.All(editor.VisibleRows, r => Assert.Equal("customer1@example.test<randomnumber:6>", r.Cells[column]));
+        Assert.Equal(editor.VisibleRows[0], editor.SelectedRow);
+        editor.UndoCommand.Execute(null);   // the copy can be undone
+        Assert.True(editor.VisibleRows.Count(r => r.Cells[column].EndsWith("<randomnumber:6>")) < 4);
+    }
+
+    [Fact]
+    public void Lines_warn_about_missing_columns_unknown_steps_and_steps_that_run_later()
+    {
+        using var dir = new TempDir();
+        var editor = Open(dir);
+        var line = editor.RequestLines.Single(l => l.Title == "CreateCustomer.country");
+        Assert.Empty(line.Warnings);
+
+        line.Add(ValuePart.From("request", "nosuchcolumn"));
+        Assert.Contains(line.Warnings, w => w.Contains("no column nosuchcolumn"));
+        line.SetRaw("<From_response_Ghost.id_r>");
+        Assert.Contains(line.Warnings, w => w.Contains("no step named Ghost"));
+        line.SetRaw("<From_response_CreateCustomer.id_r>");
+        Assert.Contains(line.Warnings, w => w.Contains("runs after this step"));
+        line.SetRaw("<From_request_CreateCustomer.email_r>");
+        Assert.Empty(line.Warnings);
+    }
+}
+
+public class RecordToolsWindowTests
+{
+    [AvaloniaFact]
+    public void The_record_view_shows_warnings_and_has_copy_and_template_buttons()
+    {
+        using var dir = new TempDir();
+        var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 3), "Customers");
+        window.Width = 1440; window.Height = 860;
+        window.Show();
+        var vm = window.ViewModel;
+        vm.OpenRecordTabCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        vm.RequestLines.Single(l => l.Title == "CreateCustomer.country").SetRaw("<From_request_nosuchcolumn_r>");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var view = Assert.IsType<RecordView>(window.FindControl<Border>("RecordHost")!.Child);
+        view.Draw();
+        var all = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Control>().ToList();
+        Assert.Contains(all.OfType<TextBlock>(), t => Equals(t.Tag, "line-warning") && t.IsVisible && t.Text!.Contains("nosuchcolumn"));
+        Assert.True(all.Count(c => Equals(c.Tag, "copy-to-rows")) >= 6);
+        Assert.Single(all, c => Equals(c.Tag, "template-columns"));
+    }
+}

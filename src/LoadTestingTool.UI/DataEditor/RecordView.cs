@@ -36,10 +36,39 @@ public sealed class RecordView : UserControl
     public void Draw()
     {
         _body.Children.Clear();
-        _body.Children.Add(new TextBlock { Text = _editor.RecordTitle, FontSize = 16, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 6) });
+        var head = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+        if (_editor.SelectedRow is not null) head.Children.Add(TemplateColumnsButton());
+        head.Children.Add(new TextBlock { Text = _editor.RecordTitle, FontSize = 16, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        _body.Children.Add(head);
         if (_editor.SelectedRow is null) return;
         Section("REQUEST", _editor.RequestLines);
         Section("EXPECTED RESPONSE", _editor.ExpectedLines);
+    }
+
+    /// <summary>"Add columns from template…": the _variable_ placeholders of the testcase's templates that have no column yet, ticked ones are added.</summary>
+    private Button TemplateColumnsButton()
+    {
+        var button = new Button { Content = "Add columns from template…", Tag = "template-columns", HorizontalAlignment = HorizontalAlignment.Right, MinHeight = 32 };
+        DockPanel.SetDock(button, Dock.Right);
+        ToolTip.SetTip(button, "Lists the _variable_ placeholders in the step templates that have no data column yet; ticked ones are created as Step.variable");
+        var flyout = new Flyout { Placement = PlacementMode.BottomEdgeAlignedRight };
+        var list = new StackPanel { Spacing = 4 };
+        var add = new Button { Content = "Add ticked columns", Classes = { "primary" }, Tag = "template-columns-add" };
+        var empty = new TextBlock { Text = "Every placeholder in the templates already has a column.", Foreground = Brush.Parse("#8EA4BC"), IsVisible = false };
+        add.Click += (_, _) => { flyout.Hide(); _editor.AddTemplateColumns(); };
+        flyout.Content = new StackPanel { Spacing = 8, MinWidth = 320, Children = { list, empty, add } };
+        flyout.Opened += (_, _) =>
+        {
+            _editor.FindTemplateColumns();
+            list.Children.Clear();
+            foreach (var choice in _editor.TemplateColumns)
+                list.Children.Add(new CheckBox { Content = choice.Header, IsChecked = choice.IsChosen, Tag = "template-column", DataContext = choice });
+            foreach (var box in list.Children.OfType<CheckBox>()) box.IsCheckedChanged += (_, _) => ((TemplateColumnChoice)box.DataContext!).IsChosen = box.IsChecked == true;
+            empty.IsVisible = _editor.TemplateColumns.Count == 0;
+            add.IsVisible = _editor.TemplateColumns.Count > 0;
+        };
+        button.Flyout = flyout;
+        return button;
     }
 
     private void Section(string title, IEnumerable<RecordLineViewModel> lines)
@@ -64,6 +93,7 @@ public sealed class RecordLineView : Border
     private readonly DataEditorViewModel _editor;
     private readonly WrapPanel _chips = new() { Orientation = Orientation.Horizontal };
     private readonly TextBlock _raw = new() { FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontSize = 11, Foreground = Brush.Parse("#6F87A3"), TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock _warning = new() { FontSize = 11, Foreground = Brush.Parse("#F6A623"), TextWrapping = TextWrapping.Wrap, Tag = "line-warning" };
     private readonly TextBlock _example = new() { FontSize = 11, Foreground = Brush.Parse("#6F87A3"), TextWrapping = TextWrapping.Wrap };
 
     public RecordLineView(RecordLineViewModel line, DataEditorViewModel editor)
@@ -82,6 +112,7 @@ public sealed class RecordLineView : Border
         right.Children.Add(_chips);
         right.Children.Add(_raw);
         right.Children.Add(_example);
+        right.Children.Add(_warning);
         grid.Children.Add(right);
         Child = grid;
         line.Parts.CollectionChanged += (_, _) => Render();
@@ -102,12 +133,15 @@ public sealed class RecordLineView : Border
         {
             for (var i = 0; i < _line.Parts.Count; i++) _chips.Children.Add(Chip(i));
             _chips.Children.Add(AddButton());
+            _chips.Children.Add(CopyButton());
         }
         var generated = _line.Parts.Any(p => p.Kind != ValuePartKind.Text);
         _raw.Text = _line.Raw.Length == 0 ? "(empty)" : "stored as: " + _line.Raw;
         _raw.IsVisible = generated || _line.Raw.Length == 0 || _line.HasCondition && _line.Raw.StartsWith('{');   // plain text needs no second copy
         _example.Text = generated ? "e.g. " + _line.Example : string.Empty;
         _example.IsVisible = generated;
+        _warning.Text = _line.Warnings.Count == 0 ? string.Empty : "⚠ " + string.Join(" ", _line.Warnings);
+        _warning.IsVisible = _line.Warnings.Count > 0;
     }
 
     private Control Chip(int index)
@@ -156,6 +190,27 @@ public sealed class RecordLineView : Border
     {
         _line.Add(part);
         _line.Move(_line.Parts.Count - 1, index - (_line.Parts.Count - 1));
+    }
+
+    private Control CopyButton()
+    {
+        var copy = new Button { Content = "Copy to rows ▾", Tag = "copy-to-rows", MinHeight = 28, Margin = new Thickness(8, 0, 0, 4), Padding = new Thickness(10, 0) };
+        ToolTip.SetTip(copy, "Write this value into the same column of other rows. A random number, GUID or date still gives every row its own value when the test runs");
+        var flyout = new Flyout { Placement = PlacementMode.BottomEdgeAlignedLeft };
+        Button Item(string text, DataEditorViewModel.CopyScope scope, string tag)
+        {
+            var item = new Button { Content = text, Tag = tag, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left };
+            item.Click += (_, _) => { flyout.Hide(); _editor.CopyLineToRows(_line, scope); };
+            return item;
+        }
+        flyout.Content = new StackPanel { Spacing = 4, MinWidth = 260, Children =
+        {
+            Item("All other rows of this testcase", DataEditorViewModel.CopyScope.TestcaseRows, "copy-testcase"),
+            Item("All rows shown in Table view", DataEditorViewModel.CopyScope.ShownRows, "copy-shown"),
+            Item("All rows of the instance", DataEditorViewModel.CopyScope.AllRowsOfInstance, "copy-instance"),
+        } };
+        copy.Flyout = flyout;
+        return copy;
     }
 
     private Control AddButton()

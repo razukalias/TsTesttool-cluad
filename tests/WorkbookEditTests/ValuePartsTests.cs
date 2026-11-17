@@ -74,3 +74,13 @@ public class ValuePartsTests
         Assert.StartsWith("n-482913-‹From_request_x_r›", example);
     }
 }
+
+public class TemplateVariablesTests
+{
+    [Fact]
+    public void Placeholders_are_found_once_in_order_and_dotted_names_are_responses_not_columns()
+    {
+        var names = TemplateVariables.Find("{\"id\":\"_orderId_\",\"name\":\"_*customerName*_\",\"again\":\"_orderId_\",\"token\":\"_Login.token_\",\"snake\":\"a_b_c\"}");
+        Assert.Equal(["orderId", "customerName", "b"], names);
+    }
+}

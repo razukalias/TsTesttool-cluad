@@ -15,8 +15,12 @@ public sealed partial class RecordLineViewModel : ObservableObject
     private readonly string _headerVerb;
     private bool _writing;
 
-    public RecordLineViewModel(DataRowViewModel row, int cell, string title, bool expected)
+    private readonly Func<IEnumerable<LoadTestingTool.Editing.ValuePart>, string?, List<string>>? _warn;
+
+    public RecordLineViewModel(DataRowViewModel row, int cell, string title, bool expected, Func<IEnumerable<LoadTestingTool.Editing.ValuePart>, string?, List<string>>? warn = null)
     {
+        _warn = warn;
+        FullTitle = title;
         _row = row;
         _cell = cell;
         IsExpected = expected;
@@ -29,7 +33,16 @@ public sealed partial class RecordLineViewModel : ObservableObject
     }
 
     public string Title { get; }
+
+    /// <summary>The header as the grid shows it (with the condition for an expected value).</summary>
+    public string FullTitle { get; }
     public bool IsExpected { get; }
+
+    /// <summary>What looks wrong about the value, in plain words; empty when nothing does.</summary>
+    public IReadOnlyList<string> Warnings { get; private set; } = [];
+
+    /// <summary>The step this column belongs to (the part of the header before the first dot).</summary>
+    public string? Step => Title.Contains('.') ? Title[..Title.IndexOf('.')] : null;
 
     /// <summary>Only expected values on a response path (Step.path) have a condition; other columns hold plain values.</summary>
     public bool HasCondition { get; }
@@ -64,6 +77,8 @@ public sealed partial class RecordLineViewModel : ObservableObject
     private void Refresh()
     {
         Raw = _row.Cells[_cell] ?? string.Empty;
+        Warnings = _warn?.Invoke(Parts, Step) ?? [];
+        OnPropertyChanged(nameof(Warnings));
         Example = ValueParts.Example(Parts);
         OnPropertyChanged(nameof(ShowsValue));
         OnPropertyChanged(nameof(ConditionWords));
