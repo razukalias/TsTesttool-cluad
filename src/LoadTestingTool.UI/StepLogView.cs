@@ -103,6 +103,7 @@ public static class StepLogView
         private readonly string _type;
         private readonly string _environment;
         private readonly bool _http;
+        private bool IsGraphQl => _type.Equals("GRAPHQL", StringComparison.OrdinalIgnoreCase) || _type.Equals("CASEQL", StringComparison.OrdinalIgnoreCase);
 
         public BlockView(string block, string stepType, string environment)
         {
@@ -173,34 +174,35 @@ public static class StepLogView
 
         // ---- Request / input ----
 
+        private static readonly string[] RequestLabels = ["TYPE", "STEP", "ENVIRONMENT", "TARGET", "METHOD", "TEMPLATE", "HEADERS", "DETAILS", "BODY"];
+        private static readonly string[] ResponseLabels = ["STATUS", "HEADERS", "BODY", "ERROR"];
+
+        /// <summary>The heading over the main text a step sends.</summary>
+        private string BodyTitle => _type.ToUpperInvariant() switch
+        {
+            "GRAPHQL" or "CASEQL" => "QUERY",
+            "SQL" => "COMMAND",
+            "SCRIPT" => "CODE",
+            "FILE" => "CONTENT",
+            _ => "BODY",
+        };
+
         public string Input()
         {
-            if (_http)
-            {
-                var sent = Find("REQUEST SENT");
-                if (sent is null) return Missing("The request");
-                var f = Fields(sent, "URL", "METHOD", "HEADERS", "BODY");
-                var text = new StringBuilder();
-                text.AppendLine($"{f.GetValueOrDefault("METHOD", "?")}  {f.GetValueOrDefault("URL")}");
-                AppendHeaders(text, f.GetValueOrDefault("HEADERS"));
-                AppendSection(text, "BODY", Pretty(f.GetValueOrDefault("BODY") ?? string.Empty), "(no body)");
-                return text.ToString().TrimEnd();
-            }
             var request = Find("STEP REQUEST");
-            if (request is null) return Missing("The step input");
-            var r = Fields(request, "TYPE", "STEP", "ENVIRONMENT", "CONFIGURED URL", "RESOLVED URL", "TEMPLATE", "REQUEST", "METADATA");
+            if (request is null) return Missing("The request");
+            var f = Fields(request, RequestLabels);
             var sb = new StringBuilder();
-            AppendPair(sb, "Configured", r.GetValueOrDefault("CONFIGURED URL"));
-            AppendPair(sb, "Resolved", r.GetValueOrDefault("RESOLVED URL"));
-            AppendPair(sb, "Template", r.GetValueOrDefault("TEMPLATE"));
-            AppendSection(sb, "REQUEST", Pretty(r.GetValueOrDefault("REQUEST") ?? string.Empty), "(empty)");
-            AppendSection(sb, "STEP SETTINGS", r.GetValueOrDefault("METADATA") ?? string.Empty, "(none)");
-            if (Find("STEP EXECUTED INPUT") is { } executed)
-            {
-                var payload = Fields(executed, "TYPE", "PAYLOAD", "STATUS", "REQUEST PAYLOAD", "RESPONSE PAYLOAD", "ERROR").GetValueOrDefault("PAYLOAD");
-                if (!string.IsNullOrWhiteSpace(payload) && payload.Trim() != (r.GetValueOrDefault("REQUEST") ?? string.Empty).Trim())
-                    AppendSection(sb, "AS EXECUTED", Pretty(payload), string.Empty);
-            }
+            var method = f.GetValueOrDefault("METHOD");
+            var target = f.GetValueOrDefault("TARGET");
+            if (!string.IsNullOrWhiteSpace(method) || !string.IsNullOrWhiteSpace(target)) sb.AppendLine($"{method?.Trim()}  {target?.Trim()}".Trim());
+            AppendPair(sb, "Template", f.GetValueOrDefault("TEMPLATE"));
+            AppendHeaders(sb, f.GetValueOrDefault("HEADERS"), alwaysShow: _http);
+            var details = DetailLines(f.GetValueOrDefault("DETAILS"));
+            foreach (var (key, value) in details.Where(d => !IsStructured(d.Value) && !d.Key.Equals("stepConfig", StringComparison.OrdinalIgnoreCase))) AppendPair(sb, key, value);
+            foreach (var (key, value) in details.Where(d => IsStructured(d.Value) && !d.Key.Equals("stepConfig", StringComparison.OrdinalIgnoreCase))) AppendSection(sb, key.ToUpperInvariant(), Pretty(value), "(none)");
+            AppendSection(sb, BodyTitle, Pretty(f.GetValueOrDefault("BODY") ?? string.Empty), _http ? "(no body)" : "(empty)");
+            foreach (var (key, value) in details.Where(d => d.Key.Equals("stepConfig", StringComparison.OrdinalIgnoreCase))) AppendSection(sb, "STEP SETTINGS", Pretty(value), "(none)");
             return sb.ToString().TrimEnd();
         }
 
@@ -208,40 +210,36 @@ public static class StepLogView
 
         public string Output()
         {
+            var response = Find("STEP RESPONSE");
+            if (response is null) return Missing("The response");
+            var f = Fields(response, ResponseLabels);
             var sb = new StringBuilder();
-            if (_http)
-            {
-                var received = Find("RESPONSE RECEIVED");
-                if (received is null) return Missing("The response");
-                var f = Fields(received, "STATUS", "HEADERS", "BODY");
-                sb.AppendLine($"Status  {f.GetValueOrDefault("STATUS")}");
-                AppendHeaders(sb, f.GetValueOrDefault("HEADERS"));
-                AppendSection(sb, "BODY", Pretty(f.GetValueOrDefault("BODY") ?? string.Empty), "(no body)");
-                return sb.ToString().TrimEnd();
-            }
-            var executed = Find("STEP EXECUTED INPUT");
-            if (executed is null) return Missing("The step output");
-            var e = Fields(executed, "TYPE", "PAYLOAD", "STATUS", "REQUEST PAYLOAD", "RESPONSE PAYLOAD", "ERROR");
-            if (e.TryGetValue("STATUS", out var status)) sb.AppendLine($"Status  {status}");
-            if (e.TryGetValue("ERROR", out var error) && !string.IsNullOrWhiteSpace(error)) sb.AppendLine($"✗ {error.Trim()}");
-            AppendSection(sb, "RESPONSE", Pretty(e.GetValueOrDefault("RESPONSE PAYLOAD") ?? string.Empty), "(empty)");
+            AppendPair(sb, "Status", f.GetValueOrDefault("STATUS"));
+            if (f.TryGetValue("ERROR", out var error) && !string.IsNullOrWhiteSpace(error)) sb.AppendLine($"✗ {error.Trim()}");
+            if (!string.IsNullOrWhiteSpace(f.GetValueOrDefault("HEADERS"))) AppendHeaders(sb, f.GetValueOrDefault("HEADERS"), alwaysShow: false);
+            var body = f.GetValueOrDefault("BODY") ?? string.Empty;
+            if (_type.Equals("SQL", StringComparison.OrdinalIgnoreCase) && Table(body) is { } table) AppendSection(sb, $"ROWS ({table.Count})", table.Text, "(no rows)");
+            else AppendSection(sb, _http ? "BODY" : "RESULT", Pretty(body), "(empty)");
+            if (IsGraphQl && GraphQlErrors(body) is { Length: > 0 } graphQl) AppendSection(sb, "GRAPHQL ERRORS", graphQl, string.Empty);
             return sb.ToString().TrimEnd();
         }
+
+        private string? ResponseBody() => Find("STEP RESPONSE") is { } r ? Fields(r, ResponseLabels).GetValueOrDefault("BODY") : null;
 
         // ---- Template and variables ----
 
         private Dictionary<string, string>? Resolution()
         {
             var entry = Find("STEP RESOLUTION");
-            return entry is null ? null : Fields(entry, "STEP TYPE", "ORIGINAL URL", "RESOLVED URL", "ORIGINAL TARGET", "RESOLVED TARGET", "ORIGINAL TEMPLATE", "RESOLVED TEMPLATE", "VARIABLES");
+            return entry is null ? null : Fields(entry, "STEP TYPE", "ORIGINAL TARGET", "RESOLVED TARGET", "ORIGINAL TEMPLATE", "RESOLVED TEMPLATE", "VARIABLES");
         }
 
         public string Template()
         {
             if (Resolution() is not { } f) return Missing("The template");
             var sb = new StringBuilder();
-            AppendPair(sb, "Configured", f.GetValueOrDefault("ORIGINAL URL") ?? f.GetValueOrDefault("ORIGINAL TARGET"));
-            AppendPair(sb, "Resolved", f.GetValueOrDefault("RESOLVED URL") ?? f.GetValueOrDefault("RESOLVED TARGET"));
+            AppendPair(sb, "Configured", f.GetValueOrDefault("ORIGINAL TARGET"));
+            AppendPair(sb, "Resolved", f.GetValueOrDefault("RESOLVED TARGET"));
             AppendSection(sb, "TEMPLATE AS WRITTEN", f.GetValueOrDefault("ORIGINAL TEMPLATE") ?? string.Empty, "(this step uses no template)");
             AppendSection(sb, "TEMPLATE WITH VALUES FILLED IN", Pretty(f.GetValueOrDefault("RESOLVED TEMPLATE") ?? string.Empty), "(this step uses no template)");
             return sb.ToString().TrimEnd();
@@ -284,9 +282,10 @@ public static class StepLogView
 
         public string Errors()
         {
-            var problems = _entries.Where(e => e.Level is "ERROR" or "WARN").ToList();
+            var problems = _entries.Where(e => e.Level is "ERROR" or "WARN").Select(FormatEntry).ToList();
+            if (IsGraphQl && GraphQlErrors(ResponseBody() ?? string.Empty) is { Length: > 0 } graphQl) problems.Add("The response carries GraphQL errors:" + Environment.NewLine + graphQl);
             if (problems.Count == 0) return "No errors or warnings were recorded for this step.";
-            return string.Join(Environment.NewLine + Environment.NewLine, problems.Select(FormatEntry));
+            return string.Join(Environment.NewLine + Environment.NewLine, problems);
         }
 
         public string CleanLog() => string.Join(Environment.NewLine, _entries.Select(e => FormatEntry(e) + (e.Lines.Count > 1 ? Environment.NewLine : string.Empty)));
@@ -314,11 +313,64 @@ public static class StepLogView
         sb.AppendLine(string.IsNullOrWhiteSpace(body) ? whenEmpty : body.TrimEnd());
     }
 
-    private static void AppendHeaders(StringBuilder sb, string? headers)
+    private static void AppendHeaders(StringBuilder sb, string? headers, bool alwaysShow)
     {
-        if (string.IsNullOrWhiteSpace(headers)) { AppendSection(sb, "HEADERS", string.Empty, "(none)"); return; }
+        if (string.IsNullOrWhiteSpace(headers)) { if (alwaysShow) AppendSection(sb, "HEADERS", string.Empty, "(none)"); return; }
         var pairs = KeyValues(headers.Replace("\r", string.Empty).Replace("\n", "; "));
         AppendSection(sb, "HEADERS", string.Join(Environment.NewLine, pairs.Select(p => $"{p.Key}: {p.Value}")), "(none)");
+    }
+
+    /// <summary>The DETAILS lines of a step request, <c>name=value</c> each.</summary>
+    private static List<KeyValuePair<string, string>> DetailLines(string? details)
+        => (details ?? string.Empty).Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0 && l != "(none)")
+            .Select(l => l.IndexOf('=') is var i and > 0 ? new KeyValuePair<string, string>(l[..i], l[(i + 1)..]) : new KeyValuePair<string, string>("note", l)).ToList();
+
+    private static bool IsStructured(string value) => value.TrimStart() is { Length: > 1 } t && (t[0] == '{' || t[0] == '[');
+
+    /// <summary>SQL rows (a JSON array of flat objects) as an aligned table; null when the text is not that.</summary>
+    internal static (string Text, int Count)? Table(string json)
+    {
+        const int MaxRows = 200, MaxWidth = 40;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Array) return null;
+            var rows = document.RootElement.EnumerateArray().ToList();
+            if (rows.Count == 0 || rows.Any(r => r.ValueKind != JsonValueKind.Object)) return null;
+            var columns = rows.SelectMany(r => r.EnumerateObject().Select(p => p.Name)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            static string Cell(JsonElement row, string column)
+            {
+                foreach (var property in row.EnumerateObject())
+                    if (property.Name.Equals(column, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var text = property.Value.ValueKind == JsonValueKind.String ? property.Value.GetString() ?? string.Empty : property.Value.ValueKind == JsonValueKind.Null ? "NULL" : property.Value.GetRawText();
+                        text = text.Replace('\n', ' ').Replace('\r', ' ');
+                        return text.Length > MaxWidth ? text[..(MaxWidth - 1)] + "…" : text;
+                    }
+                return string.Empty;
+            }
+            var shown = rows.Take(MaxRows).ToList();
+            var widths = columns.Select(c => Math.Max(c.Length, shown.Max(r => Cell(r, c).Length))).ToList();
+            var sb = new StringBuilder();
+            sb.AppendLine(string.Join("  ", columns.Select((c, i) => c.PadRight(widths[i]))).TrimEnd());
+            sb.AppendLine(string.Join("  ", widths.Select(w => new string('─', w))));
+            foreach (var row in shown) sb.AppendLine(string.Join("  ", columns.Select((c, i) => Cell(row, c).PadRight(widths[i]))).TrimEnd());
+            if (rows.Count > shown.Count) sb.AppendLine($"… {rows.Count - shown.Count} more rows (see Raw log)");
+            return (sb.ToString().TrimEnd(), rows.Count);
+        }
+        catch (JsonException) { return null; }
+    }
+
+    /// <summary>The messages of a GraphQL response's "errors" array, one per line; empty when there are none.</summary>
+    internal static string GraphQlErrors(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object || !document.RootElement.TryGetProperty("errors", out var errors) || errors.ValueKind != JsonValueKind.Array) return string.Empty;
+            return string.Join(Environment.NewLine, errors.EnumerateArray().Select(e => "✗ " + (e.ValueKind == JsonValueKind.Object && e.TryGetProperty("message", out var message) ? message.ToString() : e.ToString())));
+        }
+        catch (JsonException) { return string.Empty; }
     }
 
     /// <summary>JSON and XML are shown indented; anything else is left exactly as logged.</summary>

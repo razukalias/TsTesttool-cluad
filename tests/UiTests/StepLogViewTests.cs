@@ -31,22 +31,21 @@ public class StepLogViewTests
         "TYPE: File",
         "STEP: ReadBinary",
         "ENVIRONMENT: staging",
-        "CONFIGURED URL: ",
-        "RESOLVED URL: ",
+        "TARGET: ",
+        "METHOD: readbinary",
         "TEMPLATE: read.json",
-        "REQUEST:",
-        "{\"path\":\"upload.bin\"}",
-        "METADATA:",
-        "{\"action\":\"read\"}",
-        P + "STEP EXECUTED INPUT [STEP-00000001]",
-        "TYPE: File",
-        "PAYLOAD:",
-        "read upload.bin",
-        "STEP RESPONSE [STEP-00000001]",
+        "HEADERS:",
+        "",
+        "DETAILS:",
+        "path=C:\\x\\upload.bin",
+        "stepConfig={\"action\":\"read\"}",
+        "BODY:",
+        "[binary content omitted]",
+        P + "STEP RESPONSE [STEP-00000001]",
         "STATUS: 200",
-        "REQUEST PAYLOAD:",
-        "read upload.bin",
-        "RESPONSE PAYLOAD:",
+        "HEADERS:",
+        "",
+        "BODY:",
         "{\"size\":5,\"sha256\":\"abc\"}",
         P + "STEP COMPLETED [STEP-00000001] testcase=1; testcaseName=BinaryCopyFlow; dataid=B1; stepName=ReadBinary; stepType=file; result=PASS; status=200; durationMs=2");
 
@@ -54,8 +53,9 @@ public class StepLogViewTests
         P + "---- STEP 1: Create | type=HTTP | dataid=D1 | iteration=1 ----",
         P + "Request starting. RequestId=REQ-00000007; testcase=1; dataid=D1; stepName=Create; thread=1; iteration=1; verb=POST; url=http://h/<x>; template=C:\\t\\c.json; ignoreempty=False",
         P + "STEP RESOLUTION [REQ-00000007]",
-        "ORIGINAL URL: http://h/_id_",
-        "RESOLVED URL: http://h/42",
+        "STEP TYPE: HTTP",
+        "ORIGINAL TARGET: http://h/_id_",
+        "RESOLVED TARGET: http://h/42",
         "ORIGINAL TEMPLATE:",
         "{\"title\":\"_title_\"}",
         "RESOLVED TEMPLATE:",
@@ -63,14 +63,20 @@ public class StepLogViewTests
         "VARIABLES:",
         "id=42",
         "title=hello",
-        P + "REQUEST SENT [REQ-00000007]",
-        "URL: http://h/42",
+        P + "STEP REQUEST [REQ-00000007]",
+        "TYPE: HTTP",
+        "STEP: Create",
+        "ENVIRONMENT: staging",
+        "TARGET: http://h/42",
         "METHOD: POST",
+        "TEMPLATE: c.json",
         "HEADERS:",
         "Accept=application/json; X-Trace=a; b",
+        "DETAILS:",
+        "contentType=json",
         "BODY:",
         "{\"title\":\"hello\"}",
-        P + "RESPONSE RECEIVED [REQ-00000007]",
+        P + "STEP RESPONSE [REQ-00000007]",
         "STATUS: 500",
         "HEADERS:",
         "Content-Type=application/json",
@@ -100,15 +106,17 @@ public class StepLogViewTests
         Assert.Contains("STEP-00000001", overview);
 
         var operation = Text(sections, "Operation");
+        Assert.Contains("readbinary", operation);
         Assert.Contains("Template    read.json", operation);
-        Assert.Contains("── REQUEST ──", operation);
-        Assert.Contains("\"path\": \"upload.bin\"", operation);      // JSON is indented
+        Assert.Contains("path        C:\\x\\upload.bin", operation);
+        Assert.Contains("── CONTENT ──", operation);
         Assert.Contains("── STEP SETTINGS ──", operation);
+        Assert.Contains("\"action\": \"read\"", operation);                 // JSON is indented
 
         var result = Text(sections, "Result");
-        Assert.Contains("Status  200", result);
+        Assert.Contains("Status      200", result);
         Assert.Contains("\"sha256\": \"abc\"", result);
-        Assert.DoesNotContain("read upload.bin", result);              // the input is not mixed into the output
+        Assert.DoesNotContain("[binary content omitted]", result);       // the input is not mixed into the output
 
         var variables = Text(sections, "Variables");
         Assert.Contains("env       ", variables);
@@ -135,10 +143,11 @@ public class StepLogViewTests
         Assert.Contains("Accept: application/json", request);
         Assert.Contains("X-Trace: a; b", request);                    // a ';' inside a header value stays in that header
         Assert.Contains("\"title\": \"hello\"", request);
+        Assert.Contains("contentType", request);
         Assert.DoesNotContain("boom", request);
 
         var response = Text(sections, "Response");
-        Assert.Contains("Status  500", response);
+        Assert.Contains("Status      500", response);
         Assert.Contains("\"error\": \"boom\"", response);
         Assert.DoesNotContain("hello", response);
 
@@ -157,6 +166,61 @@ public class StepLogViewTests
         Assert.Contains("FAIL   (status 500, 31 ms)", overview);
         Assert.Contains("Unexpected HTTP status 500; retry later", overview);   // a ';' inside the error text is kept
         Assert.Contains("1 passed, 1 failed", overview);
+    }
+
+    private static string Step(string type, string request, string response, string extra = "") => string.Join('\n',
+        P + $"---- STEP 1: S | type={type} | dataid=R1 | iteration=1 ----",
+        P + "STEP REQUEST [STEP-00000002]",
+        $"TYPE: {type}", "STEP: S", "ENVIRONMENT: staging", request,
+        P + "STEP RESPONSE [STEP-00000002]", response,
+        P + $"STEP COMPLETED [STEP-00000002] testcase=1; testcaseName=T; dataid=R1; stepName=S; stepType={type}; result=PASS; status=200; durationMs=5" + extra);
+
+    [Fact]
+    public void A_graphql_step_shows_the_query_as_text_with_its_variables_and_lists_response_errors()
+    {
+        var log = Step("GraphQL",
+            "TARGET: http://h/graphql\nMETHOD: POST\nTEMPLATE: \nHEADERS:\nAuthorization=Bearer x\nDETAILS:\nvariables={\"id\":7}\noperationName=GetUser\nBODY:\nquery GetUser($id: ID!) {\n  user(id: $id) { name }\n}",
+            "STATUS: 200\nHEADERS:\n\nBODY:\n{\"data\":null,\"errors\":[{\"message\":\"User not found\"}]}");
+        var sections = StepLogView.Build([log], "GraphQL", "staging");
+
+        var query = Text(sections, "Query");
+        Assert.Contains("POST  http://h/graphql", query);
+        Assert.Contains("operationName", query);
+        Assert.Contains("── VARIABLES ──", query);
+        Assert.Contains("\"id\": 7", query);
+        Assert.Contains("── QUERY ──\nquery GetUser($id: ID!) {\n  user(id: $id) { name }\n}", query.Replace("\r\n", "\n"));
+        Assert.Contains("── GRAPHQL ERRORS ──", Text(sections, "Response"));
+        Assert.Contains("✗ User not found", Text(sections, "Errors"));
+    }
+
+    [Fact]
+    public void A_sql_step_shows_command_and_parameters_and_the_rows_as_a_table()
+    {
+        var log = Step("SQL",
+            "TARGET: \nMETHOD: Text\nTEMPLATE: \nHEADERS:\n\nDETAILS:\nconnection=main\nparameters={\"id\":7}\nBODY:\nselect id, name from users where id = @id",
+            "STATUS: 200\nHEADERS:\n\nBODY:\n[{\"id\":7,\"name\":\"Ann\"},{\"id\":8,\"name\":null}]");
+        var sections = StepLogView.Build([log], "SQL", "staging");
+
+        var query = Text(sections, "Query");
+        Assert.Contains("connection  main", query);
+        Assert.Contains("── PARAMETERS ──", query);
+        Assert.Contains("── COMMAND ──\nselect id, name from users where id = @id", query.Replace("\r\n", "\n"));
+
+        var rows = Text(sections, "Result").Replace("\r\n", "\n");
+        Assert.Contains("── ROWS (2) ──", rows);
+        Assert.Contains("id  name", rows);
+        Assert.Contains("7   Ann", rows);
+        Assert.Contains("8   NULL", rows);
+    }
+
+    [Fact]
+    public void A_script_step_shows_its_code_and_return_value()
+    {
+        var log = Step("Script", "TARGET: \nMETHOD: C# script\nTEMPLATE: \nHEADERS:\n\nDETAILS:\n(none)\nBODY:\nreturn 1 + 1;", "STATUS: 200\nHEADERS:\n\nBODY:\n2");
+        var sections = StepLogView.Build([log], "Script", "staging");
+
+        Assert.Contains("── CODE ──\nreturn 1 + 1;", Text(sections, "Script").Replace("\r\n", "\n"));
+        Assert.Contains("── RESULT ──\n2", Text(sections, "Output").Replace("\r\n", "\n"));
     }
 
     [Fact]

@@ -31,6 +31,10 @@ public sealed class GraphQlStepExecutor : IStepExecutor
             var variables = options.Variables.ToDictionary(x => x.Key, x => ContextValue(x.Value, request.Context), StringComparer.OrdinalIgnoreCase);
             var payload = new Dictionary<string, object?> { ["query"] = query, ["variables"] = variables };
             if (!string.IsNullOrWhiteSpace(options.OperationName)) payload["operationName"] = request.Context.Resolve(options.OperationName);
+            result.LogMethod = "POST";
+            result.LogBody = query;
+            result.LogDetails["variables"] = JsonSerializer.Serialize(variables);
+            if (payload.TryGetValue("operationName", out var operationName)) result.LogDetails["operationName"] = operationName?.ToString() ?? string.Empty;
             var url = request.Context.ResolveUrl(request.Step.TargetUrl);
             using var message = new HttpRequestMessage(HttpMethod.Post, url) { Content = new StringContent(JsonSerializer.Serialize(payload, ReadableJsonOptions), Encoding.UTF8, "application/json") };
             foreach (var header in request.Step.Headers) message.Headers.TryAddWithoutValidation(header.Key, request.Context.Resolve(header.Value));
@@ -128,6 +132,9 @@ public sealed class FileStepExecutor : IStepExecutor
             var action = options.Action.Trim().ToLowerInvariant();
             var binaryAction = action is "readbinary" or "writebinary" or "appendbinary";
             result.RequestText = JsonSerializer.Serialize(new { action = options.Action, path, content = binaryAction ? "[binary content omitted]" : options.Content is null ? null : request.Context.Resolve(options.Content) });
+            result.LogMethod = options.Action;
+            result.LogBody = binaryAction ? "[binary content omitted]" : options.Content is null ? string.Empty : request.Context.Resolve(options.Content);
+            result.LogDetails["path"] = path;
             switch (action)
             {
                 case "read":

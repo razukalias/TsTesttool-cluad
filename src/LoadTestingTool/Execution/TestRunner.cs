@@ -281,7 +281,7 @@ public sealed class TestRunner
             var streamedTemplate = PrepareStreamingBinaryTemplate(resolvedTemplate, result.ContentType, variables, executionContext);
             var body = streamedTemplate is null ? TemplateRenderer.Render(resolvedTemplate, result.ContentType, variables) : string.Empty;
             var resolvedTemplateForLog = streamedTemplate is null ? body : resolvedTemplate;
-            _logger.Info($"STEP RESOLUTION [{requestId}]\nORIGINAL URL: {step.TargetUrl}\nRESOLVED URL: {result.TargetUrl}\nORIGINAL TEMPLATE:\n{originalTemplate}\nRESOLVED TEMPLATE:\n{InternalLogger.RedactVariableValues(resolvedTemplateForLog, redactedVariables, variables)}\nVARIABLES:\n{FormatVariables(variables, redactedVariables)}");
+            _logger.Info($"STEP RESOLUTION [{requestId}]\nSTEP TYPE: HTTP\nORIGINAL TARGET: {step.TargetUrl}\nRESOLVED TARGET: {result.TargetUrl}\nORIGINAL TEMPLATE:\n{originalTemplate}\nRESOLVED TEMPLATE:\n{InternalLogger.RedactVariableValues(resolvedTemplateForLog, redactedVariables, variables)}\nVARIABLES:\n{FormatVariables(variables, redactedVariables)}");
             using var request = new HttpRequestMessage(new HttpMethod(step.Verb), result.TargetUrl);
             var binaryBody = ResolveBinaryHttpBody(step, executionContext);
             if (result.ContentType.Equals("multipart/form-data", StringComparison.OrdinalIgnoreCase))
@@ -313,11 +313,11 @@ public sealed class TestRunner
                 resolvedHeaders[header.Key] = Substitute(value, variables);
             }
             result.RequestHeaders = InternalLogger.RedactVariableValues(string.Join("; ", resolvedHeaders.Select(h => $"{h.Key}={h.Value}")), redactedVariables, variables); foreach (var h in resolvedHeaders) if (!h.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase) && !request.Headers.TryAddWithoutValidation(h.Key, h.Value)) request.Content?.Headers.TryAddWithoutValidation(h.Key, h.Value);
-            _logger.Info($"REQUEST SENT [{requestId}]\nURL: {result.TargetUrl}\nMETHOD: {step.Verb}\nHEADERS:\n{result.RequestHeaders}\nBODY:\n{result.RequestBody}");
+            _logger.Info($"STEP REQUEST [{requestId}]\nTYPE: HTTP\nSTEP: {step.StepName}\nENVIRONMENT: {environment}\nTARGET: {result.TargetUrl}\nMETHOD: {step.Verb}\nTEMPLATE: {step.TemplateSource}\nHEADERS:\n{result.RequestHeaders}\nDETAILS:\ncontentType={result.ContentType}\nBODY:\n{result.RequestBody}");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); timeout.CancelAfter(TimeSpan.FromSeconds(step.TimeoutSeconds > 0 ? step.TimeoutSeconds : _timeoutSeconds)); using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseContentRead, timeout.Token);
             result.HttpStatus = (int)response.StatusCode; result.ResponseHeaders = string.Join("; ", response.Headers.Concat(response.Content.Headers).Select(h => $"{h.Key}={string.Join(",", h.Value)}")); result.ResponseBody = await response.Content.ReadAsStringAsync(timeout.Token);
             PublishResponseValues(step.StepName, result.ResponseBody, result.ContentType, correlation);
-            _logger.Info($"RESPONSE RECEIVED [{requestId}]\nSTATUS: {result.HttpStatus}\nHEADERS:\n{result.ResponseHeaders}\nBODY:\n{result.ResponseBody}");
+            _logger.Info($"STEP RESPONSE [{requestId}]\nSTATUS: {result.HttpStatus}\nHEADERS:\n{result.ResponseHeaders}\nBODY:\n{result.ResponseBody}");
             if (step.AssertEnabled)
             {
                 var resolvedDefinitions = await ResolveAssertionReferencesAsync(definitions, correlation, requestReferences, executionContext, cancellationToken);
@@ -385,12 +385,13 @@ public sealed class TestRunner
                 templateText = TemplateRenderer.Render(templateText, result.ContentType, variables);
             }
             _logger.Info($"STEP RESOLUTION [{requestId}]\nSTEP TYPE: {step.StepType.WireName()}\nORIGINAL TARGET: {step.TargetUrl}\nRESOLVED TARGET: {result.TargetUrl}\nORIGINAL TEMPLATE:\n{originalTemplate}\nRESOLVED TEMPLATE:\n{InternalLogger.RedactVariableValues(templateText, redactedVariables, variables)}\nVARIABLES:\n{FormatVariables(variables, redactedVariables)}");
-            _logger.Info($"STEP REQUEST [{requestId}]\nTYPE: {step.StepType.WireName()}\nSTEP: {step.StepName}\nENVIRONMENT: {environment}\nCONFIGURED URL: {GeneratedTokens.ToDisplay(step.TargetUrl)}\nRESOLVED URL: {result.TargetUrl}\nTEMPLATE: {step.TemplateSource}\nREQUEST:\n{InternalLogger.RedactVariableValues(templateText, redactedVariables, variables)}\nMETADATA:\n{step.StepConfig}");
             var execution = await _pipeline.ExecuteAsync(new StepExecutionRequest { Step = step, Context = context, WorkspaceRoot = _features.WorkspaceRoot, TemplateText = templateText, CancellationToken = timeout.Token });
             StepExecutionResultMapper.PublishOutputs(execution, context);
             result.RequestBody = InternalLogger.RedactVariableValues(execution.RequestText, redactedVariables, variables); result.ResponseBody = execution.ResponseText; result.HttpStatus = execution.StatusCode == 0 && execution.Succeeded ? 200 : execution.StatusCode; result.ErrorMessage = execution.ErrorMessage;
             PublishResponseValues(step.StepName, result.ResponseBody, "json", correlation);
-            _logger.Info($"STEP EXECUTED INPUT [{requestId}]\nTYPE: {step.StepType.WireName()}\nPAYLOAD:\n{result.RequestBody}\nSTEP RESPONSE [{requestId}]\nSTATUS: {result.HttpStatus}\nREQUEST PAYLOAD:\n{result.RequestBody}\nRESPONSE PAYLOAD:\n{execution.ResponseText}{OptionalErrorLine(execution.ErrorMessage)}");
+            var shownBody = InternalLogger.RedactVariableValues(string.IsNullOrEmpty(execution.LogBody) ? templateText : execution.LogBody, redactedVariables, variables);
+            _logger.Info($"STEP REQUEST [{requestId}]\nTYPE: {step.StepType.WireName()}\nSTEP: {step.StepName}\nENVIRONMENT: {environment}\nTARGET: {result.TargetUrl}\nMETHOD: {execution.LogMethod}\nTEMPLATE: {step.TemplateSource}\nHEADERS:\n{string.Join("; ", step.Headers.Select(h => $"{h.Key}={h.Value}"))}\nDETAILS:\n{FormatDetails(execution.LogDetails, step.StepConfig)}\nBODY:\n{shownBody}");
+            _logger.Info($"STEP RESPONSE [{requestId}]\nSTATUS: {result.HttpStatus}\nHEADERS:\n\nBODY:\n{execution.ResponseText}{OptionalErrorLine(execution.ErrorMessage)}");
             if (!execution.Succeeded || !string.IsNullOrWhiteSpace(execution.ErrorMessage))
                 _logger.Error($"STEP EXECUTION FAILURE [{requestId}] testcase={testcase.TestcaseIndex}; testcaseName={testcase.Testcase}; dataid={dataId}; stepName={step.StepName}; stepType={step.StepType.WireName()}; template={templatePath}; templateExists={(!string.IsNullOrWhiteSpace(templatePath) && File.Exists(templatePath))}; targetUrl={step.TargetUrl}; status={result.HttpStatus}; error={execution.ErrorMessage}");
             foreach (var output in execution.Outputs) { var text = output.Value is string s ? s : JsonSerializer.Serialize(output.Value); var record = new CorrelationRecord { DataId = dataId, SourceStepName = step.StepName, ResponsePath = output.Key, Variable = output.Key, ExtractedValue = text }; correlation[output.Key] = text; correlationSources[output.Key] = record; result.Correlations.Add(record); }
@@ -435,6 +436,15 @@ public sealed class TestRunner
 
     private static string OptionalError(string? error) => string.IsNullOrWhiteSpace(error) ? string.Empty : $"; error={error}";
     private static string OptionalErrorLine(string? error) => string.IsNullOrWhiteSpace(error) ? string.Empty : $"\nERROR: {error}";
+    /// <summary>The log's DETAILS lines: <c>name=value</c>, each on one line, with the step's own settings last.</summary>
+    private static string FormatDetails(IReadOnlyDictionary<string, string> details, string? stepConfig)
+    {
+        static string OneLine(string? text) => System.Text.RegularExpressions.Regex.Replace(text ?? string.Empty, @"\s*\r?\n\s*", " ").Trim();
+        var lines = details.Select(d => $"{d.Key}={OneLine(d.Value)}").ToList();
+        if (!string.IsNullOrWhiteSpace(stepConfig)) lines.Add($"stepConfig={OneLine(stepConfig)}");
+        return lines.Count == 0 ? "(none)" : string.Join("\n", lines);
+    }
+
     private static string FormatVariables(IReadOnlyDictionary<string, string> variables, IReadOnlySet<string> redactedVariables)
     {
         if (variables.Count == 0) return "(none)";

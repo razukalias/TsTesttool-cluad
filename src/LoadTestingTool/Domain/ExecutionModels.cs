@@ -74,6 +74,15 @@ public sealed class StepResult
     public string RequestText { get; set; } = string.Empty;
     public string ResponseText { get; set; } = string.Empty;
     public string ErrorMessage { get; set; } = string.Empty;
+
+    /// <summary>For the log: the verb or action the step performed (POST, StoredProc, readbinary, ...).</summary>
+    public string LogMethod { get; set; } = string.Empty;
+
+    /// <summary>For the log: the main text the step sent (GraphQL query, SQL command, script code, file content).</summary>
+    public string LogBody { get; set; } = string.Empty;
+
+    /// <summary>For the log: the other things the step used, by name (GraphQL variables, SQL parameters, file path). Values are single-line text.</summary>
+    public Dictionary<string, string> LogDetails { get; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, object?> Outputs { get; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, string> Metadata { get; } = new(StringComparer.OrdinalIgnoreCase);
 }

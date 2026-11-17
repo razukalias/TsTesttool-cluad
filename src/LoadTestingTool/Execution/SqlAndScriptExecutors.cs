@@ -31,11 +31,18 @@ public sealed class SqlStepExecutor : IStepExecutor
             await using var command = connection.CreateCommand();
             command.CommandText = commandText;
             command.CommandType = options.CommandType.Equals("StoredProc", StringComparison.OrdinalIgnoreCase) || options.CommandType.Equals("StoredProcedure", StringComparison.OrdinalIgnoreCase) ? System.Data.CommandType.StoredProcedure : System.Data.CommandType.Text;
+            var loggedParameters = new Dictionary<string, object?>();
             foreach (var parameter in options.Parameters)
             {
-                var sqlParameter = command.Parameters.AddWithValue(parameter.Key.StartsWith("@", StringComparison.Ordinal) ? parameter.Key : "@" + parameter.Key, Resolve(parameter.Value, request.Context) ?? DBNull.Value);
+                var value = Resolve(parameter.Value, request.Context);
+                loggedParameters[parameter.Key] = value;
+                var sqlParameter = command.Parameters.AddWithValue(parameter.Key.StartsWith("@", StringComparison.Ordinal) ? parameter.Key : "@" + parameter.Key, value ?? DBNull.Value);
                 _ = sqlParameter;
             }
+            result.LogMethod = options.CommandType;
+            result.LogBody = commandText;
+            result.LogDetails["connection"] = options.ConnectionProfile;
+            result.LogDetails["parameters"] = JsonSerializer.Serialize(loggedParameters);
             await using var reader = await command.ExecuteReaderAsync(request.CancellationToken);
             var rows = new List<Dictionary<string, object?>>();
             while (await reader.ReadAsync(request.CancellationToken))
@@ -77,6 +84,8 @@ public sealed class CSharpScriptStepExecutor : IStepExecutor
             if (!string.IsNullOrWhiteSpace(options.Source)) code = await File.ReadAllTextAsync(WorkspaceGuard.Resolve(request.WorkspaceRoot, options.Source), request.CancellationToken);
             if (string.IsNullOrWhiteSpace(code)) throw new InvalidDataException("Script requires Inline or Source.");
             result.RequestText = code;
+            result.LogMethod = "C# script";
+            result.LogBody = code;
             var scriptCode = ExpandRuntimePlaceholders(code);
             var runtime = new ScriptRuntime(request.Context, null);
             request.Context.TryGet("data", out var previousData);
