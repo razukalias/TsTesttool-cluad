@@ -174,7 +174,6 @@ public sealed partial class MainWindow : Window
     private readonly ComboBox _overviewStepTestcase = new() { Width = 190 };
     private readonly TextBox _overviewStepFilter = new() { Width = 280, Watermark = "Filter steps: term1 & term2…" };
     private bool _overviewStepFilterRefreshing;
-    private readonly CheckBox _enableInternalLog = new() { Content = "Enable internal log", IsChecked = true, Margin = new Thickness(12, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _readyValue = new();
     private readonly TextBlock _runningValue = new();
     private readonly TextBlock _passedValue = new();
@@ -1057,7 +1056,7 @@ public sealed partial class MainWindow : Window
             item.Requests.Clear(); item.ManualActions.Clear(); item.EventMessages.Clear(); item.CompletedRequests = null; item.AverageMs = null;
             item.P95Ms = null; item.RequestsPerSecond = null; item.StartedAt = DateTimeOffset.Now; item.CompletedAt = null;
             item.EventMessages.Add($"{DateTime.Now:HH:mm:ss}  RUN started / testcases {selection}");
-            UiLog($"Run state initialized. instance={item.Name}; runId={item.CurrentRunId}; testcases={selection}; mode={item.RowsExecutionMode}; environments={environments}; dataIds={item.DataIdSelection}; internalLog={_enableInternalLog.IsChecked == true}");
+            UiLog($"Run state initialized. instance={item.Name}; runId={item.CurrentRunId}; testcases={selection}; mode={item.RowsExecutionMode}; environments={environments}; dataIds={item.DataIdSelection}; internalLog={item.InternalLoggingEnabled}");
         }
         catch (Exception ex)
         {

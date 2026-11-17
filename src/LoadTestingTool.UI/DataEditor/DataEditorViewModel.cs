@@ -345,6 +345,8 @@ public sealed partial class DataEditorViewModel : ObservableObject
 
     // ---- Editing -------------------------------------------------------------------------
 
+    private const int MaxCellLength = 32767;
+
     private void OnCellEdited(DataRowViewModel row, int cellIndex, string value)
     {
         if (cellIndex == 0 && value == row.CurrentDataId) return;
@@ -353,6 +355,13 @@ public sealed partial class DataEditorViewModel : ObservableObject
             var shown = Columns[cellIndex - 1];
             var existing = shown.Group == ColumnGroup.Request ? row.Request.GetAt(shown.SheetColumn) : row.Response?.GetAt(shown.SheetColumn) ?? string.Empty;
             if (existing == value) return;
+            if (value.Length > MaxCellLength)
+            {
+                // Excel cannot hold it: keep the old value instead of an unsaveable one.
+                row.SetCellSilently(cellIndex, existing);
+                ShowStatus($"Not changed: the value is {value.Length:N0} characters and a cell holds at most {MaxCellLength:N0}. Save it as a text file in the instance's Files folder and put <from_filepath>file name in the cell.", isError: true);
+                return;
+            }
         }
         if (cellIndex == 0)
         {

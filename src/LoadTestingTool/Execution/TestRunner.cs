@@ -93,16 +93,19 @@ public sealed class TestRunner
                         }
                         foreach (var variable in variables) executionContext.Set(variable.Key, variable.Value, VariableScope.Iteration);
                         var fileVariables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        var fileCells = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                         foreach (var key in variables.Keys.ToList())
                         {
                             // <from_filepath>name / <from_filepath_base64>name: the whole cell is the content of a file, read now.
                             if (cellVariables.Contains(key) && FileTokens.TryParse(variables[key], out var asBase64, out var filePath))
                             {
+                                var cellText = variables[key];
                                 try
                                 {
                                     var loaded = await FileTokens.LoadAsync(_features.WorkspaceRoot, asBase64, filePath, token);
                                     variables[key] = loaded.Value;
                                     fileVariables.Add(key);
+                                    fileCells[key] = cellText.Trim();
                                     _logger.Info($"FILE VALUE | step={request.StepName} | variable={key} | file={loaded.FileName} | {(asBase64 ? "base64 of " : string.Empty)}{loaded.Bytes} bytes | content not logged");
                                 }
                                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -113,7 +116,12 @@ public sealed class TestRunner
                             }
                             variables[key] = await ResolveDynamicValueAsync(variables[key], correlation, requestReferences, executionContext, token);
                         }
-                        if (fileVariables.Count > 0) redactedVariables = new HashSet<string>(redactedVariables.Concat(fileVariables), StringComparer.OrdinalIgnoreCase);   // file content never goes to the log or the history
+                        if (fileVariables.Count > 0)
+                        {
+                            var withFiles = new RedactedVariableSet(redactedVariables.Concat(fileVariables));
+                            foreach (var cell in fileCells) withFiles.FileCells[cell.Key] = cell.Value;
+                            redactedVariables = withFiles;
+                        }   // file content never goes to the log or the history
                     }
                     catch (RuntimeReferenceException ex)
                     {

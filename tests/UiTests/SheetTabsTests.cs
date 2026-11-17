@@ -118,3 +118,26 @@ public class SheetTabsWindowTests
         window.CaptureRenderedFrame()!.Save(System.IO.Path.Combine(shots, "editor-sheet-tabs.png"));
     }
 }
+
+public class OverLimitPasteTests
+{
+    [Fact]
+    public void A_value_longer_than_an_excel_cell_is_refused_and_the_old_value_stays()
+    {
+        using var dir = new TempDir();
+        var editor = new DataEditorViewModel(Samples.CreateLarge(dir, rows: 2), "Customers");
+        var row = editor.VisibleRows[0];
+        var cell = editor.Columns.First(c => c.Title == "CreateCustomer.name").CellIndex;
+
+        row.Cells[cell] = new string('x', 40000);
+
+        Assert.Equal("Customer 1", row.Cells[cell]);
+        Assert.False(editor.IsDirty);
+        Assert.True(editor.StatusIsError);
+        Assert.Contains("32,767", editor.StatusMessage);
+        Assert.Contains("<from_filepath>", editor.StatusMessage);
+
+        row.Cells[cell] = new string('x', 32767);   // exactly the limit is fine
+        Assert.Equal(32767, row.Cells[cell].Length);
+    }
+}

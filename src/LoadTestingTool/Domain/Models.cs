@@ -342,3 +342,13 @@ public sealed class AssertionResult
     public int ExpectedValueColumn { get; init; }
     public string Environment { get; init; } = string.Empty;
 }
+
+/// <summary>
+/// The variables whose value must not be written out. For a cell that was <c>&lt;from_filepath&gt;name</c> it also remembers that
+/// cell text, so a history copy can show where the content came from instead of hiding it.
+/// </summary>
+public sealed class RedactedVariableSet : HashSet<string>
+{
+    public RedactedVariableSet(IEnumerable<string> names) : base(names, StringComparer.OrdinalIgnoreCase) { }
+    public Dictionary<string, string> FileCells { get; } = new(StringComparer.OrdinalIgnoreCase);
+}

@@ -132,3 +132,34 @@ public class ValueFilePruneTests
         Assert.Equal(1, HistoryValueFiles.Prune(history));       // no history left: nothing points at the files
     }
 }
+
+public class FileCellHistoryTests
+{
+    [Fact]
+    public void A_file_cell_is_shown_as_its_token_and_path_in_the_resolved_copies_never_its_content()
+    {
+        using var dir = new TempDir();
+        var config = new AppConfig { HistoryFolder = dir.Combine("history") };
+        var run = new RunResult { RunId = "r1", StartedAt = DateTimeOffset.Now, EndedAt = DateTimeOffset.Now };
+        var testcase = new TestcaseResult { TestcaseIndex = 1, Testcase = "Order", DataId = "d1", Iteration = 1, StartedAt = DateTimeOffset.Now, EndedAt = DateTimeOffset.Now };
+        var redacted = new RedactedVariableSet(["payload"]);
+        redacted.FileCells["payload"] = "<from_filepath>docs/big.json";
+        var request = new RequestResult
+        {
+            RunId = "r1", TestcaseIndex = 1, Testcase = "Order", DataId = "d1", StepName = "Create", StepType = "http", Iteration = 1,
+            Variables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["payload"] = "FILE-CONTENT-SECRET", ["title"] = "t" },
+            RedactedVariables = redacted,
+        };
+        testcase.Requests.Add(request);
+        run.Testcases.Add(testcase);
+
+        using var book = new XLWorkbook(new HistoryWriter(config).Write(run));
+
+        var values = book.Worksheet("ResolvedValues").RowsUsed().Skip(1).Select(r => (r.Cell(8).GetString(), r.Cell(9).GetString())).ToList();
+        Assert.Contains(("payload", "<from_filepath>docs/big.json"), values);
+        var requestSheet = book.Worksheet("Request");
+        var headers = requestSheet.Row(1).CellsUsed().Select(c => c.GetString()).ToList();
+        Assert.Equal("<from_filepath>docs/big.json", requestSheet.Cell(2, headers.IndexOf("payload") + 1).GetString());
+        Assert.DoesNotContain("FILE-CONTENT-SECRET", string.Join("|", book.Worksheets.SelectMany(w => w.CellsUsed()).Select(c => c.GetString())));
+    }
+}

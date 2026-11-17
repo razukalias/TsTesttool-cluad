@@ -642,7 +642,6 @@ public sealed partial class MainWindow
         panel.Children.Add(KeyValue("UI log", Path.GetFullPath(_config.UiLogFile)));
         panel.Children.Add(KeyValue("Documentation", Path.GetFullPath(_config.DocumentationFile)));
         panel.Children.Add(DashboardStyle.Text("Files and folders open with your system default applications. Set file associations in your OS settings.", 12, false, DashboardStyle.Muted));
-        panel.Children.Add(_enableInternalLog);
         panel.Children.Add(DashboardStyle.Action("Open UI log", () => OpenFile(Path.GetFullPath(_config.UiLogFile), "UI log")));
         panel.Children.Add(DashboardStyle.Action("Open user manual", () => OpenFile(Path.GetFullPath(_config.DocumentationFile), "user manual")));
         panel.Children.Add(DashboardStyle.Text("The dashboard reads and writes the central appsettings.json beside the application installation.", 12, false, DashboardStyle.Muted));

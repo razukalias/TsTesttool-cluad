@@ -150,7 +150,10 @@ public sealed class HistoryWriter
     /// </summary>
     private void WriteResolvedCopies(XLWorkbook workbook, RunResult run, List<RequestResult> requests)
     {
-        string Cell(RequestResult r, string key, string value) => MaskVariableContent(value, r.RedactedVariables, r.Variables);
+        string Cell(RequestResult r, string key, string value)
+            => r.RedactedVariables is RedactedVariableSet { } set && set.FileCells.TryGetValue(key, out var fileCell)
+                ? fileCell   // <from_filepath>name: show where the content came from, never the content
+                : MaskVariableContent(value, r.RedactedVariables, r.Variables);
         var executed = requests.Where(Detailed).OrderBy(r => r.TestcaseIndex).ThenBy(r => r.DataId).ThenBy(r => r.Iteration).ThenBy(r => r.SequenceOrder).ToList();
 
         var values = workbook.AddWorksheet("ResolvedValues");

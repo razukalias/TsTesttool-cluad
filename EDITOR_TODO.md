@@ -542,3 +542,8 @@ Example row:
 - [ ] Verify `&` filtering for Overview and Assertions.
 - [ ] Confirm Legacy config is absent from the right-side panel.
 - [ ] Build and test the packaged Windows version.
+
+## Leftovers closed 2026-11-17
+- Per-run "Enable internal log" checkbox removed (it did nothing; the instance setting decides).
+- Resolved copies (ResolvedValues, Request) show `<from_filepath>name` for file cells instead of masked content; content is still never written.
+- The editor refuses a pasted or typed value over 32,767 characters (keeps the old value, explains how to use `<from_filepath>`).
