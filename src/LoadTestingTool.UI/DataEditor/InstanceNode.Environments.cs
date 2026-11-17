@@ -12,9 +12,12 @@ public sealed partial class InstanceNode
     public ObservableCollection<EnvironmentChoice> EnvironmentChoices { get; } = [];
 
     /// <summary>This instance's row-execution overrides (empty box = inherits the global value); null without central settings.</summary>
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasExecution))] private ExecutionSettings? _execution;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasExecution)), NotifyPropertyChangedFor(nameof(HasRunSettings))] private ExecutionSettings? _execution;
 
     public bool HasExecution => Execution is not null;
+
+    /// <summary>True when the instance has environments or row execution to edit, so its ✎ button shows.</summary>
+    public bool HasRunSettings => HasExecution || HasEnvironments;
 
     /// <summary>Result of the last run of this instance; its running flag disables the run buttons.</summary>
     public RunBadge Run { get; } = new();
@@ -55,6 +58,7 @@ public sealed partial class InstanceNode
         }
         finally { _loadingEnvironments = false; }
         OnPropertyChanged(nameof(HasEnvironments));
+        OnPropertyChanged(nameof(HasRunSettings));
         OnPropertyChanged(nameof(EnvironmentsText));
         EnvironmentsChanged?.Invoke(this, EventArgs.Empty);
     }

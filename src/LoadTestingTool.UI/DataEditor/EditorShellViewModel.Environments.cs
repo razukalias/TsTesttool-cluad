@@ -30,6 +30,7 @@ public sealed partial class EditorShellViewModel
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasEnvironments));
             OnPropertyChanged(nameof(CanManageEnvironments));
+            OnPropertyChanged(nameof(HasRunSettings));
         }
     }
 

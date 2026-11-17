@@ -37,10 +37,14 @@ public sealed partial class EditorShellViewModel
             _execution = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasExecution));
+            OnPropertyChanged(nameof(HasRunSettings));
         }
     }
 
     public bool HasExecution => _execution is not null;
+
+    /// <summary>True when there is anything to edit in the run-settings flyout (environments or row execution).</summary>
+    public bool HasRunSettings => HasExecution || CanManageEnvironments;
 
     private void LoadExecution()
     {

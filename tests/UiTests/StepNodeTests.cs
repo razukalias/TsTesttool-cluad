@@ -369,7 +369,7 @@ public class EnvironmentPickerTests
         window.Shell.EnvironmentSettings = new FakeSettings("local", "development", "staging", "production");
         window.Show();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        var button = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<Avalonia.Controls.Button>().First(x => x.Classes.Contains("treeenv"));
+        var button = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<Avalonia.Controls.Button>().First(x => x.Name == "GlobalRunSettingsButton");
         button.Flyout!.ShowAt(button);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         var shots = Environment.GetEnvironmentVariable("UI_SCREENSHOT_DIR") ?? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ui-shots");

@@ -161,7 +161,7 @@ public class EnvironmentListTests
         Dispatcher.UIThread.RunJobs();
         var buttons = window.GetVisualDescendants().OfType<Button>().ToList();
         Assert.DoesNotContain(buttons, b => b.Content as string == "＋ / ✕");
-        Assert.Contains(buttons, b => b.Classes.Contains("treeenv"));                 // the Env dropdown is there even with no environments
+        Assert.Contains(buttons, b => b.Name == "GlobalRunSettingsButton");            // the ✎ settings button is there even with no environments
         Assert.Equal("none yet", window.Shell.GlobalEnvironmentsText);
         window.Close();
     }
