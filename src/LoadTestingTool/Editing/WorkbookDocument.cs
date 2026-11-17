@@ -207,6 +207,7 @@ public sealed partial class WorkbookDocument
         Response.ApplyTo(workbook.Worksheet(Response.SheetName));
         ApplyOtherSheets(workbook);
         var inserted = Request.PendingInserts().Count + Response.PendingInserts().Count;
+        var otherInserted = _others.Sum(t => t.PendingInserts().Count);
         var columns = Request.PendingColumnInserts + Response.PendingColumnInserts + (Request.HasRemovedColumns ? 1 : 0) + (Response.HasRemovedColumns ? 1 : 0);
         columns += Request.RenamedHeaders().Count + Response.RenamedHeaders().Count > 0 ? 1 : 0;
         if (inserted > 0) EnsureRowsCanMove();
@@ -244,7 +245,7 @@ public sealed partial class WorkbookDocument
         Request.AcceptChanges();
         Response.AcceptChanges();
         AcceptOtherSheets();
-        return new SaveResult(true, backup, inserted, renumbered, columns);
+        return new SaveResult(true, backup, inserted, renumbered, columns, otherInserted);
     }
 
     /// <summary>The testcase index the runner uses for a row: its cell value, or its sheet row number when that is not a number.</summary>

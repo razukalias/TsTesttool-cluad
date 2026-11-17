@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Data;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -150,6 +151,8 @@ public partial class DataEditorWindow : Window
         if (grid is null || editor is null) return;
         grid.CellPointerPressed -= OnSheetCellPointerPressed;
         grid.CellPointerPressed += OnSheetCellPointerPressed;
+        grid.RemoveHandler(PointerPressedEvent, OnSheetHeaderPressed);
+        grid.AddHandler(PointerPressedEvent, OnSheetHeaderPressed, RoutingStrategies.Tunnel);
         editor.SheetCurrentColumn = -1;
         grid.Columns.Clear();
         for (var i = 0; i < editor.SheetHeaders.Count; i++)
@@ -164,7 +167,28 @@ public partial class DataEditorWindow : Window
 
     private void OnSheetCellPointerPressed(object? sender, DataGridCellPointerPressedEventArgs e)
     {
-        if (_shell.Current is { } editor) editor.SheetCurrentColumn = e.Column.Tag is int tag ? tag : -1;
+        if (_shell.Current is not { } editor) return;
+        editor.SheetCurrentColumn = e.Column.Tag is int tag ? tag : -1;
+        // A right click on a row of one of the other sheets opens the row menu (the config sheet keeps its plain grid).
+        if (!editor.IsOtherSheet || !e.PointerPressedEventArgs.GetCurrentPoint(e.Cell).Properties.IsRightButtonPressed) return;
+        if (this.FindControl<DataGrid>("SheetGrid") is not { } grid) return;
+        if (e.Cell.DataContext is SheetRowViewModel row && !grid.SelectedItems.Contains(row)) { grid.SelectedItem = row; editor.SelectedSheetRow = row; }
+        e.PointerPressedEventArgs.Handled = true;
+        BuildSheetRowMenu(editor, grid).Open(e.Cell);
+    }
+
+    private void OnSheetHeaderPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_shell.Current is not { IsOtherSheet: true } editor) return;
+        if (e.Source is not Avalonia.Visual source || source.FindAncestorOfType<DataGridColumnHeader>(includeSelf: true) is not { } header) return;
+        if (this.FindControl<DataGrid>("SheetGrid") is not { } grid) return;
+        var column = grid.Columns.FirstOrDefault(c => ReferenceEquals(c.Header, header.Content));
+        if (column?.Tag is not int index) return;
+        CommitPendingEdit();
+        editor.SheetCurrentColumn = index;
+        if (!e.GetCurrentPoint(header).Properties.IsRightButtonPressed) return;
+        e.Handled = true;
+        BuildSheetColumnMenu(editor, index).Open(header);
     }
 
     private void OnColumnsChanged(object? sender, EventArgs e) => RebuildColumns();

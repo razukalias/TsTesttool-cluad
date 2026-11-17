@@ -150,4 +150,36 @@ public class OtherSheetTests
         using var workbook = new XLWorkbook(path);
         Assert.Equal("<From_notes_amount_2>", Sheet(workbook, "request").Cell(2, 6).GetString());
     }
+
+    [Fact]
+    public void Inserting_a_row_in_the_middle_of_another_sheet_renumbers_every_reference_to_the_rows_below()
+    {
+        using var dir = new TempDir();
+        var path = Workbooks.CreateSmall(dir, (config, request, response) =>
+        {
+            var notes = request.Workbook.AddWorksheet("notes");
+            notes.Cell(1, 1).Value = "key"; notes.Cell(1, 2).Value = "value";
+            notes.Cell(2, 1).Value = "a"; notes.Cell(2, 2).Value = "one";
+            notes.Cell(3, 1).Value = "b"; notes.Cell(3, 2).Value = "two";
+            notes.Cell(4, 1).Value = "c"; notes.Cell(4, 2).Value = "<From_value_3>";   // same-sheet short form: points at "two"
+            request.Cell(2, 6).Value = "x <From_notes_value_2> y <From_notes_value_3>";  // from another sheet: "one", "two"
+        });
+        var doc = WorkbookDocument.Load(path);
+        var notes = doc.FindOtherSheet("notes")!;
+
+        var inserted = notes.InsertRowBefore(notes.Rows[1]);   // above row "b" (sheet row 3)
+        inserted.SetAt(0, "new"); inserted.SetAt(1, "fresh");
+        var result = doc.Save();
+
+        Assert.Equal(1, result.OtherRowsInserted);
+        Assert.Equal(2, result.ReferencesRenumbered);          // <From_notes_value_2> stays; the two that pointed at row 3 move to 4
+        Assert.True(result.RequiresReload);
+        using var workbook = new XLWorkbook(path);
+        var sheet = workbook.Worksheet("notes");
+        Assert.Equal(["key", "a", "new", "b", "c"], Enumerable.Range(1, 5).Select(r => sheet.Cell(r, 1).GetString()).ToArray());
+        Assert.Equal("fresh", sheet.Cell(3, 2).GetString());
+        Assert.Equal("<From_value_4>", sheet.Cell(5, 2).GetString());                       // still "two", now at row 4
+        Assert.Equal("two", sheet.Cell(4, 2).GetString());
+        Assert.Equal("x <From_notes_value_2> y <From_notes_value_4>", workbook.Worksheet("request").Cell(2, 6).GetString());
+    }
 }

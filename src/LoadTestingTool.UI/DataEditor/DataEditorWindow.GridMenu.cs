@@ -109,6 +109,43 @@ public partial class DataEditorWindow
     private static List<(IFormattedRow Row, int Cell)> ColumnCells(DataEditorViewModel editor, int cell)
         => editor.VisibleRows.Select(row => ((IFormattedRow)row, cell)).ToList();
 
+    // ---- Other sheets: row and column menus ------------------------------------------------------
+
+    private ContextMenu BuildSheetRowMenu(DataEditorViewModel editor, DataGrid grid)
+    {
+        var selected = () => editor.SheetRows.Where(grid.SelectedItems.OfType<SheetRowViewModel>().ToHashSet().Contains).ToList();
+        var haveRow = editor.SelectedSheetRow?.Row is not null;
+        var menu = new ContextMenu();
+        menu.Items.Add(CountItem("Add rows at the end", n => editor.AddSheetRows(n)));
+        menu.Items.Add(CountItem("Insert above", n => editor.InsertSheetRows(n, above: true), haveRow));
+        menu.Items.Add(CountItem("Insert below", n => editor.InsertSheetRows(n, above: false), haveRow));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Copy row(s)", async () => { if (Clipboard is not null) await Clipboard.SetTextAsync(editor.CopySheetRowsText(selected())); }, haveRow));
+        menu.Items.Add(Item("Paste row(s) below", async () =>
+        {
+            var text = Clipboard is null ? null : await Clipboard.GetTextAsync();
+            if (string.IsNullOrEmpty(text)) return;
+            CommitPendingEdit();
+            editor.PasteSheetRowsBelow(ClipboardTable.Parse(text));
+        }));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Remove row", () => editor.RemoveSheetRowCommand.Execute(null), haveRow, danger: true));
+        return menu;
+    }
+
+    private ContextMenu BuildSheetColumnMenu(DataEditorViewModel editor, int column)
+    {
+        var menu = new ContextMenu();
+        menu.Items.Add(CountItem("Insert columns to the left", n => editor.OpenInsertSheetColumns(left: true, n)));
+        menu.Items.Add(CountItem("Insert columns to the right", n => editor.OpenInsertSheetColumns(left: false, n)));
+        menu.Items.Add(Item("Rename column…", () => editor.OpenRenameSheetColumnCommand.Execute(null)));
+        menu.Items.Add(Item("Remove column…", () => editor.OpenRemoveSheetColumnCommand.Execute(null), danger: true));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Fill down (first row's value)", () => { CommitPendingEdit(); editor.FillSheetColumnDown(column); }));
+        menu.Items.Add(Item("Clear column", () => { CommitPendingEdit(); editor.ClearSheetColumn(column); }, danger: true));
+        return menu;
+    }
+
     // ---- Menu building blocks -----------------------------------------------------------------
 
     private static MenuItem Item(string header, Action click, bool enabled = true, bool danger = false)

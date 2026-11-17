@@ -566,6 +566,6 @@ Example row:
 - Other sheets (not config/request/response) are editable: cells, add/remove rows, add/rename/remove columns, add/rename/remove whole sheets. Written on Save; undoable. Rename/remove is refused while a `<From_Sheet_…>` reference or a formula points at the sheet; removing a column is refused while a reference points at it.
 
 ### Still to do (other sheets)
-- [ ] Insert a row in the *middle* of another sheet (today rows are only appended at the end). Needs the same `<From_…_N>` renumbering the request/response sheets use.
-- [ ] Copy / paste rows in the other sheets (a row right-click menu like the data grid has).
-- [ ] Right-click menu on the column headers of the other sheets (insert left/right with a count, rename, remove, fill down, clear, highlight/wrap).
+- [x] Insert a row in the *middle* of another sheet (done 2026-11-17): right-click a row, **Insert above / below** with a count. On Save the row is a real sheet row and every `<From_Sheet_header_N>` reference (from any sheet, and the short `<From_header_N>` inside the sheet) to the rows below is renumbered and verified, the same save step the request/response sheets use. The status line says how many references will be renumbered. An empty inserted row is only written once it has a value.
+- [x] Copy / paste rows in the other sheets (done 2026-11-17): the row menu has **Copy row(s)** and **Paste row(s) below** (pasted rows are inserted, so references below are renumbered too) and **Add rows at the end**.
+- [x] Right-click menu on the column headers of the other sheets (done 2026-11-17): insert left/right with a count, rename, remove, fill down, clear. **Not done:** highlight / wrap for these sheets (their grid does not show cell colours yet).

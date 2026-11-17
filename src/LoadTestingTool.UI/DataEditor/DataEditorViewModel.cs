@@ -556,8 +556,12 @@ public sealed partial class DataEditorViewModel : ObservableObject
             if (result.BackupPath is not null) LastBackupPath = result.BackupPath;
             Revalidate();
             if (result.Saved) WorkbookSaved?.Invoke(WorkbookPath);
-            var moved = result.RowsInserted == 0 ? (result.ReferencesRenumbered > 0 ? $" Updated {result.ReferencesRenumbered} {(result.ReferencesRenumbered == 1 ? "reference" : "references")}." : string.Empty)
-                : $" Inserted {result.RowsInserted / 2} {(result.RowsInserted / 2 == 1 ? "row" : "rows")} in the request and response sheets and renumbered {result.ReferencesRenumbered} {(result.ReferencesRenumbered == 1 ? "reference" : "references")}.";
+            var parts = new List<string>();
+            if (result.RowsInserted > 0) parts.Add($"Inserted {result.RowsInserted / 2} {(result.RowsInserted / 2 == 1 ? "row" : "rows")} in the request and response sheets");
+            if (result.OtherRowsInserted > 0) parts.Add($"Inserted {result.OtherRowsInserted} {(result.OtherRowsInserted == 1 ? "row" : "rows")} in other sheets");
+            var references = $"{result.ReferencesRenumbered} {(result.ReferencesRenumbered == 1 ? "reference" : "references")}";
+            var moved = parts.Count > 0 ? $" {string.Join(" and ", parts)} and renumbered {references}."
+                : result.ReferencesRenumbered > 0 ? $" Updated {references}." : string.Empty;
             ShowStatus(result.Saved
                 ? $"Saved {FileName}.{moved}{(result.BackupPath is null ? string.Empty : $" Backup copy: {result.BackupPath}")}"
                 : "Nothing to save.", isError: false);
