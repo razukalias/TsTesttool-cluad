@@ -957,7 +957,8 @@ public sealed partial class MainWindow
     internal static void ApplyValidationIssues(InstanceInfo instance, InstanceValidationResult result)
     {
         instance.Issues.RemoveAll(x => x.Category.Equals("Validation", StringComparison.OrdinalIgnoreCase));
-        foreach (var issue in result.Issues)
+        // Only real problems are kept: the "PASS … No action required" and INFO lines are for the validation window, and as issues they showed up as errors.
+        foreach (var issue in result.Issues.Where(i => i.Severity.Equals("ERROR", StringComparison.OrdinalIgnoreCase) || i.Severity.Equals("WARNING", StringComparison.OrdinalIgnoreCase)))
             instance.Issues.Add(new RunIssueInfo { Severity = issue.Severity.Equals("WARNING", StringComparison.OrdinalIgnoreCase) ? "Warning" : "Error", Category = "Validation", Message = $"{issue.Location}: {issue.Problem} Fix: {issue.Fix}", Testcase = issue.Location, OccurredAt = DateTimeOffset.Now });
     }
 
