@@ -33,6 +33,11 @@ public sealed class AppConfig
     public bool PromptForTestcaseSelection { get; set; }
     public bool SaveRequestBodyToHistory { get; set; } = true;
     public bool SaveResponseBodyToHistory { get; set; } = true;
+    /// <summary>"All" keeps the full detail of every request in history; "FailedAndSample" keeps it for failed requests and for every <see cref="HistorySampleEvery"/>th passing one (the Load test profile).</summary>
+    public string HistoryDetail { get; set; } = LoadTestingTool.Reporting.HistoryProfiles.DetailAll;
+    public int HistorySampleEvery { get; set; } = LoadTestingTool.Reporting.HistoryProfiles.DefaultSampleEvery;
+    /// <summary>The internal log keeps only warnings and errors.</summary>
+    public bool InternalLogErrorsOnly { get; set; }
     public Dictionary<string, bool> HistorySheets { get; set; } = HistorySheetCatalog.CreateDefaults();
     public bool MaskSensitiveData { get; set; } = true;
     public List<string> Environments { get; set; } = [];
@@ -75,6 +80,9 @@ public sealed class CentralInstanceConfig
     public bool? InternalLoggingEnabled { get; set; }
     public bool? SaveRequestBodyToHistory { get; set; }
     public bool? SaveResponseBodyToHistory { get; set; }
+    public string? HistoryDetail { get; set; }
+    public int? HistorySampleEvery { get; set; }
+    public bool? InternalLogErrorsOnly { get; set; }
     public bool? MaskSensitiveData { get; set; }
     public Dictionary<string, bool>? HistorySheets { get; set; }
 }

@@ -394,7 +394,7 @@ public sealed partial class MainWindow
         _forceButton = DashboardStyle.Action("Force stop", () => StopSelected(true), "danger");
         _validateButton = DashboardStyle.Action("✓ Validate all", OpenGlobalValidation, "primary");
         var environmentButton = DashboardStyle.Action("🌐 Manage environments", OpenEnvironmentManager, "primary");
-        var commands = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { environmentButton, _validateButton, _chooseButton, _runButton, _stopButton, _forceButton } };
+        var commands = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { environmentButton, DashboardStyle.Action("History & logs…", () => ShowHistoryLogs()), _validateButton, _chooseButton, _runButton, _stopButton, _forceButton } };
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(18, 16) };
         header.Children.Add(heading); Grid.SetColumn(commands, 1); header.Children.Add(commands);
 
@@ -704,6 +704,27 @@ public sealed partial class MainWindow
     }
 
     internal void ShowStorageCleanup() => OpenStorageCleanup();
+
+    /// <summary>Opens the "History &amp; logs" form for an instance (the selected one when no name is given).</summary>
+    internal void ShowHistoryLogs(string? instanceName = null)
+    {
+        var item = instanceName is null ? _selectedInstance : _instances.FirstOrDefault(x => x.Name == instanceName);
+        if (item is null) { _details.Text = "Select an instance first."; return; }
+        var current = new Reporting.HistoryOptions(item.InternalLoggingEnabled, item.InternalLogErrorsOnly, item.GenerateAggregateHistory, item.GenerateRowHistory, item.SaveRequestBodyToHistory,
+            item.SaveResponseBodyToHistory, item.MaskSensitiveData, item.HistoryDetail, item.HistorySampleEvery, new Dictionary<string, bool>(item.HistorySheets, StringComparer.OrdinalIgnoreCase));
+        var window = new HistoryLogsWindow(item.Name, current, Reporting.HistoryProfiles.RunIsLarge(1, item.Iterations, item.MaxParallelRows));
+        window.Closed += (_, _) =>
+        {
+            if (window.Result is not { } chosen) return;
+            item.InternalLoggingEnabled = chosen.InternalLog; item.InternalLogErrorsOnly = chosen.InternalLogErrorsOnly;
+            item.GenerateAggregateHistory = chosen.AggregateHistory; item.GenerateRowHistory = chosen.RowHistory;
+            item.SaveRequestBodyToHistory = chosen.SaveRequestBodies; item.SaveResponseBodyToHistory = chosen.SaveResponseBodies; item.MaskSensitiveData = chosen.MaskSensitive;
+            item.HistoryDetail = chosen.Detail; item.HistorySampleEvery = chosen.SampleEvery;
+            foreach (var sheet in chosen.Sheets) item.HistorySheets[sheet.Key] = sheet.Value;
+            SaveInstanceReportingSettings(item, true);
+        };
+        window.Show(Host);
+    }
 
     private void OpenEnvironmentManager()
     {

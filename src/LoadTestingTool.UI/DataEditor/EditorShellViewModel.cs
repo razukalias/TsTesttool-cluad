@@ -305,6 +305,15 @@ public sealed partial class EditorShellViewModel : ObservableObject
         _ => string.Empty,
     };
 
+    /// <summary>The instance the selected tree item belongs to, or the only open one.</summary>
+    public string? SelectedInstanceName => SelectedNode switch
+    {
+        StepNode step => InstanceNameOf(step.Owner),
+        TestcaseItem testcase => InstanceNameOf(testcase),
+        InstanceNode instance => instance.Name,
+        _ => Instances.Count == 1 ? Instances[0].Name : null,
+    };
+
     private string InstanceNameOf(TestcaseItem testcase) => Instances.FirstOrDefault(n => n.Testcases.Contains(testcase))?.Name ?? string.Empty;
 
     partial void OnSelectedNodeChanged(object? value)

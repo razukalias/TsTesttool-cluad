@@ -51,10 +51,12 @@ public partial class DataEditorWindow : Window
 
     /// <summary>Puts the dashboard's run views beside the workbook panel (problems, preview) as extra tabs.</summary>
     private bool _cleanupWired;
+    private bool _logsWired;
 
     private void AttachRunDetails()
     {
         if (this.FindControl<Button>("StorageCleanupButton") is { } cleanup && !_cleanupWired) { _cleanupWired = true; cleanup.Click += (_, _) => _shell.RunDetails?.OpenStorageCleanup(); }
+        if (this.FindControl<Button>("HistoryLogsButton") is { } logs && !_logsWired) { _logsWired = true; logs.Click += (_, _) => { if (_shell.SelectedInstanceName is { } name) _shell.RunDetails?.OpenHistoryLogs(name); }; }
         if (_runDetailsAttached || _shell.RunDetails is not { } details) return;
         _runDetailsAttached = true;
         var tabs = details.TakeTabs();

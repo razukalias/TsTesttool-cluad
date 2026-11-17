@@ -184,6 +184,8 @@
             </Button.Flyout>
           </Button>
         </StackPanel>
+        <Button x:Name="HistoryLogsButton" DockPanel.Dock="Bottom" Content="History &amp; logs…" HorizontalAlignment="Left" Margin="0,8,0,0" MinHeight="28" Padding="10,2" FontSize="12"
+                ToolTip.Tip="Choose what runs write to history and the internal log, with profiles for functional tests, debugging and load tests." />
         <Button x:Name="StorageCleanupButton" DockPanel.Dock="Bottom" Content="Storage &amp; cleanup…" HorizontalAlignment="Left" Margin="0,12,0,0" MinHeight="28" Padding="10,2" FontSize="12"
                 ToolTip.Tip="Preview and permanently delete old workbook backups, logs, history and results." />
         <CheckBox DockPanel.Dock="Bottom" Content="Load instances only when opened" IsChecked="{Binding LazyLoading, Mode=TwoWay}" Margin="6,12,0,0" FontSize="12"

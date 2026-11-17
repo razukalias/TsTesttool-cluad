@@ -207,8 +207,8 @@ internal static class Program
         if (config.GenerateResults) Directory.CreateDirectory(resultFolder);
         var logFolder = config.LogsFolder;
         Directory.CreateDirectory(logFolder);
-        var logger = new InternalLogger(logFolder, config.InstanceId, runId, config.InternalLoggingEnabled, null, runningLogName);
-        var processLogger = new InternalLogger(logFolder, config.InstanceId, runId, config.InternalLoggingEnabled, null, runningProcessLogName);
+        var logger = new InternalLogger(logFolder, config.InstanceId, runId, config.InternalLoggingEnabled, null, runningLogName) { ErrorsOnly = config.InternalLogErrorsOnly };
+        var processLogger = new InternalLogger(logFolder, config.InstanceId, runId, config.InternalLoggingEnabled, null, runningProcessLogName) { ErrorsOnly = config.InternalLogErrorsOnly };
         var eventRoot = config.GenerateResults ? config.ResultsFolder : Path.Combine(config.LogsFolder, ".runtime");
         var eventFolder = Path.Combine(eventRoot, $"Run_{InternalLogger.SafeFolderName(runId)}");
         using var events = new LiveEventWriter(eventFolder, config.InstanceId, runId, $"_{InternalLogger.SafeFolderName(testcase.Testcase)}_{Guid.NewGuid():N}");
@@ -366,6 +366,9 @@ internal static class Program
         if (instance.SaveRequestBodyToHistory.HasValue) config.SaveRequestBodyToHistory = instance.SaveRequestBodyToHistory.Value;
         if (instance.SaveResponseBodyToHistory.HasValue) config.SaveResponseBodyToHistory = instance.SaveResponseBodyToHistory.Value;
         if (instance.MaskSensitiveData.HasValue) config.MaskSensitiveData = instance.MaskSensitiveData.Value;
+        if (!string.IsNullOrWhiteSpace(instance.HistoryDetail)) config.HistoryDetail = instance.HistoryDetail;
+        if (instance.HistorySampleEvery.HasValue) config.HistorySampleEvery = Math.Max(1, instance.HistorySampleEvery.Value);
+        if (instance.InternalLogErrorsOnly.HasValue) config.InternalLogErrorsOnly = instance.InternalLogErrorsOnly.Value;
         if (instance.HistorySheets is not null) config.HistorySheets = instance.HistorySheets;
         return config;
     }

@@ -40,6 +40,9 @@ public sealed class InstanceInfo
     public bool SaveRequestBodyToHistory { get; set; } = true;
     public bool SaveResponseBodyToHistory { get; set; } = true;
     public bool MaskSensitiveData { get; set; } = true;
+    public string HistoryDetail { get; set; } = Reporting.HistoryProfiles.DetailAll;
+    public int HistorySampleEvery { get; set; } = Reporting.HistoryProfiles.DefaultSampleEvery;
+    public bool InternalLogErrorsOnly { get; set; }
     public Dictionary<string, bool> HistorySheets { get; } = HistorySheetDefaults();
     public bool RunEnvironmentsParallel { get; set; }
     public string EnvironmentSelection { get; set; } = "";
@@ -483,6 +486,9 @@ public sealed partial class MainWindow : Window
                 item.SaveRequestBodyToHistory = centralInstance.SaveRequestBodyToHistory ?? true;
                 item.SaveResponseBodyToHistory = centralInstance.SaveResponseBodyToHistory ?? true;
                 item.MaskSensitiveData = centralInstance.MaskSensitiveData ?? true;
+                item.HistoryDetail = centralInstance.HistoryDetail ?? Reporting.HistoryProfiles.DetailAll;
+                item.HistorySampleEvery = Math.Max(1, centralInstance.HistorySampleEvery ?? Reporting.HistoryProfiles.DefaultSampleEvery);
+                item.InternalLogErrorsOnly = centralInstance.InternalLogErrorsOnly ?? false;
                 item.TestcaseSelection = centralInstance.TestcaseSelection ?? item.TestcaseSelection;
                 item.StepSelectionJson = centralInstance.StepSelection ?? item.StepSelectionJson;
                 item.EnvironmentSelection = centralInstance.EnvironmentSelection ?? item.EnvironmentSelection;
@@ -683,6 +689,9 @@ public sealed partial class MainWindow : Window
             instance["SaveRequestBodyToHistory"] = item.SaveRequestBodyToHistory;
             instance["SaveResponseBodyToHistory"] = item.SaveResponseBodyToHistory;
             instance["MaskSensitiveData"] = item.MaskSensitiveData;
+            instance["HistoryDetail"] = item.HistoryDetail;
+            instance["HistorySampleEvery"] = item.HistorySampleEvery;
+            instance["InternalLogErrorsOnly"] = item.InternalLogErrorsOnly;
             var sheets = new JsonObject();
             foreach (var sheet in item.HistorySheets) sheets[sheet.Key] = sheet.Value;
             instance["HistorySheets"] = sheets;
@@ -697,6 +706,9 @@ public sealed partial class MainWindow : Window
                 central.SaveRequestBodyToHistory = item.SaveRequestBodyToHistory;
                 central.SaveResponseBodyToHistory = item.SaveResponseBodyToHistory;
                 central.MaskSensitiveData = item.MaskSensitiveData;
+                central.HistoryDetail = item.HistoryDetail;
+                central.HistorySampleEvery = item.HistorySampleEvery;
+                central.InternalLogErrorsOnly = item.InternalLogErrorsOnly;
                 central.HistorySheets = new Dictionary<string, bool>(item.HistorySheets, StringComparer.OrdinalIgnoreCase);
             }
             UiLog($"Saved instance reporting settings. instance={item.Name}; generateResults={item.GenerateResults}; internalLogging={item.InternalLoggingEnabled}");

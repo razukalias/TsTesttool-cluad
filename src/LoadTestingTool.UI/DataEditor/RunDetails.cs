@@ -28,4 +28,7 @@ public interface IRunDetails
 
     /// <summary>Opens the Storage &amp; Cleanup window (backups, logs, history and results).</summary>
     void OpenStorageCleanup() { }
+
+    /// <summary>Opens the "History &amp; logs" form for an instance.</summary>
+    void OpenHistoryLogs(string instanceName) { }
 }

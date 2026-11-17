@@ -36,6 +36,9 @@ public sealed class InternalLogger : IDisposable
     }
 
     public bool Enabled { get; }
+
+    /// <summary>Keeps only warnings and errors (for load tests, where the full log would be too big and slow).</summary>
+    public bool ErrorsOnly { get; init; }
     public string? FilePath { get; }
     public string? SecondaryFilePath { get; }
 
@@ -77,6 +80,7 @@ public sealed class InternalLogger : IDisposable
     private void Write(string level, string message)
     {
         if (!Enabled || _writers.Count == 0) return;
+        if (ErrorsOnly && level == "INFO") return;
         lock (_sync)
         {
             var timestamp = DateTimeOffset.Now.ToString("O");

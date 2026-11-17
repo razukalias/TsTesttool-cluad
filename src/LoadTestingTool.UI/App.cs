@@ -50,6 +50,9 @@ public sealed class UiInstanceDefinition
     public bool? SaveRequestBodyToHistory { get; set; }
     public bool? SaveResponseBodyToHistory { get; set; }
     public bool? MaskSensitiveData { get; set; }
+    public string? HistoryDetail { get; set; }
+    public int? HistorySampleEvery { get; set; }
+    public bool? InternalLogErrorsOnly { get; set; }
     public Dictionary<string, bool>? HistorySheets { get; set; }
     public string? TestcaseSelection { get; set; }
     public string? StepSelection { get; set; }
