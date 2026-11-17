@@ -56,6 +56,8 @@ public sealed partial class DataEditorViewModel
     /// <summary>Called by the grid's tick boxes after a click, and whenever the shown rows change.</summary>
     public void NotifyTickChanged()
     {
+        var byTestcase = TickedRowsByTestcase();
+        foreach (var testcase in Testcases) testcase.TickedRows = byTestcase.TryGetValue(testcase.Index, out var ids) ? ids.Count : 0;
         OnPropertyChanged(nameof(TickedRowCount));
         OnPropertyChanged(nameof(ShownTickState));
         TickedChanged?.Invoke(this, EventArgs.Empty);
@@ -74,5 +76,19 @@ public sealed partial class DataEditorViewModel
         foreach (var row in _allRows) row.IsTicked = false;
         _tickMemory.Clear();
         NotifyTickChanged();
+    }
+
+    /// <summary>The run behind a ▶ in the tree when rows are ticked: only the ticked rows that belong to the item. For a testcase or a step pass the
+    /// testcase (and the step); for the whole instance pass null. Null when none of the item's rows are ticked, so ▶ then runs it all as usual.</summary>
+    internal (RunRequest Request, string Label)? BuildTickedRowsRequest(TestcaseItem? testcase, IReadOnlyList<string>? steps, bool? parallel)
+    {
+        var rows = TickedRowsByTestcase()
+            .Where(p => Testcases.Any(t => t.Index == p.Key) && (testcase is null || p.Key == testcase.Index))
+            .ToDictionary(p => p.Key, p => p.Value);
+        if (rows.Count == 0) return null;
+        var chosen = rows.Keys.OrderBy(i => i).Select(i => (Testcases.First(t => t.Index == i), i == testcase?.Index ? steps : null)).ToList();
+        var request = BuildRequest(chosen, parallel) with { DataIds = rows.Values.SelectMany(v => v).Distinct().ToList(), RowsByTestcase = rows };
+        var count = rows.Values.Sum(v => v.Count);
+        return (request, $"{count} ticked {(count == 1 ? "row" : "rows")}");
     }
 }

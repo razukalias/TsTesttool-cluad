@@ -151,35 +151,9 @@
           <TextBlock Text="{Binding TickedText}" VerticalAlignment="Center" FontSize="11" Foreground="#8EA4BC" />
         </StackPanel>
         <StackPanel DockPanel.Dock="Top" Margin="6,0,0,10" Spacing="4" IsVisible="{Binding CanManageEnvironments}">
+          <TextBlock Classes="caption" Text="ENVIRONMENTS · ALL INSTANCES" />
           <Grid ColumnDefinitions="*,Auto">
-            <TextBlock Classes="caption" Text="ENVIRONMENTS · ALL INSTANCES" VerticalAlignment="Center" />
-            <Button Grid.Column="1" Content="＋ / ✕" Classes="treemove" FontSize="12" ToolTip.Tip="Add or remove environments (the central list in appsettings.json)">
-              <Button.Flyout>
-                <Flyout Placement="BottomEdgeAlignedRight">
-                  <StackPanel Width="260" Spacing="8">
-                    <TextBlock Classes="caption" Text="ENVIRONMENTS" />
-                    <ItemsControl ItemsSource="{Binding GlobalEnvironmentChoices}">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="vm:EnvironmentChoice">
-                          <Grid ColumnDefinitions="*,Auto" Margin="0,2">
-                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
-                            <Button Grid.Column="1" Content="✕" Classes="treemove" Tag="{Binding Name}" Click="OnRemoveEnvironmentClick" ToolTip.Tip="Remove this environment from the list and from every instance" />
-                          </Grid>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <Grid ColumnDefinitions="*,Auto">
-                      <TextBox x:Name="NewEnvironmentBox" Watermark="New environment, e.g. qa" />
-                      <Button Grid.Column="1" Content="Add" Classes="primary" Margin="6,0,0,0" Click="OnAddEnvironmentClick" />
-                    </Grid>
-                    <TextBlock Text="{Binding EnvironmentEditMessage}" TextWrapping="Wrap" FontSize="11.5" Foreground="#8EA4BC" />
-                  </StackPanel>
-                </Flyout>
-              </Button.Flyout>
-            </Button>
-          </Grid>
-          <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasEnvironments}">
-            <Button Classes="treeenv" ToolTip.Tip="Set the environments of every instance at once (saved to appsettings.json)">
+            <Button Classes="treeenv" ToolTip.Tip="Set the environments of every instance at once; add or remove environments in the list (saved to appsettings.json)">
               <Grid ColumnDefinitions="Auto,*,Auto">
                 <TextBlock Text="Env" Foreground="#8EA4BC" Margin="0,0,6,0" />
                 <TextBlock Grid.Column="1" Text="{Binding GlobalEnvironmentsText}" TextTrimming="CharacterEllipsis" />
@@ -187,17 +161,28 @@
               </Grid>
               <Button.Flyout>
                 <Flyout Placement="BottomEdgeAlignedLeft">
-                  <ItemsControl ItemsSource="{Binding GlobalEnvironmentChoices}">
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate DataType="vm:EnvironmentChoice">
-                        <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChosen, Mode=TwoWay}" Margin="2" />
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
+                  <StackPanel Width="250" Spacing="6">
+                    <ItemsControl ItemsSource="{Binding GlobalEnvironmentChoices}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:EnvironmentChoice">
+                          <Grid ColumnDefinitions="*,Auto">
+                            <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChosen, Mode=TwoWay}" Margin="2" />
+                            <Button Grid.Column="1" Content="✕" Classes="treemove" Tag="{Binding Name}" Click="OnRemoveEnvironmentClick" ToolTip.Tip="Remove this environment from the list and from every instance" />
+                          </Grid>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Border Height="1" Background="#22364D" Margin="0,2" />
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBox x:Name="NewEnvironmentBox" Watermark="New environment, e.g. qa" />
+                      <Button Grid.Column="1" Content="＋ Add" Classes="primary" Margin="6,0,0,0" Click="OnAddEnvironmentClick" />
+                    </Grid>
+                    <TextBlock Text="{Binding EnvironmentEditMessage}" TextWrapping="Wrap" FontSize="11.5" Foreground="#8EA4BC" IsVisible="{Binding HasEnvironmentEditMessage}" />
+                  </StackPanel>
                 </Flyout>
               </Button.Flyout>
             </Button>
-            <CheckBox Grid.Column="1" Classes="treeparallel" Content="Parallel" IsChecked="{Binding GlobalRunParallel, Mode=TwoWay}" ToolTip.Tip="Run environments (and testcases) at the same time, for every instance. This is the central setting the runner uses." />
+            <CheckBox Grid.Column="1" Classes="treeparallel" Content="Parallel" IsVisible="{Binding HasEnvironments}" IsChecked="{Binding GlobalRunParallel, Mode=TwoWay}" ToolTip.Tip="Run environments (and testcases) at the same time, for every instance. This is the central setting the runner uses." />
           </Grid>
         </StackPanel>
         <StackPanel DockPanel.Dock="Top" Margin="6,0,0,10" Spacing="4" IsVisible="{Binding HasExecution}">
@@ -274,7 +259,9 @@
                       <TextBlock Text="{Binding Run.Counts}" IsVisible="{Binding Run.HasCounts}" Foreground="{Binding Run.Tint}" FontSize="10.5" VerticalAlignment="Center" />
                     </StackPanel>
                   </Button>
-                  <Button Classes="treerun" Tag="run" Content="▶" IsEnabled="{Binding Run.NotRunning}" IsVisible="{Binding Run.NotRunning}" ToolTip.Tip="Run the whole instance" />
+                  <Button Classes="treerun" Tag="run" IsEnabled="{Binding Run.NotRunning}" IsVisible="{Binding Run.NotRunning}" ToolTip.Tip="Run the whole instance (only the ticked rows of this instance, if any are ticked)">
+                    <StackPanel Orientation="Horizontal" Spacing="3"><TextBlock Text="▶" /><TextBlock Text="{Binding TickedRowsText}" IsVisible="{Binding HasTickedRows}" FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center" /></StackPanel>
+                  </Button>
                   <Button Classes="treerun" Tag="stop" Content="⏹" Foreground="#FF6B6B" IsVisible="{Binding Run.IsRunning}" ToolTip.Tip="Stop this run (finishes the current requests, then stops)" />
                 </StackPanel>
               </Grid>
@@ -291,7 +278,9 @@
                       <TextBlock Text="{Binding Run.Counts}" IsVisible="{Binding Run.HasCounts}" Foreground="{Binding Run.Tint}" FontSize="10.5" VerticalAlignment="Center" />
                     </StackPanel>
                   </Button>
-                  <Button Classes="treerun" Tag="run" Content="▶" IsEnabled="{Binding Owner.InstanceRun.NotRunning}" ToolTip.Tip="Run this step" />
+                  <Button Classes="treerun" Tag="run" IsEnabled="{Binding Owner.InstanceRun.NotRunning}" ToolTip.Tip="Run this step (on the ticked rows of its testcase, if any are ticked)">
+                    <StackPanel Orientation="Horizontal" Spacing="3"><TextBlock Text="▶" /><TextBlock Text="{Binding Owner.TickedRowsText}" IsVisible="{Binding Owner.HasTickedRows}" FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center" /></StackPanel>
+                  </Button>
                   <Button Classes="treemove" Tag="up" Content="▲" ToolTip.Tip="Run earlier" />
                   <Button Classes="treemove" Tag="down" Content="▼" ToolTip.Tip="Run later" />
                 </StackPanel>
@@ -314,7 +303,9 @@
                       <TextBlock Text="{Binding Run.Counts}" IsVisible="{Binding Run.HasCounts}" Foreground="{Binding Run.Tint}" FontSize="10.5" VerticalAlignment="Center" />
                     </StackPanel>
                   </Button>
-                  <Button Classes="treerun" Tag="run" Content="▶" IsEnabled="{Binding InstanceRun.NotRunning}" ToolTip.Tip="Run this testcase" />
+                  <Button Classes="treerun" Tag="run" IsEnabled="{Binding InstanceRun.NotRunning}" ToolTip.Tip="Run this testcase (only its ticked rows, if any are ticked)">
+                    <StackPanel Orientation="Horizontal" Spacing="3"><TextBlock Text="▶" /><TextBlock Text="{Binding TickedRowsText}" IsVisible="{Binding HasTickedRows}" FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center" /></StackPanel>
+                  </Button>
                   <Button Classes="treemove" Tag="up" Content="▲" ToolTip.Tip="Run earlier" />
                   <Button Classes="treemove" Tag="down" Content="▼" ToolTip.Tip="Run later" />
                 </StackPanel>

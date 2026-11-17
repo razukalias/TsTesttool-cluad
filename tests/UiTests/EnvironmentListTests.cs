@@ -151,15 +151,18 @@ public class EnvironmentListTests
     }
 
     [AvaloniaFact]
-    public void The_tree_has_a_manage_button_that_adds_an_environment_from_the_flyout_box()
+    public void Add_and_remove_live_in_the_existing_environment_dropdown_not_in_a_separate_button()
     {
         using var dir = new TempDir();
         var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 2));
-        var settings = new ListSettings("t");
+        var settings = new ListSettings();
         window.Shell.EnvironmentSettings = settings;
         window.Show();
         Dispatcher.UIThread.RunJobs();
-        Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => b.Content as string == "＋ / ✕");
+        var buttons = window.GetVisualDescendants().OfType<Button>().ToList();
+        Assert.DoesNotContain(buttons, b => b.Content as string == "＋ / ✕");
+        Assert.Contains(buttons, b => b.Classes.Contains("treeenv"));                 // the Env dropdown is there even with no environments
+        Assert.Equal("none yet", window.Shell.GlobalEnvironmentsText);
         window.Close();
     }
 }

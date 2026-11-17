@@ -54,6 +54,14 @@ public sealed partial class TestcaseItem : ObservableObject
     /// <summary>The steps as children of the testcase in the tree, in run order.</summary>
     public ObservableCollection<StepNode> StepNodes { get; } = [];
 
+    /// <summary>How many of this testcase's data rows are ticked in the grid; shown beside its ▶ (and its steps') as the rows that ▶ will run.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TickedRowsText))]
+    [NotifyPropertyChangedFor(nameof(HasTickedRows))]
+    private int _tickedRows;
+    public string TickedRowsText => TickedRows > 0 ? TickedRows.ToString() : string.Empty;
+    public bool HasTickedRows => TickedRows > 0;
+
     /// <summary>The owning instance's run state, so the testcase's and its steps' run buttons can disable while it runs.</summary>
     [ObservableProperty] private RunBadge? _instanceRun;
 

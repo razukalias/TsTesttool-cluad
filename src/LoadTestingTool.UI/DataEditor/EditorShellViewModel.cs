@@ -26,6 +26,17 @@ public sealed partial class InstanceNode : ObservableObject
     public ObservableCollection<TestcaseItem> Testcases => Editor?.Testcases ?? NoTestcases;
     public string DirtyColor => "#F6C76B";
 
+    /// <summary>Data rows ticked in this instance's grids, shown beside the instance's ▶.</summary>
+    public int TickedRows => Editor?.TickedRowCount ?? 0;
+    public string TickedRowsText => TickedRows > 0 ? TickedRows.ToString() : string.Empty;
+    public bool HasTickedRows => TickedRows > 0;
+    internal void RefreshTickedRows()
+    {
+        OnPropertyChanged(nameof(TickedRows));
+        OnPropertyChanged(nameof(TickedRowsText));
+        OnPropertyChanged(nameof(HasTickedRows));
+    }
+
     /// <summary>The instance's tick box: ticked when every testcase is, "some" when part of them are.</summary>
     public bool? ChosenState
     {
@@ -251,14 +262,23 @@ public sealed partial class EditorShellViewModel : ObservableObject
             case InstanceNode instance:
                 if (instance.CanLoad) await LoadAsync(instance);
                 if (instance.Editor is not { } ie) return;
-                await ie.RunFromTreeAsync(new RunRequest([], [], ie.RowsMode == DataEditorViewModel.RowsModeOptions[0] ? null : ie.RowsMode.ToLowerInvariant(), HasEnvironments ? instance.RunParallel : null), $"all of {instance.Name}");
+                if (ie.BuildTickedRowsRequest(null, null, HasEnvironments ? instance.RunParallel : null) is { } instanceRows)
+                    await ie.RunFromTreeAsync(instanceRows.Request, $"{instanceRows.Label} of {instance.Name}");
+                else
+                    await ie.RunFromTreeAsync(new RunRequest([], [], ie.RowsMode == DataEditorViewModel.RowsModeOptions[0] ? null : ie.RowsMode.ToLowerInvariant(), HasEnvironments ? instance.RunParallel : null), $"all of {instance.Name}");
                 break;
             case TestcaseItem testcase when EditorOf(testcase) is { } te:
-                await te.RunFromTreeAsync(te.BuildRequest([(testcase, null)], ParallelFor(testcase)), $"testcase {testcase.Name}");
+                if (te.BuildTickedRowsRequest(testcase, null, ParallelFor(testcase)) is { } testcaseRows)
+                    await te.RunFromTreeAsync(testcaseRows.Request, $"{testcaseRows.Label} of testcase {testcase.Name}");
+                else
+                    await te.RunFromTreeAsync(te.BuildRequest([(testcase, null)], ParallelFor(testcase)), $"testcase {testcase.Name}");
                 break;
             case StepNode step when EditorOf(step) is { } se:
                 if (!se.IsStepEnabled(step.Owner.Index, step.Name)) { se.Report($"Step {step.Name} is disabled, so it cannot be run on its own. Enable it on the Steps tab first.", isError: true); return; }
-                await se.RunFromTreeAsync(se.BuildRequest([(step.Owner, [step.Name])], ParallelFor(step.Owner)), $"step {step.Name} of {step.Owner.Name}");
+                if (se.BuildTickedRowsRequest(step.Owner, [step.Name], ParallelFor(step.Owner)) is { } stepRows)
+                    await se.RunFromTreeAsync(stepRows.Request, $"{stepRows.Label} of step {step.Name} of {step.Owner.Name}");
+                else
+                    await se.RunFromTreeAsync(se.BuildRequest([(step.Owner, [step.Name])], ParallelFor(step.Owner)), $"step {step.Name} of {step.Owner.Name}");
                 break;
         }
     }
@@ -389,7 +409,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
     private void Wire(InstanceNode node)
     {
         AttachSelection(node);
-        node.Editor!.TickedChanged += (_, _) => { OnPropertyChanged(nameof(TickedCount)); OnPropertyChanged(nameof(HasTicked)); OnPropertyChanged(nameof(TickedText)); OnPropertyChanged(nameof(TickedBadge)); OnPropertyChanged(nameof(CanRunTicked)); };
+        node.Editor!.TickedChanged += (_, _) => { node.RefreshTickedRows(); OnPropertyChanged(nameof(TickedCount)); OnPropertyChanged(nameof(HasTicked)); OnPropertyChanged(nameof(TickedText)); OnPropertyChanged(nameof(TickedBadge)); OnPropertyChanged(nameof(CanRunTicked)); };
         node.Editor!.CreateTestcaseHandler = draft => CreateTestcaseHandler?.Invoke(node.Name, draft);
         node.Editor!.CloseRequested += (_, _) => OnEditorClosed();
         node.Editor.HistoryHandler = testcase => HistoryHandler?.Invoke(node.Name, testcase);

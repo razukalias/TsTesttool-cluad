@@ -51,7 +51,7 @@ public sealed partial class EditorShellViewModel
     {
         get
         {
-            if (GlobalEnvironmentChoices.Count == 0) return string.Empty;
+            if (GlobalEnvironmentChoices.Count == 0) return "none yet";
             var sets = Instances.Select(i => string.Join('|', i.ChosenEnvironments.Order(StringComparer.OrdinalIgnoreCase))).Distinct().Take(2).ToList();
             if (sets.Count > 1) return "Mixed";
             var chosen = Instances.FirstOrDefault()?.ChosenEnvironments ?? [];
@@ -135,8 +135,10 @@ public sealed partial class EditorShellViewModel
     public string EnvironmentEditMessage
     {
         get => _environmentEditMessage;
-        private set { _environmentEditMessage = value; OnPropertyChanged(); }
+        private set { _environmentEditMessage = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasEnvironmentEditMessage)); }
     }
+
+    public bool HasEnvironmentEditMessage => _environmentEditMessage.Length > 0;
 
     /// <summary>Why a name cannot be used as an environment, or null when it can.</summary>
     internal static string? EnvironmentNameProblem(string name)
@@ -176,6 +178,7 @@ public sealed partial class EditorShellViewModel
         foreach (var instance in Instances) instance.LoadEnvironments(settings);
         RebuildGlobalEnvironments();
         OnPropertyChanged(nameof(HasEnvironments));
+        OnPropertyChanged(nameof(GlobalEnvironmentsText));
         EnvironmentEditMessage = done;
         (Current ?? Instances.FirstOrDefault(i => i.Editor is not null)?.Editor)?.Report(done, isError: false);
         return null;
