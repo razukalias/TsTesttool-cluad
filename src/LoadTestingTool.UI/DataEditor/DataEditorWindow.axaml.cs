@@ -148,15 +148,23 @@ public partial class DataEditorWindow : Window
         var grid = this.FindControl<DataGrid>("SheetGrid");
         var editor = _shell?.Current;
         if (grid is null || editor is null) return;
+        grid.CellPointerPressed -= OnSheetCellPointerPressed;
+        grid.CellPointerPressed += OnSheetCellPointerPressed;
+        editor.SheetCurrentColumn = -1;
         grid.Columns.Clear();
         for (var i = 0; i < editor.SheetHeaders.Count; i++)
             grid.Columns.Add(new DataGridTextColumn
             {
+                Tag = i,
                 Header = editor.SheetHeaders[i].Length == 0 ? $"({i + 1})" : editor.SheetHeaders[i],
-                Binding = new Avalonia.Data.Binding($"Cells[{i}]") { Mode = editor.SheetIsEditable ? Avalonia.Data.BindingMode.TwoWay : Avalonia.Data.BindingMode.OneWay },
-                IsReadOnly = !editor.SheetIsEditable,
+                Binding = new Avalonia.Data.Binding($"Cells[{i}]") { Mode = Avalonia.Data.BindingMode.TwoWay },
                 MinWidth = 90,
             });
+    }
+
+    private void OnSheetCellPointerPressed(object? sender, DataGridCellPointerPressedEventArgs e)
+    {
+        if (_shell.Current is { } editor) editor.SheetCurrentColumn = e.Column.Tag is int tag ? tag : -1;
     }
 
     private void OnColumnsChanged(object? sender, EventArgs e) => RebuildColumns();
@@ -335,7 +343,10 @@ public partial class DataEditorWindow : Window
     }
 
     private void OnGridCellPointerPressed(object? sender, DataGridCellPointerPressedEventArgs e)
-        => _shell.Current!.CurrentCellIndex = e.Column.Tag is int tag ? tag : -1;
+    {
+        _shell.Current!.CurrentCellIndex = e.Column.Tag is int tag ? tag : -1;
+        if (ReferenceEquals(sender, this.FindControl<DataGrid>("Grid"))) OnDataGridCellPressed(e);
+    }
 
     private void OnSaveClick(object? sender, RoutedEventArgs e) => Save();
 
@@ -367,6 +378,7 @@ public partial class DataEditorWindow : Window
     {
         this.FindControl<DataGrid>("Grid")?.CommitEdit();
         this.FindControl<DataGrid>("StepsGrid")?.CommitEdit();
+        this.FindControl<DataGrid>("SheetGrid")?.CommitEdit();
     }
 
     private void RebuildColumns()
@@ -376,7 +388,10 @@ public partial class DataEditorWindow : Window
         if (grid is null || editor is null) return;
         grid.CellPointerPressed -= OnGridCellPointerPressed;
         grid.CellPointerPressed += OnGridCellPointerPressed;
+        grid.RemoveHandler(PointerPressedEvent, OnDataGridHeaderPressed);
+        grid.AddHandler(PointerPressedEvent, OnDataGridHeaderPressed, RoutingStrategies.Tunnel);
         editor.CurrentCellIndex = -1;
+        _pickedColumn = null;
         grid.Columns.Clear();
         grid.Columns.Add(CreateTickColumn(editor));
         grid.Columns.Add(CreateColumn(new GridColumn("Data ID", ColumnGroup.Id, 0, -1)));

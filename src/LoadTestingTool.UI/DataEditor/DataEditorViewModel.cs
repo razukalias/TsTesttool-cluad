@@ -605,6 +605,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         IsDirty = false;
         ClearRowFilters();
         LoadTestcases(keep);
+        InitSheets();
         ShowStatus($"Reloaded {FileName} from disk.", isError: false);
     }
 

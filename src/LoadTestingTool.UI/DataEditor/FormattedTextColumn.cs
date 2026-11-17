@@ -8,6 +8,38 @@ public sealed class FormattedTextColumn : DataGridTextColumn
 {
     private readonly int _cell;
     private readonly string? _rule;
+    private readonly List<WeakReference<Border>> _overlays = [];
+    private bool _selected;
+
+    /// <summary>True while the user has this column picked by clicking its header: its cells and header are tinted.</summary>
+    public bool Selected
+    {
+        get => _selected;
+        set
+        {
+            _selected = value;
+            _overlays.RemoveAll(w => !w.TryGetTarget(out _));
+            foreach (var weak in _overlays) if (weak.TryGetTarget(out var overlay)) overlay.IsVisible = value;
+            UpdateHeader();
+        }
+    }
+
+    private void UpdateHeader()
+    {
+        if (Header is not Avalonia.Visual visual) return;
+        var header = Avalonia.VisualTree.VisualExtensions.GetVisualAncestors(visual).OfType<DataGridColumnHeader>().FirstOrDefault();
+        if (header is null) return;
+        if (_selected) { if (!header.Classes.Contains("colsel")) header.Classes.Add("colsel"); }
+        else header.Classes.Remove("colsel");
+    }
+
+    /// <summary>Lays a translucent tint over the cell while the column is selected; it never takes mouse input.</summary>
+    private Control Tinted(Control content)
+    {
+        var overlay = new Border { Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#383291FF")), IsHitTestVisible = false, IsVisible = _selected };
+        _overlays.Add(new WeakReference<Border>(overlay));
+        return new Grid { Children = { content, overlay } };
+    }
 
     /// <param name="cell">Index of the cell in the row.</param>
     /// <param name="ruleHeader">The config header whose rules mark a questionable value with a ⚠, or null for none.</param>
@@ -27,7 +59,7 @@ public sealed class FormattedTextColumn : DataGridTextColumn
             text.Bind(TextBlock.TextWrappingProperty, new Binding($"Formats[{_cell}].Wrapping"));
             text.Bind(TextBlock.ForegroundProperty, new Binding($"Formats[{_cell}].Foreground"));
         }
-        if (_rule is null || element is not TextBlock shown) return element;
+        if (_rule is null || element is not TextBlock shown) return Tinted(element);
 
         // A ⚠ beside a value the runner would misread, with the reason as its tooltip; an ⓘ where it only deserves a note.
         var mark = new TextBlock { VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Margin = new Avalonia.Thickness(4, 0, 6, 0), IsVisible = false };
@@ -42,6 +74,6 @@ public sealed class FormattedTextColumn : DataGridTextColumn
         }
         shown.PropertyChanged += (_, e) => { if (e.Property == TextBlock.TextProperty) Refresh(); };
         Refresh();
-        return holder;
+        return Tinted(holder);
     }
 }

@@ -30,11 +30,15 @@ public sealed partial class DataEditorViewModel
 
     public const string PlaceAtEnd = "At the end";
     public const string PlaceBeforeCurrent = "Before the selected column";
+    public const string PlaceAfterCurrent = "After the selected column";
+
+    /// <summary>How many columns the next "Add column" creates; with more than one, 1, 2, 3… is added to the name.</summary>
+    [ObservableProperty] private decimal? _newColumnCount = 1;
 
     /// <summary>Where the new column goes: after the last column of its sheet, or directly before the column whose cell you last clicked.</summary>
     [ObservableProperty] private string _newColumnPlacement = PlaceAtEnd;
 
-    public IReadOnlyList<string> PlacementOptions { get; } = [PlaceAtEnd, PlaceBeforeCurrent];
+    public IReadOnlyList<string> PlacementOptions { get; } = [PlaceAtEnd, PlaceBeforeCurrent, PlaceAfterCurrent];
 
     private GridColumn? CurrentColumn => CurrentCellIndex > 0 && CurrentCellIndex <= Columns.Count ? Columns[CurrentCellIndex - 1] : null;
 
@@ -46,7 +50,23 @@ public sealed partial class DataEditorViewModel
         foreach (var step in testcase.Steps) NewColumnSteps.Add(step);
         NewColumnStep = SelectedStep is { } selected && NewColumnSteps.Contains(selected.CurrentName) ? selected.CurrentName : NewColumnSteps.LastOrDefault();
         NewColumnName = string.Empty;
+        NewColumnCount = 1;
         AddColumnVisible = true;
+    }
+
+    /// <summary>Opens the add-column panel for the column whose header was right-clicked: left or right of it, several at once.</summary>
+    public void OpenInsertColumns(bool left, int count)
+    {
+        if (SelectedTestcase is null) return;
+        var current = CurrentColumn;
+        OpenAddColumn();
+        NewColumnCount = count;
+        if (current is null) return;
+        NewColumnKind = current.Group == ColumnGroup.Response ? ExpectedKind : RequestKind;
+        NewColumnPlacement = left ? PlaceBeforeCurrent : PlaceAfterCurrent;
+        var title = StripVerb(current.Title);
+        var dot = title.IndexOf('.');
+        if (dot > 0 && NewColumnSteps.FirstOrDefault(x => x.Equals(title[..dot], StringComparison.OrdinalIgnoreCase)) is { } step) NewColumnStep = step;
     }
 
     [RelayCommand]
@@ -62,30 +82,34 @@ public sealed partial class DataEditorViewModel
         if (name.Length == 0 || name.StartsWith('.') || name.EndsWith('.')) { ShowStatus("Enter a name for the column.", isError: true); return; }
 
         var expected = NewColumnIsExpected;
-        var header = expected ? $"{{{NewColumnVerb}}}{step}.{name}" : $"{step}.{name}";
+        var count = (int)Math.Clamp(NewColumnCount ?? 1, 1, 200);
+        var names = count == 1 ? [name] : Enumerable.Range(1, count).Select(i => name + i.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
+        var headers = names.Select(n => expected ? $"{{{NewColumnVerb}}}{step}.{n}" : $"{step}.{n}").ToList();
         var table = expected ? _document.Response : _document.Request;
-        var clash = expected
-            ? table.Headers.Any(h => SamePath(h, step, name))
-            : table.FindColumn(header) >= 0;
-        if (clash) { ShowStatus($"The {(expected ? "response" : "request")} sheet already has a column for {step}.{name}.", isError: true); return; }
-
-        var before = NewColumnPlacement == PlaceBeforeCurrent && CurrentColumn is { } current && current.Group == (expected ? ColumnGroup.Response : ColumnGroup.Request) ? current : null;
-        Record($"add column {header}");
-        string where;
-        if (before is not null)
+        for (var i = 0; i < headers.Count; i++)
         {
-            table.InsertColumnBefore(before.SheetColumn, header);
-            where = $"directly before {before.Title}. Saving inserts a real column there; columns to its right move right";
+            var clash = expected ? table.Headers.Any(h => SamePath(h, step, names[i])) : table.FindColumn(headers[i]) >= 0;
+            if (clash) { ShowStatus($"The {(expected ? "response" : "request")} sheet already has a column for {step}.{names[i]}.", isError: true); return; }
+        }
+
+        var near = NewColumnPlacement != PlaceAtEnd && CurrentColumn is { } current && current.Group == (expected ? ColumnGroup.Response : ColumnGroup.Request) ? current : null;
+        Record(count == 1 ? $"add column {headers[0]}" : $"add {count} columns {headers[0]}…");
+        string where;
+        if (near is not null)
+        {
+            var position = NewColumnPlacement == PlaceAfterCurrent ? near.SheetColumn + 1 : near.SheetColumn;
+            foreach (var header in headers) table.InsertColumnBefore(position++, header);
+            where = $"directly {(NewColumnPlacement == PlaceAfterCurrent ? "after" : "before")} {near.Title}. Saving inserts real columns there; columns to the right move right";
         }
         else
         {
-            table.EnsureColumn(header);
-            where = $"It is the last {(expected ? "expected" : "request")} column";
+            foreach (var header in headers) table.EnsureColumn(header);
+            where = $"At the end of the {(expected ? "expected" : "request")} columns";
         }
         AddColumnVisible = false;
         MarkChanged();
         BuildRows();
-        ShowStatus($"Added column {header} to the {(expected ? "response" : "request")} sheet, {where}; fill in the values per row.", isError: false);
+        ShowStatus($"Added {(count == 1 ? "column " + headers[0] : count + " columns " + headers[0] + "…")} to the {(expected ? "response" : "request")} sheet, {where}; fill in the values per row.", isError: false);
     }
 
     /// <summary>An expected-value column is identified by step and path; the verb in braces is only how it compares.</summary>

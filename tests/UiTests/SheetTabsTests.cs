@@ -42,7 +42,7 @@ public class SheetTabsTests
     }
 
     [Fact]
-    public void Another_sheet_is_shown_read_only_with_its_rows()
+    public void Another_sheet_is_shown_with_its_rows_and_is_editable()
     {
         using var dir = new TempDir();
         var editor = OpenWithNotesSheet(dir);
@@ -51,7 +51,8 @@ public class SheetTabsTests
 
         Assert.True(editor.ShowSheetGrid);
         Assert.False(editor.ShowDataGrid);
-        Assert.False(editor.SheetIsEditable);
+        Assert.True(editor.SheetIsEditable);
+        Assert.True(editor.IsOtherSheet);
         Assert.Equal(["topic", "text"], editor.SheetHeaders);
         Assert.Equal(["auth", "token expires hourly"], editor.SheetRows.Single().Cells);
     }

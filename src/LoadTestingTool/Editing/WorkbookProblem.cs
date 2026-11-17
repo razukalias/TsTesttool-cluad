@@ -55,4 +55,7 @@ public sealed class WorkbookChangedException : IOException
 }
 
 /// <summary>An opaque capture of a whole <see cref="WorkbookDocument"/>'s edits, used for undo and redo.</summary>
-public sealed record DocumentSnapshot(SheetSnapshot Config, SheetSnapshot Request, SheetSnapshot Response);
+public sealed record DocumentSnapshot(SheetSnapshot Config, SheetSnapshot Request, SheetSnapshot Response, OtherSheetsSnapshot? Others = null);
+
+/// <summary>The other worksheets (tables, names, removals) at one moment, for undo.</summary>
+public sealed record OtherSheetsSnapshot(IReadOnlyList<(SheetTable Table, SheetSnapshot Snapshot, string Name)> Tables, IReadOnlyList<string> RemovedSheets);

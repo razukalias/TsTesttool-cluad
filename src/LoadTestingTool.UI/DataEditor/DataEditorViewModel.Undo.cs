@@ -22,15 +22,31 @@ public sealed partial class DataEditorViewModel
     /// <summary>Call before changing the workbook, so the change can be undone.</summary>
     private void Record(string description)
     {
+        if (_batchDepth > 0) return;   // a batch records once, up front
         _undo.Add(Capture(description));
         if (_undo.Count > MaxUndo) _undo.RemoveAt(0);
         _redo.Clear();
         NotifyUndoChanged();
     }
 
+    private int _batchDepth;
+
+    /// <summary>Runs several changes as one undo step. The work returns how many changes it made; none leaves no undo entry.</summary>
+    private int RunBatch(string description, Func<int> work)
+    {
+        Record(description);
+        _batchDepth++;
+        int made;
+        try { made = work(); }
+        finally { _batchDepth--; }
+        if (made == 0) DiscardLastRecord();
+        return made;
+    }
+
     /// <summary>The change that was just recorded turned out not to happen (it was rejected).</summary>
     private void DiscardLastRecord()
     {
+        if (_batchDepth > 0) return;
         if (_undo.Count > 0) _undo.RemoveAt(_undo.Count - 1);
         NotifyUndoChanged();
     }
@@ -92,6 +108,7 @@ public sealed partial class DataEditorViewModel
         BuildRows();
         if (state.SelectedRequest is not null && _allRows.FirstOrDefault(r => r.Request == state.SelectedRequest) is { } row) SelectedRow = row;
         if (state.SelectedStepRow is not null && StepRows.FirstOrDefault(r => r.Row == state.SelectedStepRow) is { } step) SelectedStep = step;
+        InitSheets();
         IsDirty = _document.IsDirty;
         Revalidate();
     }

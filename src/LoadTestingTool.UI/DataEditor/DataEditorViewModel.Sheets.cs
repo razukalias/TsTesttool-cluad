@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using ClosedXML.Excel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using LoadTestingTool.Editing;
 
@@ -53,7 +52,7 @@ public sealed partial class DataEditorViewModel
     /// <summary>The tabs shown.</summary>
     public ObservableCollection<string> OpenSheets { get; } = [];
 
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowDataGrid), nameof(ShowSheetGrid), nameof(SheetIsEditable), nameof(SheetHasRowToggle))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowDataGrid), nameof(ShowSheetGrid), nameof(SheetIsEditable), nameof(SheetHasRowToggle), nameof(IsConfigSheet), nameof(IsOtherSheet))]
     private string _activeSheet = DataSheet;
 
     /// <summary>For the config sheet: show every row instead of only the selected testcase's (or step's) rows.</summary>
@@ -65,10 +64,14 @@ public sealed partial class DataEditorViewModel
 
     public bool ShowDataGrid => ShowData && ActiveSheet == DataSheet;
     public bool ShowSheetGrid => ShowData && ActiveSheet != DataSheet;
-    public bool SheetIsEditable => ActiveSheet.Equals(ConfigSheet, StringComparison.OrdinalIgnoreCase);
-    public bool SheetHasRowToggle => SheetIsEditable && (SelectedTestcase is not null || FilteringByStep);
+    public bool IsConfigSheet => ActiveSheet.Equals(ConfigSheet, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A sheet the runner does not read: its cells, rows and columns can be edited, and the sheet itself renamed or removed.</summary>
+    public bool IsOtherSheet => ShowSheetGrid && !IsConfigSheet;
+    public bool SheetIsEditable => ShowSheetGrid;
+    public bool SheetHasRowToggle => IsConfigSheet && (SelectedTestcase is not null || FilteringByStep);
     public string SheetSummary => ShowSheetGrid
-        ? $"{SheetRows.Count} {(SheetRows.Count == 1 ? "row" : "rows")}{(SheetIsEditable ? string.Empty : " · read only here")}"
+        ? $"{SheetRows.Count} {(SheetRows.Count == 1 ? "row" : "rows")}"
         : string.Empty;
 
     /// <summary>Called when the workbook is (re)loaded: lists the sheets and applies the choice remembered for this instance.</summary>
@@ -130,10 +133,13 @@ public sealed partial class DataEditorViewModel
         OnPropertyChanged(nameof(ShowDataGrid));
         OnPropertyChanged(nameof(ShowSheetGrid));
         OnPropertyChanged(nameof(SheetHasRowToggle));
+        OnPropertyChanged(nameof(IsConfigSheet));
+        OnPropertyChanged(nameof(IsOtherSheet));
         SheetRows.Clear();
+        SelectedSheetRow = null;
         if (ActiveSheet == DataSheet) { SheetHeaders = []; SheetColumnsChanged?.Invoke(this, EventArgs.Empty); OnPropertyChanged(nameof(SheetSummary)); return; }
 
-        if (SheetIsEditable)
+        if (IsConfigSheet)
         {
             var config = _document.Config;
             SheetHeaders = config.Headers.ToList();
@@ -147,9 +153,11 @@ public sealed partial class DataEditorViewModel
         }
         else
         {
-            var (headers, rows) = ReadOtherSheet(ActiveSheet);
-            SheetHeaders = headers;
-            foreach (var cells in rows) SheetRows.Add(new SheetRowViewModel(cells));
+            var table = _document.FindOtherSheet(ActiveSheet);
+            SheetHeaders = table?.Headers.ToList() ?? [];
+            if (table is not null)
+                foreach (var row in table.Rows)
+                    SheetRows.Add(new SheetRowViewModel(Enumerable.Range(0, table.ColumnCount).Select(row.GetAt), row, OnOtherCellEdited));
         }
         SheetColumnsChanged?.Invoke(this, EventArgs.Empty);
         OnPropertyChanged(nameof(SheetSummary));
@@ -165,34 +173,6 @@ public sealed partial class DataEditorViewModel
     }
 
     private bool _stepsStale;
-
-    /// <summary>Reads a sheet the editor does not hold from the file on disk (the file is not locked, and the sheet is unchanged by anything here).</summary>
-    private (List<string> Headers, List<string[]> Rows) ReadOtherSheet(string name)
-    {
-        try
-        {
-            using var stream = new FileStream(WorkbookPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            using var book = new XLWorkbook(stream);
-            if (!book.TryGetWorksheet(name, out var sheet)) return ([], []);
-            var used = sheet.RangeUsed();
-            if (used is null) return ([], []);
-            var lastColumn = used.LastColumn().ColumnNumber();
-            var lastRow = used.LastRow().RowNumber();
-            var headers = Enumerable.Range(1, lastColumn).Select(c => sheet.Cell(1, c).GetFormattedString()).ToList();
-            var rows = new List<string[]>();
-            for (var r = 2; r <= lastRow; r++)
-            {
-                var cells = Enumerable.Range(1, lastColumn).Select(c => sheet.Cell(r, c).GetFormattedString()).ToArray();
-                if (cells.Any(c => c.Length > 0)) rows.Add(cells);
-            }
-            return (headers, rows);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
-        {
-            ShowStatus($"Could not read sheet {name}: {ex.Message}", isError: true);
-            return ([], []);
-        }
-    }
 }
 
 /// <summary>One entry of the sheet filter: a sheet and whether its tab is shown.</summary>

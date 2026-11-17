@@ -14,7 +14,7 @@ public sealed partial class WorkbookDocument
     private byte[] _baselineBytes;
     private string _baselineHash;
 
-    private WorkbookDocument(string filePath, byte[] bytes, SheetTable config, SheetTable request, SheetTable response, IReadOnlyList<string> otherSheets)
+    private WorkbookDocument(string filePath, byte[] bytes, SheetTable config, SheetTable request, SheetTable response, List<SheetTable> otherSheets)
     {
         FilePath = filePath;
         _baselineBytes = bytes;
@@ -22,7 +22,7 @@ public sealed partial class WorkbookDocument
         Config = config;
         Request = request;
         Response = response;
-        OtherSheets = otherSheets;
+        _others = otherSheets;
     }
 
     public string FilePath { get; }
@@ -30,10 +30,13 @@ public sealed partial class WorkbookDocument
     public SheetTable Request { get; }
     public SheetTable Response { get; }
 
-    /// <summary>Names of the worksheets that are not edited here (for example README). They are never modified.</summary>
-    public IReadOnlyList<string> OtherSheets { get; }
+    private readonly List<SheetTable> _others;
+    private readonly List<string> _removedSheets = [];
 
-    public bool IsDirty => Config.IsDirty || Request.IsDirty || Response.IsDirty;
+    /// <summary>Names of the worksheets the runner does not read (for example README), in workbook order. They can be edited, added, renamed and removed.</summary>
+    public IReadOnlyList<string> OtherSheets => _others.Select(t => t.SheetName).ToList();
+
+    public bool IsDirty => Config.IsDirty || Request.IsDirty || Response.IsDirty || SheetsChanged || _others.Any(t => t.IsDirty);
 
     public static WorkbookDocument Load(string path)
     {
@@ -46,7 +49,7 @@ public sealed partial class WorkbookDocument
         var request = SheetTable.Load(RequireSheet(workbook, "request"));
         var response = SheetTable.Load(RequireSheet(workbook, "response"));
         var edited = new HashSet<string>([config.SheetName, request.SheetName, response.SheetName], StringComparer.OrdinalIgnoreCase);
-        var others = workbook.Worksheets.Select(w => w.Name).Where(n => !edited.Contains(n)).ToList();
+        var others = workbook.Worksheets.Where(w => !edited.Contains(w.Name)).Select(SheetTable.LoadLoose).ToList();
         return new WorkbookDocument(full, bytes, config, request, response, others);
     }
 
@@ -162,13 +165,23 @@ public sealed partial class WorkbookDocument
 
     /// <summary>Checks the workbook against the same rules the runner applies when it reads it.</summary>
     /// <summary>Captures every edit so far; <see cref="Restore"/> goes back to it. Invalid once the document has been saved.</summary>
-    public DocumentSnapshot Snapshot() => new(Config.Snapshot(), Request.Snapshot(), Response.Snapshot());
+    public DocumentSnapshot Snapshot() => new(Config.Snapshot(), Request.Snapshot(), Response.Snapshot(), new OtherSheetsSnapshot(_others.Select(t => (t, t.Snapshot(), t.SheetName)).ToList(), [.. _removedSheets]));
 
     public void Restore(DocumentSnapshot snapshot)
     {
         Config.Restore(snapshot.Config);
         Request.Restore(snapshot.Request);
         Response.Restore(snapshot.Response);
+        if (snapshot.Others is not { } others) return;
+        _others.Clear();
+        foreach (var (table, state, name) in others.Tables)
+        {
+            table.Restore(state);
+            table.SheetName = name;
+            _others.Add(table);
+        }
+        _removedSheets.Clear();
+        _removedSheets.AddRange(others.RemovedSheets);
     }
 
     public IReadOnlyList<WorkbookProblem> Validate() => WorkbookValidator.Validate(this);
@@ -192,14 +205,16 @@ public sealed partial class WorkbookDocument
         Config.ApplyTo(workbook.Worksheet(Config.SheetName));
         Request.ApplyTo(workbook.Worksheet(Request.SheetName));
         Response.ApplyTo(workbook.Worksheet(Response.SheetName));
+        ApplyOtherSheets(workbook);
         var inserted = Request.PendingInserts().Count + Response.PendingInserts().Count;
         var columns = Request.PendingColumnInserts + Response.PendingColumnInserts + (Request.HasRemovedColumns ? 1 : 0) + (Response.HasRemovedColumns ? 1 : 0);
         columns += Request.RenamedHeaders().Count + Response.RenamedHeaders().Count > 0 ? 1 : 0;
         if (inserted > 0) EnsureRowsCanMove();
-        var renumbered = RowInsertion.Apply(workbook, [Request, Response]); // also renames references to renamed columns
+        var renumbered = RowInsertion.Apply(workbook, [Request, Response, .. _others]); // also renames references to renamed columns
         Config.ApplyFormats(workbook.Worksheet(Config.SheetName));
         Request.ApplyFormats(workbook.Worksheet(Request.SheetName));
         Response.ApplyFormats(workbook.Worksheet(Response.SheetName));
+        foreach (var other in _others) other.ApplyFormats(workbook.Worksheet(other.SheetName));
 
         var directory = Path.GetDirectoryName(FilePath)!;
         var temp = Path.Combine(directory, $"{Path.GetFileName(FilePath)}.tmp-{Guid.NewGuid():N}");
@@ -228,6 +243,7 @@ public sealed partial class WorkbookDocument
         Config.AcceptChanges();
         Request.AcceptChanges();
         Response.AcceptChanges();
+        AcceptOtherSheets();
         return new SaveResult(true, backup, inserted, renumbered, columns);
     }
 

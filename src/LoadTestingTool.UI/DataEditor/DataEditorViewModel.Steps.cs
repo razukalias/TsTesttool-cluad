@@ -51,7 +51,7 @@ public sealed partial class DataEditorViewModel
         FocusedStep = null;   // the view mode (Table view or Config edit mode) stays as it was
     }
 
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowData), nameof(ShowDataGrid), nameof(ShowSheetGrid), nameof(SheetSummary))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowData), nameof(ShowDataGrid), nameof(ShowSheetGrid), nameof(SheetSummary), nameof(IsOtherSheet))]
     private bool _showSteps;
 
     public bool ShowData => !ShowSteps && !ShowRecord;

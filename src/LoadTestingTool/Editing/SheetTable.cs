@@ -40,7 +40,10 @@ public sealed class SheetTable
         HeaderRowNumber = headerRowNumber;
     }
 
-    public string SheetName { get; }
+    public string SheetName { get; internal set; }
+
+    /// <summary>The worksheet name in the file, or null for a sheet that was added here and is not saved yet.</summary>
+    public string? OriginalSheetName { get; internal set; }
     public int HeaderRowNumber { get; }
     public IReadOnlyList<TableRow> Rows => _rows;
     public int ColumnCount => _columns.Count;
@@ -260,17 +263,57 @@ public sealed class SheetTable
             table._rows.Add(tableRow);
             for (var i = 0; i < table._columns.Count; i++)
             {
-                var style = sheetRow.Cell(table._columns[i].SourceColumn!.Value).Style;
-                var fill = style.Fill.PatternType == XLFillPatternValues.Solid && style.Fill.BackgroundColor.ColorType == XLColorType.Color
-                    ? "#" + style.Fill.BackgroundColor.Color.R.ToString("X2") + style.Fill.BackgroundColor.Color.G.ToString("X2") + style.Fill.BackgroundColor.Color.B.ToString("X2")
-                    : null;
-                var format = new CellFormat(fill, style.Alignment.WrapText);
+                var format = FormatOf(sheetRow.Cell(table._columns[i].SourceColumn!.Value).Style);
                 if (!format.IsDefault) table._formats[(tableRow, table._columns[i])] = format;
             }
         }
         table._formatBaseline = new(table._formats);
         return table;
     }
+
+    private static CellFormat FormatOf(IXLStyle style)
+    {
+        var fill = style.Fill.PatternType == XLFillPatternValues.Solid && style.Fill.BackgroundColor.ColorType == XLColorType.Color
+            ? "#" + style.Fill.BackgroundColor.Color.R.ToString("X2") + style.Fill.BackgroundColor.Color.G.ToString("X2") + style.Fill.BackgroundColor.Color.B.ToString("X2")
+            : null;
+        return new CellFormat(fill, style.Alignment.WrapText);
+    }
+
+    /// <summary>
+    /// Loads any worksheet as a plain table: the first used row is the header, every column from A to the last used one is kept
+    /// (a column with no header text gets an empty header), values are read as Excel shows them. Used for the sheets the runner does not read.
+    /// </summary>
+    internal static SheetTable LoadLoose(IXLWorksheet sheet)
+    {
+        var used = sheet.RangeUsed();
+        var table = new SheetTable(sheet.Name, used?.FirstRow().RowNumber() ?? 1) { OriginalSheetName = sheet.Name };
+        if (used is null) return table;
+        var last = used.LastRow().RowNumber();
+        var lastColumn = used.LastColumn().ColumnNumber();
+        for (var c = 1; c <= lastColumn; c++)
+        {
+            var text = sheet.Cell(table.HeaderRowNumber, c).GetFormattedString().Trim();
+            table._columns.Add(new Column(text, text, c));
+        }
+        for (var r = table.HeaderRowNumber + 1; r <= last; r++)
+        {
+            var values = new string[lastColumn];
+            for (var i = 0; i < lastColumn; i++) values[i] = sheet.Cell(r, i + 1).GetFormattedString();
+            if (values.All(string.IsNullOrWhiteSpace)) continue;
+            var tableRow = new TableRow(table, r, values, isNew: false);
+            table._rows.Add(tableRow);
+            for (var i = 0; i < lastColumn; i++)
+            {
+                var format = FormatOf(sheet.Cell(r, i + 1).Style);
+                if (!format.IsDefault) table._formats[(tableRow, table._columns[i])] = format;
+            }
+        }
+        table._formatBaseline = new(table._formats);
+        return table;
+    }
+
+    /// <summary>An empty table for a worksheet that does not exist in the file yet.</summary>
+    internal static SheetTable Create(string sheetName) => new(sheetName, 1);
 
     internal void ApplyTo(IXLWorksheet sheet)
     {

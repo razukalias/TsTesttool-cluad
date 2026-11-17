@@ -20,7 +20,7 @@ public partial class DataEditorWindow
         }
     }
 
-    private List<(IFormattedRow Row, int Cell)> FormatTargets(DataEditorViewModel editor)
+    private List<(IFormattedRow Row, int Cell)> FormatTargets(DataEditorViewModel editor, string? scope = null)
     {
         CommitPendingEdit();
         SyncCurrentColumn();
@@ -46,7 +46,7 @@ public partial class DataEditorWindow
             cellCount = editor.Columns.Count;
         }
         var cell = editor.CurrentCellIndex;
-        switch (editor.FormatScope)
+        switch (scope ?? editor.FormatScope)
         {
             case "Selected rows":
                 foreach (var row in selected.Count > 0 ? selected : current is null ? [] : [current])
