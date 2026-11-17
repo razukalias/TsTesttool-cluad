@@ -474,7 +474,9 @@ public partial class DataEditorWindow : Window
         {
             var box = new CheckBox { HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Tag = "tick" };
             box.Bind(CheckBox.IsCheckedProperty, new Binding("IsTicked") { Mode = BindingMode.TwoWay });
-            box.IsCheckedChanged += (_, _) => editor.NotifyTickChanged();
+            // The two-way binding writes the new state to the row only after this event has run, so counting right now would see the previous
+            // click's state (the box and the run buttons' counts then disagree by one). Count once the binding has been applied.
+            box.IsCheckedChanged += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(editor.NotifyTickChanged);
             ToolTip.SetTip(box, "Tick to include this row in the tree's Run ticked");
             return box;
         })

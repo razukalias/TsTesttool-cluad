@@ -169,4 +169,35 @@ public class RunShowsOverviewTests
         Assert.Equal(1, raised);
         window.Close();
     }
+
+    [AvaloniaFact]
+    public void Ticks_are_all_kept_when_the_rows_are_rebuilt_with_the_tick_boxes_on_screen()
+    {
+        using var dir = new TempDir();
+        var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 6));
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var vm = window.Shell.Current!;
+        vm.SetShownTicks(true);
+        Dispatcher.UIThread.RunJobs();
+        var all = vm.TickedRowCount;
+        Assert.True(all > 1);
+
+        // a click on a row's own box is counted at once (not one click late)
+        var box = window.GetVisualDescendants().OfType<CheckBox>().First(b => b.Tag as string == "tick" && b.IsChecked == true);
+        box.IsChecked = false;
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(all - 1, vm.TickedRowCount);
+        Assert.Equal(all - 1, vm.VisibleRows.Count(r => r.IsTicked));
+        box.IsChecked = true;
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(all, vm.TickedRowCount);
+
+        vm.ShowWholeInstance();
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(all, vm.TickedRowCount);
+        Assert.Equal(all, vm.VisibleRows.Count(r => r.IsTicked));
+        Assert.Equal(all, window.Shell.TickedRows);
+        Assert.All(vm.Testcases, t => Assert.Equal(vm.VisibleRows.Count(r => r.IsTicked && r.TestcaseIndex == t.Index), t.TickedRows));
+    }
 }

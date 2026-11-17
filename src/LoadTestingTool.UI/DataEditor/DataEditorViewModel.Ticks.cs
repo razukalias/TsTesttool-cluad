@@ -14,8 +14,13 @@ public sealed partial class DataEditorViewModel
 
     private static string TickKey(DataRowViewModel row) => $"{row.TestcaseIndex}|{row.CurrentDataId}";
 
+    // While ticks are being put back on freshly built rows, the tick boxes already on screen report every change. Reading the rows then would
+    // forget the ones not restored yet, so remembering waits until the restore is done.
+    private bool _restoringTicks;
+
     private void RememberTicks()
     {
+        if (_restoringTicks) return;
         foreach (var row in _allRows)
         {
             if (row.IsTicked) _tickMemory.Add(TickKey(row)); else _tickMemory.Remove(TickKey(row));
@@ -24,7 +29,9 @@ public sealed partial class DataEditorViewModel
 
     private void RestoreTicks()
     {
-        foreach (var row in _allRows) row.IsTicked = _tickMemory.Contains(TickKey(row));
+        _restoringTicks = true;
+        try { foreach (var row in _allRows) row.IsTicked = _tickMemory.Contains(TickKey(row)); }
+        finally { _restoringTicks = false; }
         NotifyTickChanged();
     }
 
