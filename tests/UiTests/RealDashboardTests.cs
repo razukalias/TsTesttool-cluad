@@ -49,3 +49,41 @@ public class RealDashboardTests
         finally { Directory.SetCurrentDirectory(previous); }
     }
 }
+
+public class OverviewFollowsEditorSelectionTests
+{
+    [AvaloniaFact]
+    public async Task The_poll_keeps_the_instance_chosen_in_the_editor_instead_of_the_hidden_list_selection()
+    {
+        var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "follow_" + Guid.NewGuid().ToString("N")[..8]);
+        foreach (var name in new[] { "Alpha", "Beta" })
+        {
+            var inst = System.IO.Path.Combine(root, "Instances", name);
+            Directory.CreateDirectory(inst);
+            using var dir = new TempDir();
+            File.Copy(Samples.CreateLarge(dir, rows: 2), System.IO.Path.Combine(inst, "DataEngine.xlsx"));
+        }
+        File.WriteAllText(System.IO.Path.Combine(root, "appsettings.json"), "{\"InstancesRoot\":\"Instances\",\"WorkbookName\":\"DataEngine.xlsx\"}");
+        var previous = Directory.GetCurrentDirectory();
+        try
+        {
+            Directory.SetCurrentDirectory(root);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public;
+            var dashboard = new LoadTestingTool.UI.MainWindow();
+            var editor = (DataEditorWindow)typeof(LoadTestingTool.UI.MainWindow).GetMethod("CreateStandaloneEditor", flags)!.Invoke(dashboard, null)!;
+            editor.Show();
+            var shell = editor.Shell;
+            var beta = shell.Instances.Last();   // not the first one, which the hidden list would select by default
+            Assert.True(shell.Instances.Count > 1);
+            await shell.LoadAsync(beta);
+            shell.SelectedNode = beta.Testcases[0];
+
+            typeof(LoadTestingTool.UI.MainWindow).GetMethod("PollEvents", flags)!.Invoke(dashboard, null);   // what the 500 ms timer does
+
+            var selected = typeof(LoadTestingTool.UI.MainWindow).GetField("_selectedInstance", flags)!.GetValue(dashboard)!;
+            Assert.Equal(beta.Name, selected.GetType().GetProperty("Name")!.GetValue(selected));
+            editor.Close();
+        }
+        finally { Directory.SetCurrentDirectory(previous); }
+    }
+}

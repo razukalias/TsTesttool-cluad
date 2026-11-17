@@ -66,6 +66,8 @@ public sealed partial class MainWindow
             if (item is null) return;
             window.LoadLastRun(item);
             window._selectedInstance = item;
+            // The poll re-reads the list's selection every 500 ms; without this the hidden dashboard list overrides the editor's choice and the Overview never follows the run.
+            if (!ReferenceEquals(window._instanceList.SelectedItem, item)) window._instanceList.SelectedItem = item;
             window.ShowDetails(item);
         }
     }
