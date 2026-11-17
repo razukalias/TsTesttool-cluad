@@ -100,7 +100,7 @@ internal sealed class RunSelectionEditor : UserControl
             var selected = JsonSerializer.Deserialize<Dictionary<int, string[]>>(selection.StepsJson) ?? [];
             using var workbook = new XLWorkbook(_item.WorkbookPath);
             var sheet = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("config", StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidDataException("The workbook has no config sheet.");
-            var headers = sheet.FirstRowUsed()?.CellsUsed().ToDictionary(x => x.GetString().Trim(), x => x.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? throw new InvalidDataException("The config sheet has no headers.");
+            var headers = sheet.FirstRowUsed()?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(x => x.GetString().Trim(), x => x.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? throw new InvalidDataException("The config sheet has no headers.");
             if (!headers.TryGetValue("enabled", out var enabledColumn)) return true;
             var changed = false;
             foreach (var row in sheet.RowsUsed().Skip(1))

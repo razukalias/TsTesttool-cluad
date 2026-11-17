@@ -509,7 +509,7 @@ public sealed partial class MainWindow : Window
                 using var book = new XLWorkbook(stream);
                 item.TestcaseOptions = WorkbookSelectionCatalog.Read(book);
                 var requestSheet = book.Worksheets.FirstOrDefault(x => x.Name.Equals("request", StringComparison.OrdinalIgnoreCase));
-                var requestHeader = requestSheet?.FirstRowUsed()?.CellsUsed().ToDictionary(x => x.GetString().Trim(), x => x.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? [];
+                var requestHeader = requestSheet?.FirstRowUsed()?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(x => x.GetString().Trim(), x => x.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? [];
                 if (requestSheet is not null && requestHeader.TryGetValue("testcaseindex", out var testcaseColumn) && requestHeader.TryGetValue("dataid", out var dataIdColumn))
                     foreach (var row in requestSheet.RowsUsed().Skip(1))
                         if (int.TryParse(row.Cell(testcaseColumn).GetString().Trim(), out var testcaseIndex))
@@ -748,7 +748,7 @@ public sealed partial class MainWindow : Window
             var sheet = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("config", StringComparison.OrdinalIgnoreCase));
             if (sheet is null) { SetStatusForInstance($"No config sheet found in {item.Name}.", true); return; }
             var used = sheet.FirstRowUsed();
-            var headers = used?.CellsUsed().ToDictionary(c => c.GetString().Trim(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? [];
+            var headers = used?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(c => c.GetString().Trim(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? [];
             var row = sheet.RowsUsed().Skip(1).FirstOrDefault(r => int.TryParse(r.Cell(headers.GetValueOrDefault("testcaseindex")).GetString(), out var index) && index == testcaseIndex && r.Cell(headers.GetValueOrDefault("stepname")).GetString().Trim().Equals(stepName, StringComparison.OrdinalIgnoreCase));
             if (row is null) { SetStatusForInstance($"Could not locate config row for testcase {testcaseIndex}, step {stepName}.", true); return; }
             var values = headers.ToDictionary(pair => pair.Key, pair => row.Cell(pair.Value).GetString(), StringComparer.OrdinalIgnoreCase);
@@ -868,7 +868,7 @@ public sealed partial class MainWindow : Window
         {
             using var workbook = new XLWorkbook(item.WorkbookPath);
             var sheet = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("config", StringComparison.OrdinalIgnoreCase)) ?? workbook.AddWorksheet("config");
-            var headers = sheet.FirstRowUsed()?.CellsUsed().ToDictionary(c => c.GetString().Trim(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? [];
+            var headers = sheet.FirstRowUsed()?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(c => c.GetString().Trim(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? [];
             if (headers.Count == 0) { SetStatusForInstance($"Cannot add step to {item.Name}: config sheet has no headers.", true); return; }
             var row = step.Row ?? ((sheet.RangeUsed()?.RangeAddress.LastAddress.RowNumber ?? 1) + 1);
             foreach (var pair in step.Values) if (headers.TryGetValue(pair.Key, out var column)) sheet.Cell(row, column).Value = pair.Value;
@@ -952,7 +952,7 @@ public sealed partial class MainWindow : Window
 
     private static Dictionary<string, int> EnsureHeaders(IXLWorksheet sheet, IEnumerable<string> required)
     {
-        var headers = sheet.FirstRowUsed()?.CellsUsed().ToDictionary(cell => cell.GetString().Trim(), cell => cell.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var headers = sheet.FirstRowUsed()?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(cell => cell.GetString().Trim(), cell => cell.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var next = Math.Max(1, sheet.LastColumnUsed()?.ColumnNumber() ?? 0) + 1;
         foreach (var name in required)
             if (!headers.ContainsKey(name)) { sheet.Cell(1, next).Value = name; headers[name] = next++; }

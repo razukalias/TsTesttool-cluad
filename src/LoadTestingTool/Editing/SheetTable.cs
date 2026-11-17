@@ -278,7 +278,7 @@ public sealed class SheetTable
         var nextRow = Math.Max(sheet.LastRowUsed()?.RowNumber() ?? HeaderRowNumber, HeaderRowNumber) + 1;
 
         // Columns first: empty the removed ones, then open gaps for the inserted ones (right to left), and work out where every column ends up.
-        foreach (var removed in _removedSourceColumns) sheet.Column(removed).Clear(XLClearOptions.Contents);
+        foreach (var removed in _removedSourceColumns) sheet.Column(removed).Clear(XLClearOptions.All);   // not just the contents: an emptied header cell still counts as used and makes the sheet unreadable
         var inserted = _columns.Where(c => c.SourceColumn is null && c.InsertBeforeColumn is not null).OrderBy(c => c.InsertBeforeColumn).ToList();
         foreach (var position in inserted.Select(c => c.InsertBeforeColumn!.Value).OrderByDescending(x => x)) sheet.Column(position).InsertColumnsBefore(1);
         for (var k = 0; k < inserted.Count; k++) inserted[k].PendingSourceColumn = inserted[k].InsertBeforeColumn!.Value + k;

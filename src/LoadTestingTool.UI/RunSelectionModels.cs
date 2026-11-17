@@ -28,7 +28,7 @@ public static class WorkbookSelectionCatalog
     {
         var sheet = workbook.Worksheets.FirstOrDefault(x => x.Name.Trim().Equals("config", StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidDataException("The workbook has no config sheet.");
-        var headers = sheet.FirstRowUsed()?.CellsUsed().ToDictionary(x => x.GetString().Trim(), x => x.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase)
+        var headers = sheet.FirstRowUsed()?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(x => x.GetString().Trim(), x => x.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase)
             ?? throw new InvalidDataException("The config sheet has no headers.");
         foreach (var name in new[] { "testcaseindex", "testcase", "stepname" })
             if (!headers.ContainsKey(name)) throw new InvalidDataException($"Missing config column: {name}.");

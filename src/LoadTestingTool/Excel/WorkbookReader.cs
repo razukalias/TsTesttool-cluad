@@ -169,7 +169,7 @@ public sealed class WorkbookReader
         return (string.Empty, cell);
     }
     private static IXLWorksheet RequireSheet(XLWorkbook workbook, string name) => workbook.Worksheets.FirstOrDefault(w => w.Name.Trim().Equals(name, StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidDataException($"Required worksheet '{name}' was not found.");
-    private static Dictionary<string, int> Headers(IXLWorksheet sheet) => sheet.FirstRowUsed()?.CellsUsed().ToDictionary(c => c.GetString().Trim().ToLowerInvariant(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? throw new InvalidDataException($"Worksheet '{sheet.Name}' has no header row.");
+    private static Dictionary<string, int> Headers(IXLWorksheet sheet) => sheet.FirstRowUsed()?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(c => c.GetString().Trim().ToLowerInvariant(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? throw new InvalidDataException($"Worksheet '{sheet.Name}' has no header row.");
     private static void Require(Dictionary<string, int> h, string key, string sheet) { if (!h.ContainsKey(key)) throw new InvalidDataException($"Worksheet '{sheet}' is missing required column '{key}'."); }
     private static string Text(Dictionary<string, int> h, IXLRow row, string key, string fallback = "") => h.TryGetValue(key, out var col) ? row.Cell(col).GetString().Trim() : fallback;
     private static string CanonicalRequestVariableName(string header)

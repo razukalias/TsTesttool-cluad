@@ -1350,8 +1350,8 @@ public sealed partial class MainWindow
         var config = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("config", StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidDataException("The workbook has no config sheet.");
         var request = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("request", StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidDataException("The workbook has no request sheet.");
         var response = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("response", StringComparison.OrdinalIgnoreCase));
-        var configHeaders = config.FirstRowUsed()?.CellsUsed().ToDictionary(c => c.GetString().Trim().ToLowerInvariant(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? throw new InvalidDataException("The config sheet has no header row.");
-        var requestHeaders = request.FirstRowUsed()?.CellsUsed().ToDictionary(c => c.GetString().Trim().ToLowerInvariant(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? throw new InvalidDataException("The request sheet has no header row.");
+        var configHeaders = config.FirstRowUsed()?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(c => c.GetString().Trim().ToLowerInvariant(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? throw new InvalidDataException("The config sheet has no header row.");
+        var requestHeaders = request.FirstRowUsed()?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(c => c.GetString().Trim().ToLowerInvariant(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? throw new InvalidDataException("The request sheet has no header row.");
         string ConfigText(IXLRow row, string key, string fallback = "") => configHeaders.TryGetValue(key, out var column) ? row.Cell(column).GetString().Trim() : fallback;
         string RequestText(IXLRow row, string key, string fallback = "") => requestHeaders.TryGetValue(key, out var column) ? row.Cell(column).GetString().Trim() : fallback;
         var stepNames = new Dictionary<int, List<(string Name, bool Enabled)>>();
@@ -1365,7 +1365,7 @@ public sealed partial class MainWindow
         }
         var rows = new List<RunPlanRow>();
         var rowsWithAssertions = 0;
-        var responseHeaders = response?.FirstRowUsed()?.CellsUsed().ToDictionary(c => c.GetString().Trim(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? [];
+        var responseHeaders = response?.FirstRowUsed()?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(c => c.GetString().Trim(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? [];
         foreach (var row in request.RowsUsed().Skip(1))
         {
             if (!int.TryParse(RequestText(row, "testcaseindex"), out var index) || !selectedCases.Contains(index)) continue;
@@ -1845,10 +1845,10 @@ public sealed partial class MainWindow
     private static HistoryEntry ReadHistoryEntry(InstanceInfo item, string path)
     {
         using var workbook = new XLWorkbook(path); var summary = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("RunSummary", StringComparison.OrdinalIgnoreCase)); var metrics = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("Metrics", StringComparison.OrdinalIgnoreCase)); var requestSheet = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("RequestHistory", StringComparison.OrdinalIgnoreCase));
-        var headers = requestSheet?.FirstRowUsed()?.CellsUsed().ToDictionary(c => c.GetString(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? [];
+        var headers = requestSheet?.FirstRowUsed()?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(c => c.GetString(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? [];
         string Cell(IXLRow row, string name) => headers.TryGetValue(name, out var c) ? row.Cell(c).GetString() : "";
         var requests = requestSheet is null ? [] : requestSheet.RowsUsed().Skip(1).Select(row => new HistoryRequest(Cell(row, "testcase"), Cell(row, "dataid"), Cell(row, "stepname"), Cell(row, "requestresult"), long.TryParse(Cell(row, "durationms"), out var d) ? d : 0, int.TryParse(Cell(row, "httpstatus"), out var s) ? s : 0, Cell(row, "requestbody"), Cell(row, "responsebody"), Cell(row, "requestheaders"), Cell(row, "responseheaders"), Cell(row, "stepconfig"))).ToList();
-        var assertionSheet = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("AssertionHistory", StringComparison.OrdinalIgnoreCase)); var ah = assertionSheet?.FirstRowUsed()?.CellsUsed().ToDictionary(c => c.GetString(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? []; string ACell(IXLRow row, string name) => ah.TryGetValue(name, out var c) ? row.Cell(c).GetString() : "";
+        var assertionSheet = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("AssertionHistory", StringComparison.OrdinalIgnoreCase)); var ah = assertionSheet?.FirstRowUsed()?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(c => c.GetString(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? []; string ACell(IXLRow row, string name) => ah.TryGetValue(name, out var c) ? row.Cell(c).GetString() : "";
         var assertions = assertionSheet is null ? [] : assertionSheet.RowsUsed().Skip(1).Select(row => new HistoryAssertion(ACell(row, "testcase"), ACell(row, "dataid"), ACell(row, "stepname"), ACell(row, "responsepath"), ACell(row, "assertionverb"), ACell(row, "assertiontype"), ACell(row, "assertionmeaning"), ACell(row, "expectedvalue"), ACell(row, "actualvalue"), ACell(row, "result"))).ToList();
         var result = summary?.Cell(2, 16).GetString() ?? "UNKNOWN"; var runId = summary?.Cell(2, 1).GetString() ?? Path.GetFileNameWithoutExtension(path); var started = DateTime.TryParse(summary?.Cell(2, 2).GetString(), out var date) ? date : File.GetLastWriteTime(path); var p95 = metrics?.RowsUsed().FirstOrDefault(r => r.Cell(1).GetString().Equals("p95DurationMs", StringComparison.OrdinalIgnoreCase))?.Cell(2).GetString() ?? "0";
         return new HistoryEntry(path, item.Name, result, runId, started, requests, assertions, requests.Count(x => x.Result == "PASS"), requests.Count(x => x.Result == "FAIL"), p95, string.Join(" ", item.Name, result, runId, requests.Select(x => $"{x.Testcase} {x.DataId} {x.Step}")));
