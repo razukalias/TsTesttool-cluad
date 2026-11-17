@@ -564,4 +564,8 @@ Example row:
 - Right-click a row: Run this row, Add / Insert above / Insert below / Duplicate with a count (1, 2, 3, 5, 10, 20 or Other…), Copy row(s), Paste row(s) below (new Data IDs), Highlight row colour, Remove row. Several rows are one undo step.
 - Click a column header: the column is tinted and becomes the current column. Right-click: Insert columns left/right (count, opens the add-column panel), Rename / remove, Fill down, Clear column, Highlight / Wrap column.
 - Other sheets (not config/request/response) are editable: cells, add/remove rows, add/rename/remove columns, add/rename/remove whole sheets. Written on Save; undoable. Rename/remove is refused while a `<From_Sheet_…>` reference or a formula points at the sheet; removing a column is refused while a reference points at it.
-- Not done: insert a row in the *middle* of another sheet (only append), copy/paste rows in the other sheets, header right-click menu on other sheets.
+
+### Still to do (other sheets)
+- [ ] Insert a row in the *middle* of another sheet (today rows are only appended at the end). Needs the same `<From_…_N>` renumbering the request/response sheets use.
+- [ ] Copy / paste rows in the other sheets (a row right-click menu like the data grid has).
+- [ ] Right-click menu on the column headers of the other sheets (insert left/right with a count, rename, remove, fill down, clear, highlight/wrap).
