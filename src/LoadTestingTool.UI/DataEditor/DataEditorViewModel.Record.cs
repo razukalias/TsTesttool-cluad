@@ -33,7 +33,8 @@ public sealed partial class DataEditorViewModel
         foreach (var column in Columns)
         {
             var expected = column.Group == ColumnGroup.Response;
-            (expected ? ExpectedLines : RequestLines).Add(new RecordLineViewModel(row, column.CellIndex, column.Title, expected, LineWarnings));
+            var dontRun = !expected && column.Title.Equals("dontrun", StringComparison.OrdinalIgnoreCase);
+            (expected ? ExpectedLines : RequestLines).Add(new RecordLineViewModel(row, column.CellIndex, column.Title, expected, dontRun ? DontRunWarnings : LineWarnings));
         }
     }
 

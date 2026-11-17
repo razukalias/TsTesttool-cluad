@@ -140,6 +140,7 @@ public sealed class RecordLineView : Border
     private readonly WrapPanel _chips = new() { Orientation = Orientation.Horizontal };
     private readonly TextBlock _raw = new() { FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontSize = 11, Foreground = Brush.Parse("#6F87A3"), TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock _warning = new() { FontSize = 11, Foreground = Brush.Parse("#F6A623"), TextWrapping = TextWrapping.Wrap, Tag = "line-warning" };
+    private readonly TextBlock _help = new() { FontSize = 11, Foreground = Brush.Parse("#8EA4BC"), TextWrapping = TextWrapping.Wrap, Tag = "line-help", IsVisible = false };
     private readonly TextBlock _example = new() { FontSize = 11, Foreground = Brush.Parse("#6F87A3"), TextWrapping = TextWrapping.Wrap };
 
     public RecordLineView(RecordLineViewModel line, DataEditorViewModel editor)
@@ -156,6 +157,7 @@ public sealed class RecordLineView : Border
         var right = new StackPanel { Spacing = 3 };
         Grid.SetColumn(right, 1);
         right.Children.Add(_chips);
+        if (line.IsDontRun) { _help.Text = RecordLineViewModel.DontRunHelp; _help.IsVisible = true; right.Children.Add(_help); }
         right.Children.Add(_raw);
         right.Children.Add(_example);
         right.Children.Add(_warning);
@@ -179,6 +181,7 @@ public sealed class RecordLineView : Border
         {
             for (var i = 0; i < _line.Parts.Count; i++) _chips.Children.Add(Chip(i));
             _chips.Children.Add(AddButton());
+            if (_line.IsDontRun) _chips.Children.Add(StepsButton());
             _chips.Children.Add(CopyButton());
         }
         var generated = _line.Parts.Any(p => p.Kind != ValuePartKind.Text);
@@ -236,6 +239,38 @@ public sealed class RecordLineView : Border
     {
         _line.Add(part);
         _line.Move(_line.Parts.Count - 1, index - (_line.Parts.Count - 1));
+    }
+
+    /// <summary>For the <c>dontrun</c> column: tick the steps this row skips instead of typing their names.</summary>
+    private Control StepsButton()
+    {
+        var button = new Button { Content = "Choose steps ▾", Tag = "dontrun-steps", MinHeight = 28, Margin = new Thickness(8, 0, 0, 4), Padding = new Thickness(10, 0) };
+        ToolTip.SetTip(button, "Tick the steps of this testcase that this row skips. Names already listed that are not steps stay as they are (and are warned about)");
+        var flyout = new Flyout { Placement = PlacementMode.BottomEdgeAlignedLeft };
+        var list = new StackPanel { Spacing = 4 };
+        var note = new TextBlock { Text = "This testcase has no steps yet.", Foreground = Brush.Parse("#8EA4BC"), FontSize = 11, IsVisible = false };
+        flyout.Content = new StackPanel { Spacing = 8, MinWidth = 240, Children = { new TextBlock { Text = "Skip these steps for this row", Foreground = Brush.Parse("#8EA4BC"), FontSize = 11 }, list, note } };
+        flyout.Opened += (_, _) =>
+        {
+            var steps = _editor.ResponseSteps();
+            var listed = _line.ListedSteps;
+            list.Children.Clear();
+            note.IsVisible = steps.Count == 0;
+            foreach (var step in steps)
+            {
+                var box = new CheckBox { Content = step, Tag = "dontrun-step", IsChecked = listed.Contains(step, StringComparer.OrdinalIgnoreCase) };
+                box.IsCheckedChanged += (_, _) =>
+                {
+                    // the ticked steps in testcase order, then anything listed that is no step (kept so a typo stays visible)
+                    var ticked = list.Children.OfType<CheckBox>().Where(c => c.IsChecked == true).Select(c => (string)c.Content!).ToList();
+                    var others = _line.ListedSteps.Where(n => !steps.Contains(n, StringComparer.OrdinalIgnoreCase));
+                    _line.SetListedSteps(ticked.Concat(others));
+                };
+                list.Children.Add(box);
+            }
+        };
+        button.Flyout = flyout;
+        return button;
     }
 
     private Control CopyButton()

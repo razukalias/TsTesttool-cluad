@@ -114,4 +114,17 @@ public sealed partial class DataEditorViewModel
         }
         return warnings;
     }
+
+    /// <summary>What looks wrong about a <c>dontrun</c> value: a name that is no step of the testcase (a typo skips nothing), or every step listed.</summary>
+    internal List<string> DontRunWarnings(IEnumerable<ValuePart> parts, string? ownStep)
+    {
+        var warnings = new List<string>();
+        var steps = ResponseSteps();
+        if (steps.Count == 0) return warnings;
+        var listed = RecordLineViewModel.ListedIn(ValueParts.Format(parts));
+        var unknown = listed.Where(n => !steps.Contains(n, StringComparer.OrdinalIgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (unknown.Count > 0) warnings.Add($"{string.Join(", ", unknown)} {(unknown.Count == 1 ? "is not a step" : "are not steps")} of this testcase, so {(unknown.Count == 1 ? "it skips" : "they skip")} nothing. Steps: {string.Join(", ", steps)}.");
+        if (steps.All(s => listed.Contains(s, StringComparer.OrdinalIgnoreCase))) warnings.Add("Every step is listed, so this row runs no steps at all.");
+        return warnings;
+    }
 }

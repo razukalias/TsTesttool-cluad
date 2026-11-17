@@ -49,6 +49,21 @@ public sealed partial class RecordLineViewModel : ObservableObject
 
     public ObservableCollection<ValuePart> Parts { get; } = [];
 
+    /// <summary>The request column <c>dontrun</c>: the steps this one row skips.</summary>
+    public bool IsDontRun => !IsExpected && Title.Equals("dontrun", StringComparison.OrdinalIgnoreCase);
+
+    public const string DontRunHelp = "Steps that are skipped for this row only. Write step names separated by commas (or |), for example CreatePost1, Step3. "
+        + "Only the listed steps are skipped; the row's other steps still run, and every other row is unaffected. Use \"Choose steps\" to tick them instead of typing.";
+
+    /// <summary>The step names written in the cell, in the same way the runner reads them (commas or |).</summary>
+    public IReadOnlyList<string> ListedSteps => ListedIn(Raw);
+
+    public static IReadOnlyList<string> ListedIn(string text)
+        => string.IsNullOrWhiteSpace(text) ? [] : text.Split([',', '|'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>Writes the chosen step names as the cell's value.</summary>
+    public void SetListedSteps(IEnumerable<string> names) => SetRaw(string.Join(", ", names));
+
     [ObservableProperty] private string _verb = "eq";
     [ObservableProperty] private string _raw = string.Empty;
     [ObservableProperty] private string _example = string.Empty;
