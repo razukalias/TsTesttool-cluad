@@ -552,3 +552,4 @@ Example row:
 - The editor refuses a pasted or typed value over 32,767 characters (keeps the old value, explains how to use `<from_filepath>`).
 
 - Done 2026-11-17: tick column ("Run") in the data grid plus "▶ Run ticked (n)", "Tick all shown" and "Clear ticks" in the toolbar; ticks are remembered across filter/undo/testcase switches and never saved to the workbook. Ticks across several testcases run exactly the ticked rows (per-testcase data IDs).
+- Changed 2026-11-17: the row ticks no longer have their own buttons. The tree's **▶ Run ticked (n)** runs them: if data rows are ticked in the grid only those rows run (n = rows), otherwise the ticked testcases/steps. The grid's **Run** header box ticks/clears every row shown. Removed the ↻ reuse-values boxes (tree steps and toolbar); **Re-run from history…** covers it. Not in the editor: adding/removing environment names (only choosing which of the central environments an instance runs in).

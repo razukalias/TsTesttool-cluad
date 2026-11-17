@@ -230,10 +230,18 @@ public sealed partial class EditorShellViewModel : ObservableObject
         foreach (var instance in Instances) instance.SetAllExpanded(expanded);
     }
 
-    /// <summary>Total of testcases ticked across all loaded instances.</summary>
-    public int TickedCount => Instances.Sum(i => i.Editor?.TickedTestcaseCount ?? 0);
+    /// <summary>Testcases (or steps) ticked in the tree across all loaded instances.</summary>
+    public int TickedTestcases => Instances.Sum(i => i.Editor?.TickedTestcaseCount ?? 0);
+
+    /// <summary>Data rows ticked in the grids across all loaded instances.</summary>
+    public int TickedRows => Instances.Sum(i => i.Editor?.TickedRowCount ?? 0);
+
+    /// <summary>What Run ticked will run: the ticked data rows when there are any (they take precedence), otherwise the ticked testcases.</summary>
+    public int TickedCount => TickedRows > 0 ? TickedRows : TickedTestcases;
     public bool HasTicked => TickedCount > 0;
-    public string TickedText => TickedCount == 0 ? "nothing ticked" : $"{TickedCount} ticked";
+    public string TickedBadge => TickedCount == 0 ? string.Empty : $"({TickedCount})";
+    public string TickedText => TickedRows > 0 ? $"{TickedRows} {(TickedRows == 1 ? "row" : "rows")} ticked"
+        : TickedTestcases > 0 ? $"{TickedTestcases} {(TickedTestcases == 1 ? "testcase" : "testcases")} ticked" : "nothing ticked";
 
     /// <summary>The ▶ beside an instance, testcase or step: runs just that.</summary>
     public async Task RunNodeAsync(object node)
@@ -270,7 +278,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
             await editor.RunFromTreeAsync(request, label);
             started++;
         }
-        if (started == 0) (Current ?? Instances.FirstOrDefault(i => i.Editor is not null)?.Editor)?.Report("Tick at least one testcase or step to run.", isError: true);
+        if (started == 0) (Current ?? Instances.FirstOrDefault(i => i.Editor is not null)?.Editor)?.Report("Tick at least one testcase, step or data row to run.", isError: true);
     }
 
     /// <summary>The ▲ ▼ buttons beside a tree item: runs it earlier (-1) or later (+1).</summary>
@@ -381,7 +389,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
     private void Wire(InstanceNode node)
     {
         AttachSelection(node);
-        node.Editor!.TickedChanged += (_, _) => { OnPropertyChanged(nameof(TickedCount)); OnPropertyChanged(nameof(HasTicked)); OnPropertyChanged(nameof(TickedText)); OnPropertyChanged(nameof(CanRunTicked)); };
+        node.Editor!.TickedChanged += (_, _) => { OnPropertyChanged(nameof(TickedCount)); OnPropertyChanged(nameof(HasTicked)); OnPropertyChanged(nameof(TickedText)); OnPropertyChanged(nameof(TickedBadge)); OnPropertyChanged(nameof(CanRunTicked)); };
         node.Editor!.CreateTestcaseHandler = draft => CreateTestcaseHandler?.Invoke(node.Name, draft);
         node.Editor!.CloseRequested += (_, _) => OnEditorClosed();
         node.Editor.HistoryHandler = testcase => HistoryHandler?.Invoke(node.Name, testcase);

@@ -192,13 +192,23 @@ public sealed partial class DataEditorViewModel
     /// <summary>Runs from the tree: <paramref name="request"/> for the given label, with the same save-first check as the Run button.</summary>
     internal Task RunFromTreeAsync(RunRequest request, string label) => StartRunAsync(request, label);
 
-    /// <summary>Everything ticked in the tree: whole testcases, or only the ticked steps of a partly ticked one.</summary>
-    internal (RunRequest? Request, string Label) BuildTickedRequest(bool? parallel = null)
+    /// <summary>What "Run ticked" runs. Data rows ticked in the grid take precedence: only those rows run (the tree ticks every testcase by default, so
+    /// they would otherwise drown the choice). With no rows ticked it is whole testcases, or only the ticked steps of a partly ticked testcase.</summary>
+    public (RunRequest? Request, string Label) BuildTickedRequest(bool? parallel = null)
     {
         var chosen = Testcases.Where(t => t.IsChosen)
             .Select(t => (t, (IReadOnlyList<string>?)(t.StepNodes.Count > 0 && t.StepNodes.Any(n => !n.IsChosen) ? t.ChosenSteps.Where(n => IsStepEnabled(t.Index, n)).ToList() : null)))
             .Where(c => c.Item2 is null || c.Item2.Count > 0)
             .ToList();
+        var rows = TickedRowsByTestcase().Where(p => Testcases.Any(t => t.Index == p.Key)).ToDictionary(p => p.Key, p => p.Value);
+        if (rows.Count > 0)
+        {
+            var forRows = rows.Keys.Select(index => chosen.FirstOrDefault(c => c.t.Index == index) is { t: not null } own ? own : (Testcases.First(t => t.Index == index), null)).ToList();
+            var rowRequest = BuildRequest(forRows.OrderBy(c => c.Item1.Index).ToList(), parallel);
+            var count = rows.Values.Sum(v => v.Count);
+            return (rowRequest with { DataIds = rows.Values.SelectMany(v => v).Distinct().ToList(), RowsByTestcase = rows },
+                $"{count} ticked {(count == 1 ? "row" : "rows")}");
+        }
         if (chosen.Count == 0) return (null, string.Empty);
         var stepCount = chosen.Sum(c => c.Item2?.Count ?? c.t.StepNodes.Count);
         return (BuildRequest(chosen, parallel), $"{stepCount} ticked {(stepCount == 1 ? "step" : "steps")} in {chosen.Count} {(chosen.Count == 1 ? "testcase" : "testcases")}");

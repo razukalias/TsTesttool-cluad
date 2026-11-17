@@ -33,7 +33,7 @@ public sealed partial class EditorShellViewModel
     }
 
     /// <summary>Run ticked is available when something is ticked and none of the ticked instances is already running.</summary>
-    public bool CanRunTicked => HasTicked && !Instances.Any(i => i.Run.IsRunning && i.Editor is { } e && e.TickedTestcaseCount > 0);
+    public bool CanRunTicked => HasTicked && !Instances.Any(i => i.Run.IsRunning && i.Editor is { } e && e.TickedTestcaseCount + e.TickedRowCount > 0);
 
     private void WireStale(InstanceNode instance)
     {

@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Input;
+using LoadTestingTool.Editing;
 
 namespace LoadTestingTool.UI.DataEditor;
 
-/// <summary>Tick boxes in the grid: choose which data rows the next run covers.</summary>
+/// <summary>Tick boxes in the grid: choose which data rows the tree's "Run ticked" covers.</summary>
 public sealed partial class DataEditorViewModel
 {
     // Ticks survive filtering, sorting, undo and switching testcase because they are remembered by testcase + data id.
@@ -28,50 +28,51 @@ public sealed partial class DataEditorViewModel
         NotifyTickChanged();
     }
 
-    public int TickedCount => _allRows.Count(r => r.IsTicked) + _tickMemory.Count(k => !_allRows.Any(r => TickKey(r) == k));
-    public string TickText => TickedCount == 0 ? "▶ Run ticked" : $"▶ Run ticked ({TickedCount})";
-    public bool CanRunTicked => CanRun && TickedCount > 0;
-
-    /// <summary>Called by the grid's tick boxes after a click.</summary>
-    public void NotifyTickChanged()
+    /// <summary>The ticked data rows that still exist, as data IDs per testcase index.</summary>
+    internal IReadOnlyDictionary<int, IReadOnlyList<string>> TickedRowsByTestcase()
     {
-        OnPropertyChanged(nameof(TickedCount));
-        OnPropertyChanged(nameof(TickText));
-        OnPropertyChanged(nameof(CanRunTicked));
+        RememberTicks();
+        if (_tickMemory.Count == 0) return new Dictionary<int, IReadOnlyList<string>>();
+        var existing = _document.Request.Rows.Where(r => !r.IsBlank).Select(r => $"{WorkbookDocument.EffectiveIndex(r)}|{r.Get("dataid")}").ToHashSet();
+        return _tickMemory.Where(existing.Contains)
+            .Select(k => { var at = k.IndexOf('|'); return (Index: int.Parse(k[..at]), Id: k[(at + 1)..]); })
+            .GroupBy(k => k.Index).OrderBy(g => g.Key)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(k => k.Id).Distinct().ToList());
     }
 
-    [RelayCommand]
-    private void TickAllShown()
+    /// <summary>How many data rows are ticked (across testcases).</summary>
+    public int TickedRowCount => TickedRowsByTestcase().Sum(p => p.Value.Count);
+
+    /// <summary>For the header box of the Run column: all shown rows ticked, none, or some (null).</summary>
+    public bool? ShownTickState
     {
-        foreach (var row in VisibleRows) row.IsTicked = true;
+        get
+        {
+            var ticked = VisibleRows.Count(r => r.IsTicked);
+            return ticked == 0 ? false : ticked == VisibleRows.Count ? true : null;
+        }
+    }
+
+    /// <summary>Called by the grid's tick boxes after a click, and whenever the shown rows change.</summary>
+    public void NotifyTickChanged()
+    {
+        OnPropertyChanged(nameof(TickedRowCount));
+        OnPropertyChanged(nameof(ShownTickState));
+        TickedChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Ticks (or clears) every row currently shown, so a filter narrows what "all" means.</summary>
+    public void SetShownTicks(bool ticked)
+    {
+        foreach (var row in VisibleRows) row.IsTicked = ticked;
         NotifyTickChanged();
     }
 
-    [RelayCommand]
-    private void ClearTicks()
+    /// <summary>Clears every tick in the grid, shown or not.</summary>
+    public void ClearRowTicks()
     {
         foreach (var row in _allRows) row.IsTicked = false;
         _tickMemory.Clear();
         NotifyTickChanged();
-    }
-
-    /// <summary>The run that covers exactly the ticked rows, or why it cannot be expressed.</summary>
-    public (RunRequest? Request, string Text) TickedRun()
-    {
-        RememberTicks();
-        var keys = _tickMemory.Select(k => { var at = k.IndexOf('|'); return (Index: int.Parse(k[..at]), Id: k[(at + 1)..]); }).ToList();
-        if (keys.Count == 0) return (null, "Tick the rows you want to run first.");
-        var testcases = keys.Select(k => k.Index).Distinct().Order().ToList();
-        var byTestcase = testcases.ToDictionary(t => t, t => (IReadOnlyList<string>)keys.Where(k => k.Index == t).Select(k => k.Id).Distinct().ToList());
-        var ids = keys.Select(k => k.Id).Distinct().ToList();
-        return (new RunRequest(testcases, ids, RowsByTestcase: byTestcase), $"{keys.Count} ticked {(keys.Count == 1 ? "row" : "rows")}");
-    }
-
-    [RelayCommand]
-    private Task RunTickedAsync()
-    {
-        var (request, text) = TickedRun();
-        if (request is null) { ShowStatus(text, isError: true); return Task.CompletedTask; }
-        return StartRunAsync(request, text);
     }
 }

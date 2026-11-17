@@ -237,7 +237,7 @@ public class TreeRunTests
         Assert.Null(customers.ChosenState);       // some steps ticked
         Assert.True(orders.ChosenState);
         Assert.Null(shell.Instances[0].ChosenState);
-        Assert.Equal("2 ticked", shell.TickedText);
+        Assert.Equal("2 testcases ticked", shell.TickedText);
 
         await shell.RunTickedAsync();
         var request = runs[^1];

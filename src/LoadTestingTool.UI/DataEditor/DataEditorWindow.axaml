@@ -140,7 +140,12 @@
           <Button Grid.Column="3" Content="Refresh results" Command="{Binding RefreshResultsCommand}" IsEnabled="{Binding !IsLoadingResults}" MinHeight="28" Padding="10,2" FontSize="12" />
         </Grid>
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="6,0,0,10">
-          <Button x:Name="RunTickedButton" Content="▶ Run ticked" IsEnabled="{Binding CanRunTicked}" MinHeight="28" Padding="10,2" FontSize="12" ToolTip.Tip="Run every ticked instance, testcase or step; each instance is started with its own selection" />
+          <Button x:Name="RunTickedButton" IsEnabled="{Binding CanRunTicked}" MinHeight="28" Padding="10,2" FontSize="12" ToolTip.Tip="Run what is ticked (save first). If data rows are ticked in the grid, only those rows run; otherwise the ticked testcases and steps in the tree. Each instance is started with its own selection.">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="▶ Run ticked" />
+              <TextBlock Text="{Binding TickedBadge}" FontWeight="SemiBold" />
+            </StackPanel>
+          </Button>
           <Button x:Name="ExpandAllButton" Content="⊞" Classes="treemove" FontSize="14" ToolTip.Tip="Expand all instances, testcases and steps" />
           <Button x:Name="CollapseAllButton" Content="⊟" Classes="treemove" FontSize="14" ToolTip.Tip="Collapse everything to the instance rows" />
           <TextBlock Text="{Binding TickedText}" VerticalAlignment="Center" FontSize="11" Foreground="#8EA4BC" />
@@ -260,7 +265,6 @@
                       <TextBlock Text="{Binding Run.Counts}" IsVisible="{Binding Run.HasCounts}" Foreground="{Binding Run.Tint}" FontSize="10.5" VerticalAlignment="Center" />
                     </StackPanel>
                   </Button>
-                  <CheckBox Classes="treecheck" Content="↻" IsChecked="{Binding ReuseValues, Mode=TwoWay}" FontSize="12" Margin="0,0,2,0" ToolTip.Tip="Reuse the last run's random numbers, GUIDs, dates and response values for this step in the next run (clears when the run starts)" />
                   <Button Classes="treerun" Tag="run" Content="▶" IsEnabled="{Binding Owner.InstanceRun.NotRunning}" ToolTip.Tip="Run this step" />
                   <Button Classes="treemove" Tag="up" Content="▲" ToolTip.Tip="Run earlier" />
                   <Button Classes="treemove" Tag="down" Content="▼" ToolTip.Tip="Run later" />
@@ -319,9 +323,6 @@
           <Button Content="Duplicate" Command="{Binding DuplicateRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding SelectedRow, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
           <Button Content="Remove" Classes="danger" Command="{Binding RemoveRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding SelectedRow, Converter={x:Static ObjectConverters.IsNotNull}}" MinHeight="36" />
           <Button Content="Run row" Command="{Binding RunRowCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding CanRun}" ToolTip.Tip="Run only the selected data row (save first)" MinHeight="36" />
-          <Button Content="{Binding TickText}" Command="{Binding RunTickedCommand}" IsVisible="{Binding ShowData}" IsEnabled="{Binding CanRunTicked}" ToolTip.Tip="Run only the rows ticked in the Run column (save first)" MinHeight="36" />
-          <Button Content="Tick all shown" Command="{Binding TickAllShownCommand}" IsVisible="{Binding ShowData}" ToolTip.Tip="Tick every row currently shown (respects the filter)" MinHeight="36" />
-          <Button Content="Clear ticks" Command="{Binding ClearTicksCommand}" IsVisible="{Binding ShowData}" MinHeight="36" />
           <Button Content="▶ Run…" Classes="primary" IsEnabled="{Binding CanRun}" ToolTip.Tip="Run this testcase, several testcases or the whole instance (save first)" MinHeight="36">
             <Button.Flyout>
               <Flyout Placement="BottomEdgeAlignedLeft">
@@ -386,8 +387,6 @@
           <Button Content="Redo" Command="{Binding RedoCommand}" IsEnabled="{Binding CanRedo}" ToolTip.Tip="{Binding RedoTip}" MinHeight="36" />
           <Border Width="1" Background="#22364D" Margin="4,6" />
           <Button Content="Reload" Command="{Binding ReloadCommand}" MinHeight="36" />
-          <CheckBox Content="Reuse last values" IsChecked="{Binding ReuseLastValues}" VerticalAlignment="Center"
-                    ToolTip.Tip="Tick before a run to re-run with the same random numbers, GUIDs, dates, script results and response values as the last run — for a failed step. It clears when the run starts or the workbook is reloaded." />
           <Button Content="Backups…" Click="OnBackupsClick" ToolTip.Tip="Restore this workbook from an earlier backup (filter by date and time)" MinHeight="36" />
           <Button Content="Save" Classes="primary" Click="OnSaveClick" MinHeight="36" MinWidth="76" />
         </WrapPanel>

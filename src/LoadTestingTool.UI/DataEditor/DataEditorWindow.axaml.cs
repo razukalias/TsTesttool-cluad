@@ -429,11 +429,29 @@ public partial class DataEditorWindow : Window
         })
     };
 
+    /// <summary>The header of the Run column: one box that ticks or clears every row that is shown.</summary>
+    private static StackPanel CreateTickHeader(DataEditorViewModel editor)
+    {
+        var box = new CheckBox { Tag = "tick-all", IsThreeState = false, MinWidth = 0, Padding = new Avalonia.Thickness(0), VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
+        ToolTip.SetTip(box, "Tick or clear every row shown (a filter narrows what \"all\" means)");
+        void Refresh() => box.IsChecked = editor.ShownTickState;
+        EventHandler onTicked = (_, _) => Refresh();
+        System.Collections.Specialized.NotifyCollectionChangedEventHandler onRows = (_, _) => Refresh();
+        box.Click += (_, _) => { editor.SetShownTicks(editor.ShownTickState != true); Refresh(); };
+        box.AttachedToVisualTree += (_, _) => { editor.TickedChanged += onTicked; editor.VisibleRows.CollectionChanged += onRows; Refresh(); };
+        box.DetachedFromVisualTree += (_, _) => { editor.TickedChanged -= onTicked; editor.VisibleRows.CollectionChanged -= onRows; };
+        Refresh();
+        var label = new TextBlock { Text = "Run", FontSize = 11.5, FontWeight = FontWeight.SemiBold, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
+        var header = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 6, Children = { box, label } };
+        ToolTip.SetTip(header, "Tick or clear every row shown (a filter narrows what \"all\" means)");
+        return header;
+    }
+
     /// <summary>A tick box per row: the rows ticked here are what "Run ticked" runs.</summary>
     private static DataGridTemplateColumn CreateTickColumn(DataEditorViewModel editor) => new()
     {
-        Header = new TextBlock { Text = "Run", FontSize = 11.5, FontWeight = FontWeight.SemiBold },
-        Width = new DataGridLength(52),
+        Header = CreateTickHeader(editor),
+        Width = new DataGridLength(86),
         CanUserSort = false,
         CanUserResize = false,
         Tag = -1,
@@ -442,7 +460,7 @@ public partial class DataEditorWindow : Window
             var box = new CheckBox { HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Tag = "tick" };
             box.Bind(CheckBox.IsCheckedProperty, new Binding("IsTicked") { Mode = BindingMode.TwoWay });
             box.IsCheckedChanged += (_, _) => editor.NotifyTickChanged();
-            ToolTip.SetTip(box, "Tick to include this row in Run ticked");
+            ToolTip.SetTip(box, "Tick to include this row in the tree's Run ticked");
             return box;
         })
     };
