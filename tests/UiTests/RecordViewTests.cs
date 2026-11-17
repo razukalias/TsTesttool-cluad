@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using LoadTestingTool.Editing;
@@ -281,5 +282,134 @@ public class RecordToolsWindowTests
         Assert.Contains(all.OfType<TextBlock>(), t => Equals(t.Tag, "line-warning") && t.IsVisible && t.Text!.Contains("nosuchcolumn"));
         Assert.True(all.Count(c => Equals(c.Tag, "copy-to-rows")) >= 6);
         Assert.Single(all, c => Equals(c.Tag, "template-columns"));
+    }
+}
+
+public class ResponseFieldsTests
+{
+    private const string Body = "{\"id\":\"abc-1\",\"name\":\"Customer 1\",\"address\":{\"city\":\"Malmö\"},\"items\":[{\"sku\":\"S1\"},{\"sku\":\"S2\"}]}";
+
+    private static DataEditorViewModel Open(TempDir dir, bool withHistory = true)
+    {
+        var path = Samples.CreateLarge(dir, rows: 2);
+        if (withHistory)
+        {
+            Directory.CreateDirectory(dir.Combine("History"));
+            using var book = new ClosedXML.Excel.XLWorkbook();
+            var sheet = book.AddWorksheet("RequestHistory");
+            string[] headers = ["runid", "dataid", "stepname", "responsebody"];
+            for (var i = 0; i < headers.Length; i++) sheet.Cell(1, i + 1).Value = headers[i];
+            sheet.Cell(2, 1).Value = "r1"; sheet.Cell(2, 2).Value = "CUST001"; sheet.Cell(2, 3).Value = "CreateCustomer"; sheet.Cell(2, 4).Value = Body;
+            book.SaveAs(System.IO.Path.Combine(dir.Combine("History"), "run1.xlsx"));
+        }
+        var editor = new DataEditorViewModel(path, "Customers");
+        editor.OpenRecordTabCommand.Execute(null);
+        return editor;
+    }
+
+    [Fact]
+    public void The_last_stored_response_is_listed_as_flat_dotted_fields_minus_those_that_already_have_a_column()
+    {
+        using var dir = new TempDir();
+        var editor = Open(dir);
+
+        editor.FindResponseFields("CreateCustomer");
+
+        Assert.Equal(["address.city", "items[0].sku", "items[1].sku"], editor.ResponseFields.Select(f => f.Path));   // id and name already have expected columns
+        Assert.Contains("run1.xlsx", editor.ResponseFieldsNote);
+        Assert.Equal("CreateCustomer.address.city", editor.ResponseFields[0].Header);
+    }
+
+    [Fact]
+    public void Ticked_fields_become_expected_columns_and_can_fill_the_selected_rows_values()
+    {
+        using var dir = new TempDir();
+        var editor = Open(dir);
+        editor.FindResponseFields("CreateCustomer");
+        editor.ResponseFields.Single(f => f.Path == "items[1].sku").IsChosen = false;
+
+        Assert.Equal(2, editor.AddResponseFields(fillSelectedRow: true));
+
+        Assert.True(editor.IsDirty);
+        var city = editor.ExpectedLines.Single(l => l.Title == "CreateCustomer.address.city");
+        Assert.Equal("eq", city.Verb);
+        Assert.Equal("Malmö", ValueParts.Format(city.Parts));
+        Assert.Equal("S1", ValueParts.Format(editor.ExpectedLines.Single(l => l.Title == "CreateCustomer.items[0].sku").Parts));
+        Assert.Equal("notempty", editor.ExpectedLines.Single(l => l.Title == "CreateCustomer.id").Verb);   // existing columns are left alone
+        Assert.DoesNotContain(editor.ExpectedLines, l => l.Title.Contains("items[1]"));
+        editor.FindResponseFields("CreateCustomer");
+        Assert.Equal(["items[1].sku"], editor.ResponseFields.Select(f => f.Path));   // the rest are done
+    }
+
+    [Fact]
+    public void Without_filling_only_the_columns_are_added()
+    {
+        using var dir = new TempDir();
+        var editor = Open(dir);
+        editor.FindResponseFields("CreateCustomer");
+        editor.AddResponseFields(fillSelectedRow: false);
+        Assert.Equal("", ValueParts.Format(editor.ExpectedLines.Single(l => l.Title == "CreateCustomer.address.city").Parts));
+    }
+
+    [Fact]
+    public void A_sample_file_can_stand_in_when_there_is_no_history()
+    {
+        using var dir = new TempDir();
+        var editor = Open(dir, withHistory: false);
+        editor.FindResponseFields("CreateCustomer");
+        Assert.Empty(editor.ResponseFields);
+        Assert.Contains("No stored response", editor.ResponseFieldsNote);
+
+        var sample = dir.Combine("sample.json");
+        File.WriteAllText(sample, "{\"token\":\"t-1\"}");
+        editor.FindResponseFields("CreateCustomer", sample);
+
+        Assert.Equal(["token"], editor.ResponseFields.Select(f => f.Path));
+        Assert.Contains("sample.json", editor.ResponseFieldsNote);
+
+        File.WriteAllText(sample, "<xml/>");
+        editor.FindResponseFields("CreateCustomer", sample);
+        Assert.Contains("not JSON", editor.ResponseFieldsNote);
+    }
+
+    [Fact]
+    public void The_From_menu_lists_the_stored_responses_fields_with_the_step_name_in_front()
+    {
+        using var dir = new TempDir();
+        var editor = Open(dir);
+        var fields = RecordMenu.Root(editor.MenuSources()).Single(n => n.Title == "From").Children!()
+            .Single(n => n.Title.StartsWith("response")).Children!().Select(n => n.Title).ToList();
+
+        Assert.Contains("CreateCustomer.address.city", fields);
+        Assert.Contains("CreateCustomer.items[0].sku", fields);
+        Assert.Contains("CreateCustomer.statusCode", fields);   // from the workbook's own expected columns
+        Assert.Equal(fields.Count, fields.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
+}
+
+public class ResponseFieldsWindowTests
+{
+    [AvaloniaFact]
+    public void The_record_view_has_the_response_fields_button_with_a_step_list_and_flat_field_list()
+    {
+        using var dir = new TempDir();
+        var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 2), "Customers");
+        window.Width = 1440; window.Height = 860;
+        window.Show();
+        window.ViewModel.OpenRecordTabCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var view = Assert.IsType<RecordView>(window.FindControl<Border>("RecordHost")!.Child);
+        view.Draw();
+
+        var button = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Button>().Single(b => Equals(b.Tag, "response-fields"));
+        var flyout = Assert.IsType<Flyout>(button.Flyout);
+        flyout.ShowAt(button);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var content = Assert.IsType<StackPanel>(flyout.Content);
+        var steps = content.GetVisualDescendants().OfType<ComboBox>().Single();
+        Assert.Equal(["CreateCustomer"], steps.ItemsSource!.Cast<string>());
+        Assert.Contains("No stored response", content.GetVisualDescendants().OfType<TextBlock>().Single(t => Equals(t.Tag, "response-note")).Text);
+        flyout.Hide();
     }
 }

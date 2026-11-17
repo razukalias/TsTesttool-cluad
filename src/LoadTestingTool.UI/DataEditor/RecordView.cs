@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using LoadTestingTool.Editing;
 
 namespace LoadTestingTool.UI.DataEditor;
@@ -37,12 +38,57 @@ public sealed class RecordView : UserControl
     {
         _body.Children.Clear();
         var head = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
-        if (_editor.SelectedRow is not null) head.Children.Add(TemplateColumnsButton());
+        if (_editor.SelectedRow is not null) { head.Children.Add(ResponseFieldsButton()); head.Children.Add(TemplateColumnsButton()); }
         head.Children.Add(new TextBlock { Text = _editor.RecordTitle, FontSize = 16, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center });
         _body.Children.Add(head);
         if (_editor.SelectedRow is null) return;
         Section("REQUEST", _editor.RequestLines);
         Section("EXPECTED RESPONSE", _editor.ExpectedLines);
+    }
+
+    /// <summary>"Add expected fields from a response…": the JSON fields of a step's last stored response (or a sample file); ticked ones become expected columns.</summary>
+    private Button ResponseFieldsButton()
+    {
+        var button = new Button { Content = "Add expected fields from a response…", Tag = "response-fields", HorizontalAlignment = HorizontalAlignment.Right, MinHeight = 32, Margin = new Thickness(8, 0, 0, 0) };
+        DockPanel.SetDock(button, Dock.Right);
+        ToolTip.SetTip(button, "Pick a step, see the fields of its last response (or a sample file) as a flat list, and tick the ones to expect. No JSON path has to be typed");
+        var flyout = new Flyout { Placement = PlacementMode.BottomEdgeAlignedRight };
+        var steps = new ComboBox { MinWidth = 260, Tag = "response-step" };
+        var note = new TextBlock { Foreground = Brush.Parse("#8EA4BC"), FontSize = 11, TextWrapping = TextWrapping.Wrap, MaxWidth = 420, Tag = "response-note" };
+        var list = new StackPanel { Spacing = 2 };
+        var fill = new CheckBox { Content = "Fill the expected values for this row from the response", IsChecked = true, Tag = "response-fill" };
+        var pick = new Button { Content = "Choose a sample file…", Tag = "response-file" };
+        var add = new Button { Content = "Add ticked fields", Classes = { "primary" }, Tag = "response-add" };
+        void Load(string? file = null)
+        {
+            _editor.FindResponseFields(steps.SelectedItem as string ?? string.Empty, file);
+            list.Children.Clear();
+            foreach (var choice in _editor.ResponseFields)
+            {
+                var box = new CheckBox { Content = choice.Display, IsChecked = choice.IsChosen, Tag = "response-field", DataContext = choice };
+                box.IsCheckedChanged += (_, _) => choice.IsChosen = box.IsChecked == true;
+                list.Children.Add(box);
+            }
+            note.Text = _editor.ResponseFieldsNote;
+            add.IsVisible = fill.IsVisible = _editor.ResponseFields.Count > 0;
+        }
+        steps.SelectionChanged += (_, _) => Load();
+        pick.Click += async (_, _) =>
+        {
+            if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
+            var files = await storage.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions { Title = "Sample response", AllowMultiple = false });
+            if (files.Count > 0 && files[0].TryGetLocalPath() is { } path) Load(path);
+        };
+        add.Click += (_, _) => { flyout.Hide(); _editor.AddResponseFields(fill.IsChecked == true); };
+        flyout.Content = new StackPanel { Spacing = 8, Children = { new TextBlock { Text = "Step", Foreground = Brush.Parse("#8EA4BC"), FontSize = 11 }, steps, note, new ScrollViewer { MaxHeight = 300, Content = list }, fill, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { pick, add } } } };
+        flyout.Opened += (_, _) =>
+        {
+            steps.ItemsSource = _editor.ResponseSteps();
+            steps.SelectedItem = (steps.ItemsSource as IReadOnlyList<string>)?.LastOrDefault();
+            Load();
+        };
+        button.Flyout = flyout;
+        return button;
     }
 
     /// <summary>"Add columns from template…": the _variable_ placeholders of the testcase's templates that have no column yet, ticked ones are added.</summary>

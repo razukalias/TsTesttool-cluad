@@ -19,7 +19,7 @@ public sealed partial class DataEditorViewModel
 
     partial void OnShowRecordChanged(bool value)
     {
-        if (value) { ShowSteps = false; BuildRecord(); }
+        if (value) { ShowSteps = false; ForgetStoredResponses(); BuildRecord(); }
     }
 
 
@@ -41,7 +41,6 @@ public sealed partial class DataEditorViewModel
     public RecordMenu.Sources MenuSources()
     {
         static List<string> Names(LoadTestingTool.Editing.SheetTable t) => t.Headers.Where(h => h.Length > 0 && !ReservedColumns.Contains(h)).ToList();
-        var fields = _document.Response.Headers.Select(h => LoadTestingTool.Editing.ValueParts.SplitHeader(h).Field).Where(f => f.Contains('.')).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        return new(Names(_document.Request), fields, Names(_document.Config), Names(_document.Config));
+        return new(Names(_document.Request), ResponseFieldNames(), Names(_document.Config), ResponseSteps());
     }
 }
