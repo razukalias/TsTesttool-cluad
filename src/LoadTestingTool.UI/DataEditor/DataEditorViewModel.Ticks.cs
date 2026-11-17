@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Input;
-using LoadTestingTool.Editing;
 
 namespace LoadTestingTool.UI.DataEditor;
 
@@ -57,20 +56,15 @@ public sealed partial class DataEditorViewModel
     }
 
     /// <summary>The run that covers exactly the ticked rows, or why it cannot be expressed.</summary>
-    internal (RunRequest? Request, string Text) TickedRun()
+    public (RunRequest? Request, string Text) TickedRun()
     {
         RememberTicks();
         var keys = _tickMemory.Select(k => { var at = k.IndexOf('|'); return (Index: int.Parse(k[..at]), Id: k[(at + 1)..]); }).ToList();
         if (keys.Count == 0) return (null, "Tick the rows you want to run first.");
         var testcases = keys.Select(k => k.Index).Distinct().Order().ToList();
+        var byTestcase = testcases.ToDictionary(t => t, t => (IReadOnlyList<string>)keys.Where(k => k.Index == t).Select(k => k.Id).Distinct().ToList());
         var ids = keys.Select(k => k.Id).Distinct().ToList();
-        // A run takes testcases and data ids separately; refuse a mix that would also pick up rows that are not ticked.
-        var covered = _document.Request.Rows.Where(r => !r.IsBlank)
-            .Select(r => (Index: WorkbookDocument.EffectiveIndex(r), Id: r.Get("dataid")))
-            .Count(r => testcases.Contains(r.Index) && ids.Contains(r.Id));
-        if (covered != keys.Count)
-            return (null, "These ticks would also run rows you did not tick (the same data ID exists in another ticked testcase). Tick rows in one testcase at a time.");
-        return (new RunRequest(testcases, ids), $"{keys.Count} ticked {(keys.Count == 1 ? "row" : "rows")}");
+        return (new RunRequest(testcases, ids, RowsByTestcase: byTestcase), $"{keys.Count} ticked {(keys.Count == 1 ? "row" : "rows")}");
     }
 
     [RelayCommand]

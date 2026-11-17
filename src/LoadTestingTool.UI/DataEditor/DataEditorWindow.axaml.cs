@@ -50,6 +50,11 @@ public partial class DataEditorWindow : Window
     private bool _runDetailsAttached;
 
     /// <summary>Puts the dashboard's run views beside the workbook panel (problems, preview) as extra tabs.</summary>
+    private TabControl? _runTabs;
+
+    /// <summary>A started run shows its Overview (the second tab) so progress and the log are in view.</summary>
+    private void OnRunStarted(object? sender, EventArgs e) { if (_runTabs is { ItemCount: > 1 }) _runTabs.SelectedIndex = 1; }
+
     private bool _cleanupWired;
     private bool _logsWired;
 
@@ -67,6 +72,7 @@ public partial class DataEditorWindow : Window
         if (tabs.ItemsSource is not null) items.AddRange(tabs.ItemsSource.Cast<object>());
         tabs.ItemsSource = items;
         tabs.SelectedIndex = 0;
+        _runTabs = tabs;
         // The instance (folder) name and the selected testcase / step, above every run view.
         var title = new TextBlock { FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Avalonia.Thickness(12, 8, 12, 6), TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis };
         void ShowTitle() { title.Text = _shell.SelectionTitle; ToolTip.SetTip(title, _shell.SelectionTitle); title.IsVisible = title.Text.Length > 0; }
@@ -115,6 +121,7 @@ public partial class DataEditorWindow : Window
             _subscribed.CsvFileRequested -= OnCsvFileRequested;
             _subscribed.EditTemplateRequested -= OnEditTemplateRequested;
             _subscribed.NewTestcaseRequested -= OnNewTestcaseRequested;
+            _subscribed.RunStarted -= OnRunStarted;
         }
         _subscribed = _shell.Current;
         if (_subscribed is null) return;
@@ -127,6 +134,7 @@ public partial class DataEditorWindow : Window
         _subscribed.CsvFileRequested += OnCsvFileRequested;
         _subscribed.EditTemplateRequested += OnEditTemplateRequested;
         _subscribed.NewTestcaseRequested += OnNewTestcaseRequested;
+        _subscribed.RunStarted += OnRunStarted;
         RebuildColumns();
         RebuildStepColumns();
         RebuildSheetColumns();

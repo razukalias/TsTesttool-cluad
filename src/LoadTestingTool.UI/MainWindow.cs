@@ -1079,7 +1079,9 @@ public sealed partial class MainWindow : Window
         var (testcases, steps, dataIdSelection) = (item.TestcaseSelection, item.StepSelectionJson, item.DataIdSelection);
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         var selection = request.Testcases.Count == 0 ? "0" : string.Join(',', request.Testcases.Select(i => i.ToString(inv)));
-        var ids = request.DataIds.Count == 0 || request.Testcases.Count != 1 ? "" : $"{request.Testcases[0]}:{string.Join(',', request.DataIds)}";
+        var ids = request.RowsByTestcase is { Count: > 0 } byTestcase
+            ? string.Join(';', byTestcase.Select(p => $"{p.Key}:{string.Join(',', p.Value)}"))
+            : request.DataIds.Count == 0 || request.Testcases.Count != 1 ? "" : $"{request.Testcases[0]}:{string.Join(',', request.DataIds)}";
         var stepsJson = request.Steps is null ? "" : System.Text.Json.JsonSerializer.Serialize(request.Steps.ToDictionary(p => p.Key, p => p.Value.ToArray()));
         List<(string, string)> overrides = [("--testcases", selection), ("--steps", stepsJson), ("--dataids", ids.Length > 0 ? ids : "0")];
         if (request.RowsMode is { } mode) overrides.Add(("--rows-execution-mode", mode));

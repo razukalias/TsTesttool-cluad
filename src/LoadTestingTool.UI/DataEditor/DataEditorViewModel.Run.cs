@@ -8,8 +8,9 @@ namespace LoadTestingTool.UI.DataEditor;
 /// <summary>What to run. Empty <see cref="Testcases"/> means every testcase; empty <see cref="DataIds"/> means every row.</summary>
 /// <param name="RowsMode">"parallel", "sequential", or null to use the instance's own setting.</param>
 /// <param name="TestcasesParallel">Run the chosen testcases at the same time (true) or one after another (false); null keeps the instance setting.</param>
+/// <param name="RowsByTestcase">Data IDs to run per testcase index (for ticked rows across testcases); when given it takes the place of <see cref="DataIds"/>.</param>
 /// <param name="Steps">Step names to run per testcase index; null runs every enabled step. When given it must list every testcase in <see cref="Testcases"/>.</param>
-public sealed record RunRequest(IReadOnlyList<int> Testcases, IReadOnlyList<string> DataIds, string? RowsMode = null, bool? TestcasesParallel = null, IReadOnlyDictionary<int, IReadOnlyList<string>>? Steps = null, bool Rerun = false, IReadOnlyDictionary<int, IReadOnlyList<string>>? RerunSteps = null, string? RerunOf = null, IReadOnlyList<string>? Environments = null);
+public sealed record RunRequest(IReadOnlyList<int> Testcases, IReadOnlyList<string> DataIds, string? RowsMode = null, bool? TestcasesParallel = null, IReadOnlyDictionary<int, IReadOnlyList<string>>? Steps = null, bool Rerun = false, IReadOnlyDictionary<int, IReadOnlyList<string>>? RerunSteps = null, string? RerunOf = null, IReadOnlyList<string>? Environments = null, IReadOnlyDictionary<int, IReadOnlyList<string>>? RowsByTestcase = null);
 
 /// <summary>Asks the host to run part of an instance. Returns null when the run was started, otherwise why it was not.</summary>
 public delegate Task<string?> RunHandler(RunRequest request);
@@ -260,6 +261,9 @@ public sealed partial class DataEditorViewModel
         return StartRunAsync(new RunRequest([testcase.Index], [row.Cells[0]]), $"{row.Cells[0]} in {testcase.Name}");
     }
 
+    /// <summary>Raised when a run has been started, so the window can show the Overview.</summary>
+    public event EventHandler? RunStarted;
+
     private async Task StartRunAsync(RunRequest request, string label, bool applyReuseChoices = true)
     {
         if (RunHandler is not { } handler) { ShowStatus("Running is only available when the editor is opened from the dashboard.", isError: true); return; }
@@ -279,6 +283,7 @@ public sealed partial class DataEditorViewModel
             var problem = await handler(request);
             RunOptionsVisible = problem is not null && RunOptionsVisible;
             ShowStatus(problem ?? $"Started {label}. Results appear in the Result column as it runs.", isError: problem is not null);
+            if (problem is null) RunStarted?.Invoke(this, EventArgs.Empty);
         }
         finally { IsStartingRun = false; }
     }

@@ -551,4 +551,4 @@ Example row:
 - Resolved copies (ResolvedValues, Request) show `<from_filepath>name` for file cells instead of masked content; content is still never written.
 - The editor refuses a pasted or typed value over 32,767 characters (keeps the old value, explains how to use `<from_filepath>`).
 
-- Done 2026-11-17: tick column ("Run") in the data grid plus "▶ Run ticked (n)", "Tick all shown" and "Clear ticks" in the toolbar; ticks are remembered across filter/undo/testcase switches and never saved to the workbook. Refuses a tick mix that would also run unticked rows (same data ID in another ticked testcase).
+- Done 2026-11-17: tick column ("Run") in the data grid plus "▶ Run ticked (n)", "Tick all shown" and "Clear ticks" in the toolbar; ticks are remembered across filter/undo/testcase switches and never saved to the workbook. Ticks across several testcases run exactly the ticked rows (per-testcase data IDs).

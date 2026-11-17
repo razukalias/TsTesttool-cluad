@@ -82,3 +82,40 @@ public class TickedRowsTests
         window.Close();
     }
 }
+
+public class TickedAcrossTestcasesTests
+{
+    [Fact]
+    public void Ticks_in_the_whole_instance_view_are_passed_per_testcase()
+    {
+        using var dir = new TempDir();
+        var vm = new DataEditorViewModel(Samples.CreateLarge(dir, rows: 3));
+        vm.ShowWholeInstance();
+        var rows = vm.VisibleRows.Take(2).ToList();
+        foreach (var row in rows) row.IsTicked = true;
+        var (request, _) = vm.TickedRun();
+        Assert.NotNull(request);
+        Assert.NotNull(request!.RowsByTestcase);
+        Assert.Equal(rows.Count, request.RowsByTestcase!.Values.Sum(v => v.Count));
+        Assert.All(rows, r => Assert.Contains(r.CurrentDataId, request.RowsByTestcase[r.TestcaseIndex]));
+    }
+}
+
+public class RunShowsOverviewTests
+{
+    [AvaloniaFact]
+    public async Task Starting_a_run_raises_RunStarted_so_the_window_can_show_the_overview()
+    {
+        using var dir = new TempDir();
+        var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 2));
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var vm = window.Shell.Current!;
+        vm.RunHandler = _ => Task.FromResult<string?>(null);
+        var raised = 0;
+        vm.RunStarted += (_, _) => raised++;
+        await vm.RunRowCommand.ExecuteAsync(null);
+        Assert.Equal(1, raised);
+        window.Close();
+    }
+}
