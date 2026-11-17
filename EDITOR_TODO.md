@@ -545,7 +545,7 @@ Example row:
 - [ ] Verify `&` filtering for Overview and Assertions.
 - [ ] Confirm Legacy config is absent from the right-side panel.
 - [ ] Build and test the packaged Windows version.
-- [ ] **Bug (reported 2026-11-17):** an error text sometimes appears above the grid: `System.InvalidOperationException: Source collection was modified during selection update` (from `SelectionModel.OnSourceCollectionChanged`). It goes away after switching testcase or step. Seen with the grid open on a testcase while a step filter ("All steps" box) changes.
+- [x] **Bug (reported 2026-11-17, fixed 2026-11-17: the options list is only touched when it really changed, so picking a step no longer rebuilds it mid-selection):** an error text sometimes appears above the grid: `System.InvalidOperationException: Source collection was modified during selection update` (from `SelectionModel.OnSourceCollectionChanged`). It goes away after switching testcase or step. Seen with the grid open on a testcase while a step filter ("All steps" box) changes.
   - Likely cause (not yet confirmed): the step-filter box sets `StepFilter` → `OnStepFilterChanged` → `BuildRows()` → `RefreshStepOptions()`, which clears and refills `StepFilterOptions` (DataEditorViewModel.cs, ~line 149) while that same box is still in the middle of its own selection update.
   - Idea for the fix: when the change comes from the user's own choice in the box, rebuild the rows but do not rebuild the options list; or post the options refresh to the dispatcher so it runs after the selection finished. Add a regression test that changes the step filter from the window and checks no error text appears.
 

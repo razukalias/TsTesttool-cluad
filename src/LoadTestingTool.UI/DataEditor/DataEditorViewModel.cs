@@ -143,17 +143,23 @@ public sealed partial class DataEditorViewModel : ObservableObject
     private void RefreshStepOptions()
     {
         var keep = StepFilter;
+        var wanted = new List<string> { AllSteps };
+        if (SelectedTestcase is not null || ShowInstance)
+            foreach (var row in _document.Config.Rows.Where(r => !r.IsBlank && (SelectedTestcase is not { } chosen || WorkbookDocument.EffectiveIndex(r) == chosen.Index)))
+            {
+                var name = row.Get("stepname").Trim();
+                if (name.Length > 0 && !wanted.Contains(name, StringComparer.OrdinalIgnoreCase)) wanted.Add(name);
+            }
         _refreshingStepOptions = true;
         try
         {
-            StepFilterOptions.Clear();
-            StepFilterOptions.Add(AllSteps);
-            if (SelectedTestcase is not null || ShowInstance)
-                foreach (var row in _document.Config.Rows.Where(r => !r.IsBlank && (SelectedTestcase is not { } chosen || WorkbookDocument.EffectiveIndex(r) == chosen.Index)))
-                {
-                    var name = row.Get("stepname").Trim();
-                    if (name.Length > 0 && !StepFilterOptions.Contains(name, StringComparer.OrdinalIgnoreCase)) StepFilterOptions.Add(name);
-                }
+            // Touch the list only when it really changed: when the user picks a step in the box, this runs from inside the box's own selection
+            // update, and clearing the list then makes the box throw "Source collection was modified during selection update".
+            if (!StepFilterOptions.SequenceEqual(wanted, StringComparer.Ordinal))
+            {
+                StepFilterOptions.Clear();
+                foreach (var name in wanted) StepFilterOptions.Add(name);
+            }
             StepFilter = StepFilterOptions.FirstOrDefault(o => string.Equals(o, keep, StringComparison.OrdinalIgnoreCase)) ?? AllSteps;
         }
         finally { _refreshingStepOptions = false; }

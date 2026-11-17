@@ -1,3 +1,7 @@
+using Avalonia.Controls;
+using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using ClosedXML.Excel;
 using LoadTestingTool.UI.DataEditor;
 using Xunit;
@@ -49,5 +53,26 @@ public class StepFilterTests
         Assert.Equal("CreateCustomer", vm.StepFilter);
         Assert.DoesNotContain(vm.Columns, c => c.Title.StartsWith("OtherStep"));
         Assert.NotEmpty(vm.VisibleRows);
+    }
+
+    [AvaloniaFact]
+    public void Picking_a_step_in_the_box_does_not_rebuild_its_list_while_it_is_selecting()
+    {
+        using var dir = new TempDir();
+        var window = DataEditorWindow.Open(WithSecondStepColumns(dir));
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var vm = window.Shell.Current!;
+        var box = window.GetVisualDescendants().OfType<ComboBox>().First(b => ReferenceEquals(b.ItemsSource, vm.StepFilterOptions));
+        var changes = 0;
+        vm.StepFilterOptions.CollectionChanged += (_, _) => changes++;
+
+        box.SelectedItem = "OtherStep";
+        Dispatcher.UIThread.RunJobs();
+        box.SelectedItem = DataEditorViewModel.AllSteps;
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(0, changes);                               // the list was left alone
+        Assert.Equal(DataEditorViewModel.AllSteps, vm.StepFilter);
     }
 }
