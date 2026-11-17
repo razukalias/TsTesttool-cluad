@@ -1053,7 +1053,7 @@ public sealed partial class MainWindow : Window
             item.Process.BeginErrorReadLine();
             UiLog($"Runner launch returned. instance={item.Name}; runId={item.CurrentRunId}; uiLaunchId={uiLaunchId}; processId={item.Process?.Id}; returnedAt={DateTimeOffset.Now:O}");
             item.Status = "Running"; item.LastEvent = $"Started with testcases {selection}"; item.EventPosition = 0; item.EventLineIndex = 0; item.EventLinePositions.Clear(); item.Assertions.Clear();
-            item.Requests.Clear(); item.ManualActions.Clear(); item.EventMessages.Clear(); item.CompletedRequests = null; item.AverageMs = null;
+            item.Requests.Clear(); item.ManualActions.Clear(); item.EventMessages.Clear(); item.CompletedRequests = null; item.AverageMs = null; ClearRunIssues(item);
             item.P95Ms = null; item.RequestsPerSecond = null; item.StartedAt = DateTimeOffset.Now; item.CompletedAt = null;
             item.EventMessages.Add($"{DateTime.Now:HH:mm:ss}  RUN started / testcases {selection}");
             UiLog($"Run state initialized. instance={item.Name}; runId={item.CurrentRunId}; testcases={selection}; mode={item.RowsExecutionMode}; environments={environments}; dataIds={item.DataIdSelection}; internalLog={item.InternalLoggingEnabled}");

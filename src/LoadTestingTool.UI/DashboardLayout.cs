@@ -953,6 +953,10 @@ public sealed partial class MainWindow
         }
     }
 
+    /// <summary>A new run starts clean: the earlier run's issues go. Validation issues describe the workbook, not a run, so they stay until it is validated again.</summary>
+    internal static void ClearRunIssues(InstanceInfo instance)
+        => instance.Issues.RemoveAll(x => !x.Category.Equals("Validation", StringComparison.OrdinalIgnoreCase));
+
     /// <summary>Replaces an instance's earlier validation issues with a fresh result. Issues from runs stay as they are.</summary>
     internal static void ApplyValidationIssues(InstanceInfo instance, InstanceValidationResult result)
     {

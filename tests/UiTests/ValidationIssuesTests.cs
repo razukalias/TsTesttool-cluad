@@ -28,4 +28,25 @@ public class ValidationIssuesTests
         var issues = ((System.Collections.IEnumerable)instanceType.GetProperty("Issues")!.GetValue(instance)!).Cast<object>().ToList();
         Assert.Equal(["Warning", "Error"], issues.Select(i => (string)i.GetType().GetProperty("Severity")!.GetValue(i)!).ToArray());
     }
+
+    [Fact]
+    public void A_new_run_drops_the_earlier_runs_issues_but_keeps_the_validation_ones()
+    {
+        var assembly = typeof(LoadTestingTool.UI.MainWindow).Assembly;
+        var instanceType = assembly.GetType("LoadTestingTool.UI.InstanceInfo")!;
+        var issueType = assembly.GetType("LoadTestingTool.UI.RunIssueInfo")!;
+        var instance = Activator.CreateInstance(instanceType, nonPublic: true)!;
+        var issues = (System.Collections.IList)instanceType.GetProperty("Issues")!.GetValue(instance)!;
+        foreach (var category in new[] { "Validation", "Runner", "Assertion" })
+        {
+            var issue = Activator.CreateInstance(issueType, nonPublic: true)!;
+            issueType.GetProperty("Category")!.SetValue(issue, category);
+            issues.Add(issue);
+        }
+
+        typeof(LoadTestingTool.UI.MainWindow).GetMethod("ClearRunIssues", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [instance]);
+
+        var left = issues.Cast<object>().Select(i => (string)issueType.GetProperty("Category")!.GetValue(i)!).ToArray();
+        Assert.Equal(["Validation"], left);
+    }
 }
