@@ -130,6 +130,7 @@ public partial class DataEditorWindow : Window
         RebuildColumns();
         RebuildStepColumns();
         RebuildSheetColumns();
+        if (this.FindControl<Border>("RecordHost") is { } recordHost) recordHost.Child = new RecordView(_subscribed);
     }
 
     private void OnSheetColumnsChanged(object? sender, EventArgs e) => RebuildSheetColumns();

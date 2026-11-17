@@ -54,18 +54,18 @@ public sealed partial class DataEditorViewModel
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowData), nameof(ShowDataGrid), nameof(ShowSheetGrid), nameof(SheetSummary))]
     private bool _showSteps;
 
-    public bool ShowData => !ShowSteps;
+    public bool ShowData => !ShowSteps && !ShowRecord;
     public string StepCountText => $"{StepRows.Count} {(StepRows.Count == 1 ? "step" : "steps")}";
 
     [RelayCommand]
-    private void OpenDataTab() => ShowSteps = false;
+    private void OpenDataTab() { ShowRecord = false; ShowSteps = false; }
 
     [RelayCommand]
-    private void OpenStepsTab() => ShowSteps = true;
+    private void OpenStepsTab() { ShowRecord = false; ShowSteps = true; }
 
     partial void OnShowStepsChanged(bool value)
     {
-        if (value) ColumnFiltersVisible = false;
+        if (value) { ColumnFiltersVisible = false; ShowRecord = false; }
         if (value && _stepsStale && !_loading) { _stepsStale = false; BuildSteps(); }
         OnPropertyChanged(nameof(CurrentColumnTitle));
         CurrentCellIndex = -1;

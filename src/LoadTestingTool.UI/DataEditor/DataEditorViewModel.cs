@@ -27,6 +27,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         StepRows.CollectionChanged += (_, _) => { for (var i = 0; i < StepRows.Count; i++) StepRows[i].Position = i + 1; };
         LoadTestcases(null);
         InitSheets();
+        ColumnsChanged += (_, _) => { if (ShowRecord) BuildRecord(); };
     }
 
     /// <summary>Drops config columns that steps no longer use (see <see cref="LegacyColumns"/>). Done when saving, so opening a workbook never changes it.</summary>

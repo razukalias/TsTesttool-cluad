@@ -435,6 +435,7 @@
           <StackPanel Orientation="Horizontal" Spacing="6">
             <Button Content="▦  Table view" Classes="tab" Classes.active="{Binding ShowData}" Command="{Binding OpenDataTabCommand}" ToolTip.Tip="Table view: the rows of the request and response sheets, one row per data row" />
             <Button Content="⚙  Config edit mode" Classes="tab" Classes.active="{Binding ShowSteps}" Command="{Binding OpenStepsTabCommand}" ToolTip.Tip="Config edit mode: the steps of the testcase as forms (type, URL, template, timeouts, ...)" />
+            <Button Content="☰  Record view" Classes="tab" Classes.active="{Binding ShowRecord}" Command="{Binding OpenRecordTabCommand}" ToolTip.Tip="Record view: one data row as a list. Build each value from parts (text, values from other cells, random numbers, GUIDs, dates, files) and pick conditions in plain words" />
           </StackPanel>
           <TextBlock Grid.Column="2" Text="{Binding RowCountText}" IsVisible="{Binding ShowData}" Foreground="#8EA4BC" VerticalAlignment="Center" />
         </Grid>
@@ -605,6 +606,7 @@
                     VerticalGridLinesBrush="#1B2D44" />
           </DockPanel>
         </Border>
+        <Border x:Name="RecordHost" Grid.Row="2" IsVisible="{Binding ShowRecord}" Classes="panel" ClipToBounds="True" />
         <Border Grid.Row="2" IsVisible="{Binding ShowSteps}" Classes="panel" ClipToBounds="True">
           <DockPanel>
             <Border DockPanel.Dock="Top" Padding="14,10" BorderBrush="#22364D" BorderThickness="0,0,0,1">
