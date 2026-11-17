@@ -314,7 +314,7 @@ public class ResultsTests
         vm.SelectedRow = vm.VisibleRows[1];
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Assert.Equal(1 + 1 + vm.Columns.Count, window.FindControl<DataGrid>("Grid")!.Columns.Count);
+        Assert.Equal(3 + vm.Columns.Count, window.FindControl<DataGrid>("Grid")!.Columns.Count);
         var shots = Environment.GetEnvironmentVariable("UI_SCREENSHOT_DIR") ?? System.IO.Path.GetTempPath();
         window.CaptureRenderedFrame()!.Save(System.IO.Path.Combine(shots, "editor-results.png"));
         window.Close();
