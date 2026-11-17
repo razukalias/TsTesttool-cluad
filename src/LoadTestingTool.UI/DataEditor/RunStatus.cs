@@ -72,7 +72,7 @@ public static class RunClassifier
 public sealed partial class RunBadge : ObservableObject
 {
     private static readonly IBrush Green = Brush("#39D39B"), Red = Brush("#FF6B6B"), Orange = Brush("#FFA94D"), Purple = Brush("#B58CFF"), Magenta = Brush("#E0446A"), Blue = Brush("#5AA9FF"), Grey = Brush("#8EA4BC"), Dim = Brush("#55697F");
-    private static IBrush Brush(string hex) => new SolidColorBrush(Color.Parse(hex));
+    private static IBrush Brush(string hex) => new Avalonia.Media.Immutable.ImmutableSolidColorBrush(Color.Parse(hex));   // not thread-bound, so the first use may be on any thread
 
     private int? _signature;
 
