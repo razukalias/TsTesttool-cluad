@@ -34,11 +34,33 @@ public sealed class FormattedTextColumn : DataGridTextColumn
     }
 
     /// <summary>Lays a translucent tint over the cell while the column is selected; it never takes mouse input.</summary>
-    private Control Tinted(Control content)
+    private Control Tinted(Control content, DataGridCell? cell = null)
     {
         var overlay = new Border { Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#383291FF")), IsHitTestVisible = false, IsVisible = _selected };
         _overlays.Add(new WeakReference<Border>(overlay));
-        return new Grid { Children = { content, overlay } };
+        var grid = new Grid { Children = { content, overlay } };
+        if (OpenWizard is not null && cell is not null) grid.Children.Add(WizardButton(cell));
+        return grid;
+    }
+
+    /// <summary>When set, the current cell shows a small button on its border that calls this with the cell and the button (the Record view's wizard).</summary>
+    public Action<DataGridCell, Control>? OpenWizard { get; set; }
+
+    /// <summary>The small wizard button; it shows only while its cell is the grid's current cell.</summary>
+    private Control WizardButton(DataGridCell cell)
+    {
+        var button = new Button
+        {
+            Content = "✦", Tag = "cell-wizard", Width = 20, Height = 20, Padding = new Avalonia.Thickness(0), FontSize = 11,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top,
+            HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center, VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            IsVisible = cell.Classes.Contains(":current"),
+        };
+        ToolTip.SetTip(button, "Open the Record view's wizard for this cell. With several rows selected, the result is written to all of them");
+        cell.Classes.CollectionChanged += (_, _) => button.IsVisible = cell.Classes.Contains(":current");
+        button.Click += (_, e) => { e.Handled = true; OpenWizard?.Invoke(cell, button); };
+        button.PointerPressed += (_, e) => e.Handled = true;   // do not let the grid start editing or move the selection
+        return button;
     }
 
     /// <param name="cell">Index of the cell in the row.</param>
@@ -59,7 +81,7 @@ public sealed class FormattedTextColumn : DataGridTextColumn
             text.Bind(TextBlock.TextWrappingProperty, new Binding($"Formats[{_cell}].Wrapping"));
             text.Bind(TextBlock.ForegroundProperty, new Binding($"Formats[{_cell}].Foreground"));
         }
-        if (_rule is null || element is not TextBlock shown) return Tinted(element);
+        if (_rule is null || element is not TextBlock shown) return Tinted(element, cell);
 
         // A ⚠ beside a value the runner would misread, with the reason as its tooltip; an ⓘ where it only deserves a note.
         var mark = new TextBlock { VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Margin = new Avalonia.Thickness(4, 0, 6, 0), IsVisible = false };
@@ -74,6 +96,6 @@ public sealed class FormattedTextColumn : DataGridTextColumn
         }
         shown.PropertyChanged += (_, e) => { if (e.Property == TextBlock.TextProperty) Refresh(); };
         Refresh();
-        return Tinted(holder);
+        return Tinted(holder, cell);
     }
 }

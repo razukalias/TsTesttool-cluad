@@ -420,7 +420,12 @@ public partial class DataEditorWindow : Window
         grid.Columns.Add(CreateTickColumn(editor));
         grid.Columns.Add(CreateColumn(new GridColumn("Data ID", ColumnGroup.Id, 0, -1)));
         grid.Columns.Add(CreateResultColumn());
-        foreach (var column in editor.Columns) grid.Columns.Add(CreateColumn(column));
+        foreach (var column in editor.Columns)
+        {
+            var created = CreateColumn(column);
+            if (created is FormattedTextColumn formatted) formatted.OpenWizard = (cell, anchor) => ShowCellWizard(cell, anchor, column);
+            grid.Columns.Add(created);
+        }
         // The grid drops its selection while columns are rebuilt; keep the first row selected so Duplicate/Remove work.
         Dispatcher.UIThread.Post(() =>
         {
