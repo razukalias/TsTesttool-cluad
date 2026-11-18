@@ -19,7 +19,7 @@ public class OverviewExcludeTests
         var dashboard = new LoadTestingTool.UI.MainWindow();
         var exclude = (TextBox)Window.GetField("_overviewStepExclude", Flags)!.GetValue(dashboard)!;
         var match = Window.GetMethod("MatchesOverviewStep", Flags)!;
-        return (dashboard, exclude, r => (bool)match.Invoke(dashboard, [r, true])!, r => (bool)match.Invoke(dashboard, [r, false])!);
+        return (dashboard, exclude, r => (bool)match.Invoke(dashboard, [r, true, false])!, r => (bool)match.Invoke(dashboard, [r, false, false])!);
     }
 
     [AvaloniaFact]

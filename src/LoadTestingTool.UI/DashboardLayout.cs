@@ -1506,14 +1506,17 @@ public sealed partial class MainWindow
     private bool IsExcludedStep(DashboardRequest request)
         => !string.IsNullOrWhiteSpace(_overviewStepExclude.Text) && MatchesTerms(StepSearchText(request), _overviewStepExclude.Text);
 
-    private bool MatchesOverviewStep(DashboardRequest request, bool applyExclude = true)
+    private bool MatchesOverviewStep(DashboardRequest request, bool applyExclude = true, bool forComparison = false)
     {
         if (applyExclude && IsExcludedStep(request)) return false;
-        var status = _overviewStepStatus.SelectedItem?.ToString() ?? "All statuses";
-        var actualStatus = IsUnexpectedRequest(request) ? "Unexpected error" : request.Result.Equals("PASS", StringComparison.OrdinalIgnoreCase) ? "Passed" : request.Result.Equals("SKIPPED", StringComparison.OrdinalIgnoreCase) ? "Skipped" : "Failed";
-        if (!status.Equals("All statuses", StringComparison.OrdinalIgnoreCase) && !actualStatus.Equals(status, StringComparison.OrdinalIgnoreCase)) return false;
-        var environment = _overviewStepEnvironment.SelectedItem?.ToString();
-        if (!string.IsNullOrWhiteSpace(environment) && !environment.Equals("All environments", StringComparison.OrdinalIgnoreCase) && !environment.Equals(string.IsNullOrWhiteSpace(request.Environment) ? "default" : request.Environment, StringComparison.OrdinalIgnoreCase)) return false;
+        if (!forComparison)
+        {
+            var status = _overviewStepStatus.SelectedItem?.ToString() ?? "All statuses";
+            var actualStatus = IsUnexpectedRequest(request) ? "Unexpected error" : request.Result.Equals("PASS", StringComparison.OrdinalIgnoreCase) ? "Passed" : request.Result.Equals("SKIPPED", StringComparison.OrdinalIgnoreCase) ? "Skipped" : "Failed";
+            if (!status.Equals("All statuses", StringComparison.OrdinalIgnoreCase) && !actualStatus.Equals(status, StringComparison.OrdinalIgnoreCase)) return false;
+            var environment = _overviewStepEnvironment.SelectedItem?.ToString();
+            if (!string.IsNullOrWhiteSpace(environment) && !environment.Equals("All environments", StringComparison.OrdinalIgnoreCase) && !environment.Equals(string.IsNullOrWhiteSpace(request.Environment) ? "default" : request.Environment, StringComparison.OrdinalIgnoreCase)) return false;
+        }
         var testcase = _overviewStepTestcase.SelectedItem?.ToString();
         if (!string.IsNullOrWhiteSpace(testcase) && !testcase.Equals("All testcases", StringComparison.OrdinalIgnoreCase) && !testcase.Equals(request.Testcase, StringComparison.OrdinalIgnoreCase)) return false;
         return MatchesTerms(StepSearchText(request), _overviewStepFilter.Text);

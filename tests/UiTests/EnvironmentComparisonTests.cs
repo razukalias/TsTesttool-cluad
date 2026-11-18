@@ -70,4 +70,36 @@ public class EnvironmentComparisonTests
         Assert.Equal(["default", "test"], report.Environments);
         Assert.Equal(StepMatch.Match, Assert.Single(report.Compared).Kind);
     }
+
+    private static AssertionInfo A(string env, string step, string path, string actual, string row = "row_a")
+        => new() { Testcase = "Customers", DataId = row, StepName = step, ResponsePath = path, ActualValue = actual, Environment = env, Result = "PASS" };
+
+    [Fact]
+    public void Response_values_that_differ_between_environments_are_listed_even_when_all_passed()
+    {
+        var report = EnvironmentReport.Build(
+            [R("dev", "Get", "PASS"), R("test", "Get", "PASS")],
+            null,
+            [A("dev", "Get", "$.name", "Ann"), A("test", "Get", "$.name", "Bo"), A("dev", "Get", "$.id", "7"), A("test", "Get", "$.id", "7")]);
+
+        var difference = Assert.Single(report.ValueDifferences);
+        Assert.Equal("$.name", difference.Path);
+        Assert.Equal([("dev", "Ann"), ("test", "Bo")], difference.Values.ToArray());
+    }
+
+    [Fact]
+    public void A_run_is_compared_with_an_earlier_one()
+    {
+        var earlier = new[] { R("dev", "Login", "PASS"), R("dev", "Create", "FAIL", "HTTP 500"), R("dev", "Update", "PASS"), R("dev", "Delete", "FAIL", "HTTP 500"), R("dev", "Gone", "PASS") };
+        var now = new[] { R("dev", "Login", "FAIL", "HTTP 401"), R("dev", "Create", "PASS"), R("dev", "Update", "PASS"), R("dev", "Delete", "FAIL", "HTTP 503"), R("dev", "Fresh", "PASS") };
+
+        var changes = RunComparer.Compare(earlier, now);
+
+        Assert.Equal(RunChange.Regressed, changes.Single(c => c.StepName == "Login").Change);
+        Assert.Equal(RunChange.Fixed, changes.Single(c => c.StepName == "Create").Change);
+        Assert.Equal(RunChange.ErrorChanged, changes.Single(c => c.StepName == "Delete").Change);
+        Assert.Equal(RunChange.New, changes.Single(c => c.StepName == "Fresh").Change);
+        Assert.Equal(RunChange.Gone, changes.Single(c => c.StepName == "Gone").Change);
+        Assert.DoesNotContain(changes, c => c.StepName == "Update");
+    }
 }
