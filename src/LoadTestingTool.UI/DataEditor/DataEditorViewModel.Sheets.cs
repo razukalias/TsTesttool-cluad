@@ -5,7 +5,7 @@ using LoadTestingTool.Editing;
 namespace LoadTestingTool.UI.DataEditor;
 
 /// <summary>One line of a sheet shown as a plain table. Editable only when it belongs to a sheet the editor holds (config).</summary>
-public sealed class SheetRowViewModel
+public sealed class SheetRowViewModel : ICellRow
 {
     private readonly Action<SheetRowViewModel, int, string>? _edited;
     private bool _suppress;

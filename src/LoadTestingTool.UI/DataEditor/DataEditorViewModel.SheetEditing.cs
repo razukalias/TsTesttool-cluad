@@ -35,6 +35,12 @@ public sealed partial class DataEditorViewModel
     [ObservableProperty] private decimal? _sheetPanelCount = 1;
     [ObservableProperty] private string _sheetPanelPlacement = PlaceColumnAtEnd;
 
+    /// <summary>The cells (like <c>request!B5</c>) that refer to this cell of the active other sheet, from the last saved file; empty for a row not saved yet.</summary>
+    public IReadOnlyList<string> CellUsedBy(string header, SheetRowViewModel row)
+        => row.Row?.SourceRow is int source && IsOtherSheet
+            ? _document.FindCellReferences(ActiveSheet, header, source).Select(r => $"{r.Sheet}!{r.Cell}").ToList()
+            : [];
+
     private LoadTestingTool.Editing.SheetTable? ActiveOtherTable => IsOtherSheet ? _document.FindOtherSheet(ActiveSheet) : null;
 
     // ---- Cells -------------------------------------------------------------------------------

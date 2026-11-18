@@ -47,21 +47,7 @@ public sealed class FormattedTextColumn : DataGridTextColumn
     public Action<DataGridCell, Control>? OpenWizard { get; set; }
 
     /// <summary>The small wizard button; it shows only while its cell is the grid's current cell.</summary>
-    private Control WizardButton(DataGridCell cell)
-    {
-        var button = new Button
-        {
-            Content = "✦", Tag = "cell-wizard", Width = 20, Height = 20, Padding = new Avalonia.Thickness(0), FontSize = 11,
-            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top,
-            HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center, VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Center,
-            IsVisible = cell.Classes.Contains(":current"),
-        };
-        ToolTip.SetTip(button, "Open the Record view's wizard for this cell. With several rows selected, the result is written to all of them");
-        cell.Classes.CollectionChanged += (_, _) => button.IsVisible = cell.Classes.Contains(":current");
-        button.Click += (_, e) => { e.Handled = true; OpenWizard?.Invoke(cell, button); };
-        button.PointerPressed += (_, e) => e.Handled = true;   // do not let the grid start editing or move the selection
-        return button;
-    }
+    private Control WizardButton(DataGridCell cell) => WizardButtons.Create(cell, (c, b) => OpenWizard?.Invoke(c, b));
 
     /// <param name="cell">Index of the cell in the row.</param>
     /// <param name="ruleHeader">The config header whose rules mark a questionable value with a ⚠, or null for none.</param>

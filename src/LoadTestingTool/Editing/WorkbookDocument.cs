@@ -109,6 +109,10 @@ public sealed partial class WorkbookDocument
     public IReadOnlyList<RowReference> FindColumnReferences(string sheetName, string header)
         => FindRowReferences().Where(r => r.TargetSheet.Equals(sheetName, StringComparison.OrdinalIgnoreCase) && ReferencedHeader(r).Equals(header.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
 
+    /// <summary>Cells that refer to one cell of a sheet: the same header and the row's number in the sheet (<c>&lt;From_sheet_header_N&gt;</c>), as of the last saved file.</summary>
+    public IReadOnlyList<RowReference> FindCellReferences(string sheetName, string header, int sheetRow)
+        => FindColumnReferences(sheetName, header).Where(r => r.TargetRow == sheetRow).ToList();
+
     private static string ReferencedHeader(RowReference reference)
     {
         var inner = reference.Token.Trim('<', '>').Split('_');

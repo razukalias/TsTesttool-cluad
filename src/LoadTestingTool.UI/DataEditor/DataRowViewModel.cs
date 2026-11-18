@@ -202,7 +202,7 @@ public sealed class ProblemViewModel
 /// One line of the grid: a request row and its response row shown together. Cell 0 is the data ID, followed
 /// by the request columns and then the expected-response columns. Editing a cell writes through to the workbook.
 /// </summary>
-public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow
+public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, ICellRow
 {
     private readonly SheetTable? _requestTable;
     private readonly SheetTable? _responseTable;

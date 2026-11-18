@@ -32,4 +32,32 @@ public sealed partial class DataEditorWindow
         };
         flyout.ShowAt(anchor);
     }
+
+    /// <summary>The same popup for a cell of one of the other sheets: the value as chips, and which request cells refer to it.</summary>
+    private void ShowSheetCellWizard(DataGridCell cell, Control anchor, int cellIndex)
+    {
+        if (_shell.Current is not { IsOtherSheet: true } editor || cell.DataContext is not SheetRowViewModel row) return;
+        var grid = this.FindControl<DataGrid>("SheetGrid");
+        var line = new RecordLineViewModel(row, cellIndex, editor.SheetHeaders[cellIndex], expected: false);
+        var before = row.Cells[cellIndex] ?? string.Empty;
+        var others = grid?.SelectedItems.OfType<SheetRowViewModel>().Where(r => !ReferenceEquals(r, row) && r.Editable).ToList() ?? [];
+        var content = new StackPanel { Spacing = 6, MinWidth = 520, MaxWidth = 720 };
+        if (others.Count > 0)
+            content.Children.Add(new TextBlock { Text = $"The result is written to this row and the {others.Count} other selected {(others.Count == 1 ? "row" : "rows")}.", FontSize = 11, Foreground = Avalonia.Media.Brush.Parse("#8EA4BC"), Tag = "cell-wizard-note" });
+        content.Children.Add(new RecordLineView(line, editor));
+        var used = editor.CellUsedBy(editor.SheetHeaders[cellIndex], row);
+        content.Children.Add(new TextBlock
+        {
+            Tag = "cell-used-by", FontSize = 11, Foreground = Avalonia.Media.Brush.Parse("#8EA4BC"), TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            Text = used.Count == 0 ? "No request cell refers to this cell (as of the last save)." : $"Used by {used.Count} {(used.Count == 1 ? "cell" : "cells")} (as of the last save): " + string.Join(", ", used),
+        });
+        var flyout = new Flyout { Content = content, Placement = PlacementMode.BottomEdgeAlignedRight };
+        flyout.Closed += (_, _) =>
+        {
+            var after = row.Cells[cellIndex] ?? string.Empty;
+            if (after == before) return;
+            foreach (var other in others) if ((other.Cells[cellIndex] ?? string.Empty) != after) other.Cells[cellIndex] = after;
+        };
+        flyout.ShowAt(anchor);
+    }
 }

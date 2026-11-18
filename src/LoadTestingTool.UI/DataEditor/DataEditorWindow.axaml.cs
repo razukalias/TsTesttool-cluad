@@ -156,13 +156,17 @@ public partial class DataEditorWindow : Window
         editor.SheetCurrentColumn = -1;
         grid.Columns.Clear();
         for (var i = 0; i < editor.SheetHeaders.Count; i++)
-            grid.Columns.Add(new DataGridTextColumn
+        {
+            var index = i;
+            grid.Columns.Add(new SheetTextColumn
             {
                 Tag = i,
                 Header = editor.SheetHeaders[i].Length == 0 ? $"({i + 1})" : editor.SheetHeaders[i],
                 Binding = new Avalonia.Data.Binding($"Cells[{i}]") { Mode = Avalonia.Data.BindingMode.TwoWay },
                 MinWidth = 90,
+                OpenWizard = editor.IsOtherSheet ? (cell, anchor) => ShowSheetCellWizard(cell, anchor, index) : null,
             });
+        }
     }
 
     private void OnSheetCellPointerPressed(object? sender, DataGridCellPointerPressedEventArgs e)

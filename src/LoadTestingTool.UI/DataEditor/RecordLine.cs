@@ -8,16 +8,19 @@ namespace LoadTestingTool.UI.DataEditor;
 /// One column of the selected data row in Record view: its header and the value as parts. Every change writes the joined text
 /// into the grid cell, so the workbook keeps exactly the same kind of text as before (and Undo, dirty state and validation work as usual).
 /// </summary>
+/// <summary>Anything that holds a row of cell texts the Record view's line can edit: a data row, or a row of another sheet.</summary>
+public interface ICellRow { ObservableCollection<string> Cells { get; } }
+
 public sealed partial class RecordLineViewModel : ObservableObject
 {
-    private readonly DataRowViewModel _row;
+    private readonly ICellRow _row;
     private readonly int _cell;
     private readonly string _headerVerb;
     private bool _writing;
 
     private readonly Func<IEnumerable<LoadTestingTool.Editing.ValuePart>, string?, List<string>>? _warn;
 
-    public RecordLineViewModel(DataRowViewModel row, int cell, string title, bool expected, Func<IEnumerable<LoadTestingTool.Editing.ValuePart>, string?, List<string>>? warn = null)
+    public RecordLineViewModel(ICellRow row, int cell, string title, bool expected, Func<IEnumerable<LoadTestingTool.Editing.ValuePart>, string?, List<string>>? warn = null)
     {
         _warn = warn;
         FullTitle = title;
