@@ -492,6 +492,7 @@ public sealed partial class MainWindow
             new TabItem { Header = "Run Summary", Content = Scroll(_runSummaryPanel) },
             new TabItem { Header = "Assertions", Content = assertionPanel },
             new TabItem { Header = "Bugs", Content = Scroll(_bugItems) },
+            new TabItem { Header = "Environments", Content = Scroll(_environmentCompareItems) },
             new TabItem { Header = "Artifacts", Content = Scroll(_artifactPanel) }
         };
         _overviewPanel.Children.Insert(0, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _overviewFilter, DashboardStyle.Action("Copy overview", () => _ = CopyOverviewAsync()) } });
@@ -1572,6 +1573,7 @@ public sealed partial class MainWindow
         {
             _overviewPanel.Children.Add(DashboardStyle.Text("Select an instance to inspect its run.", color: DashboardStyle.Muted));
             RefreshRunSummary(null);
+            _environmentCompareItems.Children.Clear();
             RenderUnifiedLog();
             _artifactPanel.Children.Clear(); return;
         }
@@ -1579,6 +1581,7 @@ public sealed partial class MainWindow
         RefreshOverviewStepFilters(item);
         var requests = ScopedRequests(item);
         var assertions = ScopedAssertions(item);
+        RefreshEnvironmentCompare(requests, assertions);
         var scoped = ActiveScope(item) is not null;
         var issues = scoped ? item.Issues.Where(i => InScope(ActiveScope(item), i.Testcase, i.StepName)).ToList() : item.Issues;
         if (ActiveScope(item) is { } active)
