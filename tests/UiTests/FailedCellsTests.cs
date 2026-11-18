@@ -101,6 +101,32 @@ public class FailedCellsTests
         Assert.Empty(editor.FailedCells);
     }
 
+    [Fact]
+    public void The_list_follows_undo_typing_and_the_row_filters_while_it_is_open()
+    {
+        using var dir = new TempDir();
+        var editor = Open(dir);
+        var (row, cell) = Failed(editor);
+        editor.ShowFailedCells = true;
+        Assert.Single(editor.FailedCells);
+
+        editor.AssignActual(row, cell, editor.FailureAt(row, cell)!);
+        Assert.Empty(editor.FailedCells);
+        editor.UndoCommand.Execute(null);
+        Assert.Single(editor.FailedCells);                       // back after Undo, without toggling the box
+
+        row = editor.VisibleRows.First(r => r.CurrentDataId == "CUST002");
+        row.Cells[cell] = "Kund 2";                              // typed by hand: no longer a failed cell
+        Assert.Empty(editor.FailedCells);
+        row.Cells[cell] = "Something else";
+        Assert.Single(editor.FailedCells);
+
+        editor.FilterText = "CUST001";                           // CUST002 is no longer shown
+        Assert.Empty(editor.FailedCells);
+        editor.FilterText = "";
+        Assert.Single(editor.FailedCells);
+    }
+
     [AvaloniaFact]
     public void The_red_mark_shows_on_the_failed_cell_in_the_table_view()
     {

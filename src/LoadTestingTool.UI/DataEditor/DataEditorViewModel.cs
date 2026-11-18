@@ -273,6 +273,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         }
         if (keep is not null && VisibleRows.Contains(keep)) SelectedRow = keep;
         OnPropertyChanged(nameof(RowCountText));
+        if (ShowFailedCells) RefreshFailedCells();   // the shown rows changed (a filter, or Undo / Redo rebuilt them)
     }
 
     /// <summary>
@@ -401,6 +402,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             else EnsureResponse(row).SetAt(column.SheetColumn, value);
         }
         MarkChanged();
+        if (ShowFailedCells) RefreshFailedCells();   // an edited cell may have become (or stopped being) a failed one
     }
 
     private TableRow EnsureResponse(DataRowViewModel row)
