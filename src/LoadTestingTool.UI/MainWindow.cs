@@ -177,6 +177,7 @@ public sealed partial class MainWindow : Window
     private readonly ComboBox _overviewStepEnvironment = new() { Width = 170 };
     private readonly ComboBox _overviewStepTestcase = new() { Width = 190 };
     private readonly TextBox _overviewStepFilter = new() { Width = 280, Watermark = "Filter steps: term1 & term2…" };
+    private readonly TextBox _overviewStepExclude = new() { Width = 280, Watermark = "Hide steps: term1 & term2…", Tag = "overview-exclude" };
     private bool _overviewStepFilterRefreshing;
     private readonly TextBlock _readyValue = new();
     private readonly TextBlock _runningValue = new();

@@ -459,6 +459,18 @@ public sealed partial class MainWindow
                 _overviewStepFilter.CaretIndex = Math.Min(caret, _overviewStepFilter.Text?.Length ?? 0);
             });
         };
+        ToolTip.SetTip(_overviewStepExclude, "Hide the completed steps that contain every term (separate terms with &). Clear the box and they are back. Nothing is removed from the run or remembered");
+        _overviewStepExclude.TextChanged += (_, _) =>
+        {
+            if (_overviewStepFilterRefreshing) return;
+            var caret = _overviewStepExclude.CaretIndex;
+            RefreshDashboardDetails(true);
+            Dispatcher.UIThread.Post(() =>
+            {
+                _overviewStepExclude.Focus();
+                _overviewStepExclude.CaretIndex = Math.Min(caret, _overviewStepExclude.Text?.Length ?? 0);
+            });
+        };
         _overviewStepStatus.SelectionChanged += (_, _) => { if (!_overviewStepFilterRefreshing) RefreshDashboardDetails(true); };
         _overviewStepEnvironment.SelectionChanged += (_, _) => { if (!_overviewStepFilterRefreshing) RefreshDashboardDetails(true); };
         _overviewStepTestcase.SelectionChanged += (_, _) => { if (!_overviewStepFilterRefreshing) RefreshDashboardDetails(true); };
@@ -1486,8 +1498,16 @@ public sealed partial class MainWindow
         if (LoadSavedRun(item, run)) RefreshDashboardDetails(true);
     }
 
-    private bool MatchesOverviewStep(DashboardRequest request)
+    private static string StepSearchText(DashboardRequest request)
+        => $"{request.StepType} {request.StepName} {request.Testcase} {request.DataId} {request.Environment} {request.Result} {request.FailureCategory} {request.Error}";
+
+    /// <summary>True when the step is hidden by the exclude box: it contains every term written there.</summary>
+    private bool IsExcludedStep(DashboardRequest request)
+        => !string.IsNullOrWhiteSpace(_overviewStepExclude.Text) && MatchesTerms(StepSearchText(request), _overviewStepExclude.Text);
+
+    private bool MatchesOverviewStep(DashboardRequest request, bool applyExclude = true)
     {
+        if (applyExclude && IsExcludedStep(request)) return false;
         var status = _overviewStepStatus.SelectedItem?.ToString() ?? "All statuses";
         var actualStatus = IsUnexpectedRequest(request) ? "Unexpected error" : request.Result.Equals("PASS", StringComparison.OrdinalIgnoreCase) ? "Passed" : request.Result.Equals("SKIPPED", StringComparison.OrdinalIgnoreCase) ? "Skipped" : "Failed";
         if (!status.Equals("All statuses", StringComparison.OrdinalIgnoreCase) && !actualStatus.Equals(status, StringComparison.OrdinalIgnoreCase)) return false;
@@ -1495,7 +1515,7 @@ public sealed partial class MainWindow
         if (!string.IsNullOrWhiteSpace(environment) && !environment.Equals("All environments", StringComparison.OrdinalIgnoreCase) && !environment.Equals(string.IsNullOrWhiteSpace(request.Environment) ? "default" : request.Environment, StringComparison.OrdinalIgnoreCase)) return false;
         var testcase = _overviewStepTestcase.SelectedItem?.ToString();
         if (!string.IsNullOrWhiteSpace(testcase) && !testcase.Equals("All testcases", StringComparison.OrdinalIgnoreCase) && !testcase.Equals(request.Testcase, StringComparison.OrdinalIgnoreCase)) return false;
-        return MatchesTerms($"{request.StepType} {request.StepName} {request.Testcase} {request.DataId} {request.Environment} {request.Result} {request.FailureCategory} {request.Error}", _overviewStepFilter.Text);
+        return MatchesTerms(StepSearchText(request), _overviewStepFilter.Text);
     }
 
     private void LaunchStepDetails(DashboardRequest request)
@@ -1543,6 +1563,7 @@ public sealed partial class MainWindow
         Detach(_overviewStepEnvironment);
         Detach(_overviewStepTestcase);
         Detach(_overviewStepFilter);
+        Detach(_overviewStepExclude);
         _overviewPanel.Children.Clear();
         Detach(_overviewRun);
         _overviewPanel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _overviewFilter, DashboardStyle.Action("Copy overview", () => _ = CopyOverviewAsync()) } });
@@ -1596,16 +1617,18 @@ public sealed partial class MainWindow
         _overviewPanel.Children.Add(DashboardStyle.Text($"Step execution timeline  ·  Total duration: {FormatRunDuration(item)}", 13, true));
         var stepFilterBar = new WrapPanel { Orientation = Orientation.Horizontal, ItemWidth = double.NaN, ItemHeight = double.NaN, Children =
         {
-            _overviewStepStatus, _overviewStepEnvironment, _overviewStepTestcase, _overviewStepFilter
+            _overviewStepStatus, _overviewStepEnvironment, _overviewStepTestcase, _overviewStepFilter, _overviewStepExclude
         }};
         foreach (var control in stepFilterBar.Children) control.Margin = new Thickness(0, 0, 8, 6);
         _overviewPanel.Children.Add(stepFilterBar);
+        var hiddenByExclude = string.IsNullOrWhiteSpace(_overviewStepExclude.Text) ? 0 : requests.Count(r => IsExcludedStep(r) && MatchesOverviewStep(r, applyExclude: false));
+        if (hiddenByExclude > 0) _overviewPanel.Children.Add(DashboardStyle.Text($"{hiddenByExclude} {(hiddenByExclude == 1 ? "step is" : "steps are")} hidden by the exclude box. Clear it to see {(hiddenByExclude == 1 ? "it" : "them")} again.", 11, false, DashboardStyle.Muted));
         _overviewPanel.Children.Add(DashboardStyle.Text("Filters apply to completed steps only. Use & between terms to require all terms; matching text remains visible in the details viewer.", 10, false, DashboardStyle.Muted));
         var stepPositions = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var stepTotals = requests
             .GroupBy(request => $"{request.Testcase}\u001F{request.DataId}\u001F{request.Environment}", StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
-        var filteredRequests = DashboardRequest.InWorkbookOrder(requests.Where(MatchesOverviewStep));
+        var filteredRequests = DashboardRequest.InWorkbookOrder(requests.Where(r => MatchesOverviewStep(r)));
         var overviewTotalPages = Math.Max(1, (int)Math.Ceiling(filteredRequests.Count / (double)DashboardPageSize));
         _overviewPage = Math.Clamp(_overviewPage, 1, overviewTotalPages);
         var pageRequests = filteredRequests.Skip((_overviewPage - 1) * DashboardPageSize).Take(DashboardPageSize);
