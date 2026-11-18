@@ -140,6 +140,7 @@ public partial class DataEditorWindow : Window
         RebuildStepColumns();
         RebuildSheetColumns();
         if (this.FindControl<Border>("RecordHost") is { } recordHost) recordHost.Child = new RecordView(_subscribed);
+        if (this.FindControl<Border>("FailedCellsHost") is { } failedHost) failedHost.Child = new FailedCellsView(_subscribed);
     }
 
     private void OnSheetColumnsChanged(object? sender, EventArgs e) => RebuildSheetColumns();
@@ -427,7 +428,12 @@ public partial class DataEditorWindow : Window
         foreach (var column in editor.Columns)
         {
             var created = CreateColumn(column);
-            if (created is FormattedTextColumn formatted) formatted.ExpectedColumn = column.Group == ColumnGroup.Response;
+            if (created is FormattedTextColumn formatted)
+            {
+                formatted.ExpectedColumn = column.Group == ColumnGroup.Response;
+                formatted.FailureAt = editor.FailureAt;
+                formatted.OpenFailure = ShowFailurePopup;
+            }
             if (created is FormattedTextColumn formatted2) formatted2.OpenWizard = (cell, anchor) => ShowCellWizard(cell, anchor, column);
             grid.Columns.Add(created);
         }

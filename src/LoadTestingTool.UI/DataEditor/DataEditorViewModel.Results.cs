@@ -62,6 +62,7 @@ public sealed partial class DataEditorViewModel
         UpdateTestcaseResults();
         if (ShowFailedOnly) ApplyFilter(); // otherwise the rows stay as they are, so selection and scroll position survive a refresh
         RefreshRowFailures();
+        if (ShowFailedCells) RefreshFailedCells();
     }
 
     private void AssignOutcomes()

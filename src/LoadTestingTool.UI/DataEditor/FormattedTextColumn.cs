@@ -59,13 +59,57 @@ public sealed class FormattedTextColumn : DataGridTextColumn
     {
         var overlay = new Border { Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#383291FF")), IsHitTestVisible = false, IsVisible = _selected };
         _overlays.Add(new WeakReference<Border>(overlay));
-        var grid = new Grid { Children = { content, overlay } };
+        Control inner = content;
+        if (ExpectedColumn && FailureAt is not null && cell is not null) inner = FailureMarked(content, cell);
+        var grid = new Grid { Children = { inner, overlay } };
         if (OpenWizard is not null && cell is not null) grid.Children.Add(WizardButton(cell));
         return grid;
     }
 
     /// <summary>True for an expected-value column: only there does a known-bug tag mean something.</summary>
     public bool ExpectedColumn { get; set; }
+
+    /// <summary>Finds the failed assertion behind a cell of an expected-value column; set by the window together with <see cref="OpenFailure"/>.</summary>
+    public Func<DataRowViewModel, int, FailureDetail?>? FailureAt { get; set; }
+
+    /// <summary>Called with the cell, the mark that was clicked, the row and the failure.</summary>
+    public Action<DataGridCell, Control, DataRowViewModel, FailureDetail>? OpenFailure { get; set; }
+
+    /// <summary>A red tint and a small red mark on a cell whose assertion failed in the latest run; it goes once a value is assigned or a new run passes.</summary>
+    private Control FailureMarked(Control content, DataGridCell cell)
+    {
+        var tint = new Border { Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#40FF5A6E")), IsHitTestVisible = false, IsVisible = false };
+        var mark = new Button
+        {
+            Content = "!", Tag = "failed-cell", Width = 18, Height = 18, Padding = new Avalonia.Thickness(0), FontSize = 11, FontWeight = Avalonia.Media.FontWeight.Bold, CornerRadius = new Avalonia.CornerRadius(9),
+            Background = Avalonia.Media.Brush.Parse("#E5484D"), Foreground = Avalonia.Media.Brushes.White, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center, VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Center, Margin = new Avalonia.Thickness(0, 0, 24, 0), IsVisible = false,
+        };
+        ToolTip.SetTip(mark, "This expected value failed in the latest run. Click to see what the run got");
+        FailureDetail? current = null;
+        DataRowViewModel? hooked = null;
+        void Refresh()
+        {
+            current = cell.DataContext is DataRowViewModel row ? FailureAt?.Invoke(row, _cell) : null;
+            tint.IsVisible = mark.IsVisible = current is not null;
+        }
+        void Hook()
+        {
+            if (hooked is not null) { hooked.PropertyChanged -= OnRowChanged; hooked.Cells.CollectionChanged -= OnCellsChanged; }
+            hooked = cell.DataContext as DataRowViewModel;
+            if (hooked is not null) { hooked.PropertyChanged += OnRowChanged; hooked.Cells.CollectionChanged += OnCellsChanged; }
+            Refresh();
+        }
+        void OnRowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) { if (e.PropertyName == nameof(DataRowViewModel.Outcome)) Refresh(); }
+        void OnCellsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) => Refresh();
+        cell.DataContextChanged += (_, _) => Hook();
+        cell.DetachedFromVisualTree += (_, _) => { if (hooked is not null) { hooked.PropertyChanged -= OnRowChanged; hooked.Cells.CollectionChanged -= OnCellsChanged; hooked = null; } };
+        cell.AttachedToVisualTree += (_, _) => Hook();
+        mark.Click += (_, e) => { e.Handled = true; if (current is not null && hooked is not null) OpenFailure?.Invoke(cell, mark, hooked, current); };
+        mark.PointerPressed += (_, e) => e.Handled = true;
+        Hook();
+        return new Grid { Children = { tint, content, mark } };
+    }
 
     /// <summary>When set, the current cell shows a small button on its border that calls this with the cell and the button (the Record view's wizard).</summary>
     public Action<DataGridCell, Control>? OpenWizard { get; set; }

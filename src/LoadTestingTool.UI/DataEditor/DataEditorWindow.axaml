@@ -489,6 +489,7 @@
           <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center" Margin="0,0,14,8">
             <CheckBox Content="Show every column" IsChecked="{Binding ShowAllColumns, Mode=TwoWay}" />
             <CheckBox Content="Failed rows only" IsChecked="{Binding ShowFailedOnly, Mode=TwoWay}" IsEnabled="{Binding HasResults}" />
+            <CheckBox Content="Failed cells only" IsChecked="{Binding ShowFailedCells, Mode=TwoWay}" IsEnabled="{Binding HasResults}" ToolTip.Tip="List only the expected-value cells that failed in the latest run, each with its header, what was expected and what the run got, and a button to assign the actual value" />
           </StackPanel>
           <Button Content="{Binding ColumnFilterSummary}" Command="{Binding ToggleColumnFiltersCommand}" Margin="0,0,8,8" MinHeight="36" ToolTip.Tip="Only show rows where a column has a value, like an Excel filter" />
           <Button Content="Find &amp; replace" Command="{Binding OpenFindCommand}" Margin="0,0,8,8" MinHeight="36" />
@@ -638,8 +639,9 @@
                     BorderThickness="0"
                     HorizontalGridLinesBrush="#1B2D44"
                     VerticalGridLinesBrush="#1B2D44" />
+          <Border x:Name="FailedCellsHost" IsVisible="{Binding ShowFailedCellsList}" />
           <DataGrid x:Name="Grid"
-                    IsVisible="{Binding ShowDataGrid}"
+                    IsVisible="{Binding ShowTableGrid}"
                     ItemsSource="{Binding VisibleRows}"
                     SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
                     AutoGenerateColumns="False"

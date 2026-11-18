@@ -60,4 +60,27 @@ public sealed partial class DataEditorWindow
         };
         flyout.ShowAt(anchor);
     }
+
+    /// <summary>The red mark on a failed expected-value cell: what the run expected and got, and a button that writes the actual value into the cell.</summary>
+    private void ShowFailurePopup(DataGridCell cell, Control anchor, DataRowViewModel row, FailureDetail failure)
+    {
+        if (_shell.Current is not { } editor) return;
+        var column = editor.Columns.FirstOrDefault(c => c.Group == ColumnGroup.Response && string.Equals(editor.HeaderWithoutVerb(c.Title), $"{failure.StepName}.{failure.ResponsePath}", StringComparison.OrdinalIgnoreCase));
+        if (column is null) return;
+        var small = Avalonia.Media.Brush.Parse("#8EA4BC");
+        var content = new StackPanel { Spacing = 6, MinWidth = 300, MaxWidth = 480 };
+        content.Children.Add(new TextBlock { Text = $"{column.Title} · Data ID {row.CurrentDataId}" + (failure.Environment.Length > 0 ? $" · {failure.Environment}" : string.Empty), FontWeight = Avalonia.Media.FontWeight.SemiBold });
+        content.Children.Add(new TextBlock { Text = $"{failure.Verb}: expected \"{failure.Expected}\"", Tag = "failure-expected" });
+        content.Children.Add(new TextBlock { Text = $"the run got \"{failure.Actual}\"", Tag = "failure-actual" });
+        if (failure.Message.Length > 0) content.Children.Add(new TextBlock { Text = failure.Message, FontSize = 11, Foreground = small, TextWrapping = Avalonia.Media.TextWrapping.Wrap });
+        var can = editor.CanAssign(row, column.CellIndex, failure);
+        if (!can) content.Children.Add(new TextBlock { Text = failure.Actual is null or "<missing>" ? "The run returned no value for this field, so there is nothing to assign." : "This cell holds a value from another cell or a generated value, so it is not overwritten.", FontSize = 11, Foreground = small, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Tag = "failure-note" });
+        var flyout = new Flyout { Content = content, Placement = PlacementMode.BottomEdgeAlignedRight };
+        var assign = new Button { Content = $"Assign {failure.Actual}", Classes = { "primary" }, IsEnabled = can, Tag = "failure-assign", MaxWidth = 260 };
+        assign.Click += (_, _) => { flyout.Hide(); editor.AssignActual(row, column.CellIndex, failure); };
+        var close = new Button { Content = "Close", Tag = "failure-close" };
+        close.Click += (_, _) => flyout.Hide();
+        content.Children.Add(new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { close, assign } });
+        flyout.ShowAt(anchor);
+    }
 }
