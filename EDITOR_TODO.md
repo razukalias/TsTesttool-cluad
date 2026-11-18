@@ -623,3 +623,18 @@ Example row:
 - Every `<From_…_N>` row reference in the workbook is renumbered and verified (each must still point at the same text, also when the pointed-at cell holds a reference itself); a failed check stops the save with nothing written. The status line says how many rows moved and how many references changed.
 - Always on, no question asked (a backup copy is made before each save as usual). A sheet with a blank or non-numeric testcase index, rich text, a comment or a hyperlink in its rows is left as it is.
 - Decided: reordering is by testcase index ascending.
+
+## Testing still to do (by hand, on a real workbook and a real run)
+The automated suites pass, but none of the items below has been tried on screen or against real data yet.
+- [ ] **Environments tab:** a real run of the same rows in two or more environments: summary line, "Differ between environments" cards, grouped failures, "Response values that differ", the Overview filter boxes narrowing the tab, and the "Compare with an earlier run" picker (got worse / got fixed / different error / new / not run) against a real earlier run, including a large run (speed).
+- [ ] **Bugs tab and known-bug tag:** a `<bug: env; text>` cell in a real run: KNOWN_BUG does not fail the step, shows in the Bugs tab, "may be fixed" when it passes, both buttons (remove tag / remove environment) edit the workbook and refresh the editor.
+- [ ] **Failed cells in the table view:** marks after a real run, the popup with the actual value and Assign, "Failed cells only", the list refreshing after Undo, edit and filter.
+- [ ] **Cell wizard button** in the table view and on the other sheets: appears on the current/hovered cell, popup content, writing back, Undo.
+- [ ] **Record view row switcher:** many rows (scrolling the bar), Left/Right keys, switching with unsaved edits.
+- [ ] **Overview exclude filter** together with the include filter, status and environment filters on a large run.
+- [ ] **Template editor autocomplete:** typing `_` in the real editor window: popup position, filtering, Enter/Tab insert, a variable name with a dot, a template with many variables; also that the old wizard / step configuration window still open the editor without the list.
+- [ ] **Column letter bar:** on screen with real headers (wide columns, horizontal scroll, long titles), Ctrl/Shift pick, right-click menu for several columns, double-click rename box position, ✦ verb menu; letters of columns added but not yet saved (`H+`); delete several columns and Undo.
+- [ ] **Rename and fix references on save:** the bar with the list of cells for a real rename; "Rename and fix" / "Only rename" / Cancel; what the runner does after "Only rename" (the reference no longer resolves) and that the Preview/validation tells the user.
+- [ ] **Step-type guide (ⓘ):** every type's flyout on screen; run one SQL and one File example against a real instance (the SQL example needs a `MainDb` profile); "Use this example" on an empty and a filled Step config.
+- [ ] **Row order on save:** a real workbook with several testcases where rows were added out of order: result in Excel, references, colours/heights; and the cases the pass does not handle yet: data validation, merged cells, conditional formatting, formulas that refer to row numbers, a table (ListObject) over the data. Also a sheet with a blank or non-numeric testcase index (must be left alone) and the config sheet when steps of testcase 1 were added after testcase 2.
+- [ ] **Cross-checks after all of the above:** open the saved workbook in Excel (no repair prompt), run it once from the app, and compare the result with the run before the edits.
