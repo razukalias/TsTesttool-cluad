@@ -236,6 +236,8 @@ public sealed partial class WorkbookDocument
         Request.ApplyFormats(workbook.Worksheet(Request.SheetName));
         Response.ApplyFormats(workbook.Worksheet(Response.SheetName));
         foreach (var other in _others) other.ApplyFormats(workbook.Worksheet(other.SheetName));
+        var reordered = RowReorder.Apply(workbook, out var reorderedReferences);   // rows of one testcase together, in testcase order
+        renumbered += reorderedReferences;
 
         var directory = Path.GetDirectoryName(FilePath)!;
         var temp = Path.Combine(directory, $"{Path.GetFileName(FilePath)}.tmp-{Guid.NewGuid():N}");
@@ -265,7 +267,7 @@ public sealed partial class WorkbookDocument
         Request.AcceptChanges();
         Response.AcceptChanges();
         AcceptOtherSheets();
-        return new SaveResult(true, backup, inserted, renumbered, columns, otherInserted);
+        return new SaveResult(true, backup, inserted, renumbered, columns, otherInserted, reordered);
     }
 
     /// <summary>The testcase index the runner uses for a row: its cell value, or its sheet row number when that is not a number.</summary>

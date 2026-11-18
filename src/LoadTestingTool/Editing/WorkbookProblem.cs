@@ -24,11 +24,12 @@ public sealed record TestcaseInfo(int Index, string Name, IReadOnlyList<string> 
 /// <param name="BackupPath">Path of the backup copy of the previous file, if one was made.</param>
 /// <param name="RowsInserted">How many rows were inserted in the middle of a sheet. Rows below them moved, so reload the document afterwards.</param>
 /// <param name="OtherRowsInserted">How many rows were inserted in the middle of the other sheets (a row there is one sheet row, not a request and response pair).</param>
+/// <param name="RowsReordered">How many rows changed place because the rows of each testcase were put together in testcase order (summed over all sheets).</param>
 /// <param name="ReferencesRenumbered"><c>&lt;From_…_N&gt;</c> references that were rewritten because rows moved.</param>
-public sealed record SaveResult(bool Saved, string? BackupPath, int RowsInserted = 0, int ReferencesRenumbered = 0, int ColumnsChanged = 0, int OtherRowsInserted = 0)
+public sealed record SaveResult(bool Saved, string? BackupPath, int RowsInserted = 0, int ReferencesRenumbered = 0, int ColumnsChanged = 0, int OtherRowsInserted = 0, int RowsReordered = 0)
 {
     /// <summary>True when sheet positions moved or references were rewritten, so the document must be read again.</summary>
-    public bool RequiresReload => RowsInserted > 0 || OtherRowsInserted > 0 || ReferencesRenumbered > 0 || ColumnsChanged > 0;
+    public bool RequiresReload => RowsInserted > 0 || OtherRowsInserted > 0 || ReferencesRenumbered > 0 || ColumnsChanged > 0 || RowsReordered > 0;
 }
 
 public sealed class WorkbookSaveOptions

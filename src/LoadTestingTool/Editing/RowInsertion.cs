@@ -116,9 +116,9 @@ internal static class RowInsertion
         return checks.Count;
     }
 
-    private static string Rewrite(string text, string cellSheet, Dictionary<string, List<int>> positions, Dictionary<string, Dictionary<string, string>> renames, Action<string, string, int, int, bool>? seen)
+    internal static string Rewrite(string text, string cellSheet, Dictionary<string, List<int>> positions, Dictionary<string, Dictionary<string, string>> renames, Action<string, string, int, int, bool>? seen, Dictionary<string, Dictionary<int, int>>? rowMap = null)
     {
-        int Map(string sheet, int row) => positions.TryGetValue(sheet, out var list) ? row + list.Count(p => p <= row) : row;
+        int Map(string sheet, int row) => rowMap is not null && rowMap.TryGetValue(sheet, out var moved) ? moved.GetValueOrDefault(row, row) : positions.TryGetValue(sheet, out var list) ? row + list.Count(p => p <= row) : row;
         string Header(string sheet, string header) => renames.TryGetValue(sheet, out var map) && map.TryGetValue(header, out var renamedTo) ? renamedTo : header;
         var result = Full.Replace(text, m =>
         {
@@ -139,10 +139,10 @@ internal static class RowInsertion
         });
     }
 
-    private static string? TextOf(IXLCell cell)
+    internal static string? TextOf(IXLCell cell)
         => cell.HasFormula ? cell.FormulaA1 : cell.DataType == XLDataType.Text ? cell.GetString() : null;
 
-    private static string ReadCell(XLWorkbook workbook, string sheetName, string header, int row)
+    internal static string ReadCell(XLWorkbook workbook, string sheetName, string header, int row)
     {
         var sheet = workbook.Worksheets.FirstOrDefault(w => w.Name.Equals(sheetName, StringComparison.OrdinalIgnoreCase));
         var headerRow = sheet?.FirstRowUsed();

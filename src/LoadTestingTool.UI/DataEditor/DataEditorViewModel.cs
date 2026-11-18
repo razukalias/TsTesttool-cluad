@@ -562,6 +562,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             if (result.Saved) WorkbookSaved?.Invoke(WorkbookPath);
             var parts = new List<string>();
             if (result.RowsInserted > 0) parts.Add($"Inserted {result.RowsInserted / 2} {(result.RowsInserted / 2 == 1 ? "row" : "rows")} in the request and response sheets");
+            if (result.RowsReordered > 0) parts.Add($"Put the rows of each testcase together in testcase order ({result.RowsReordered} {(result.RowsReordered == 1 ? "row" : "rows")} moved)");
             if (result.OtherRowsInserted > 0) parts.Add($"Inserted {result.OtherRowsInserted} {(result.OtherRowsInserted == 1 ? "row" : "rows")} in other sheets");
             var references = $"{result.ReferencesRenumbered} {(result.ReferencesRenumbered == 1 ? "reference" : "references")}";
             var moved = parts.Count > 0 ? $" {string.Join(" and ", parts)} and renumbered {references}."
