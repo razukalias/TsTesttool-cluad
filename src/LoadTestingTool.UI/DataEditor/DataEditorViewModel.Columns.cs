@@ -159,18 +159,50 @@ public sealed partial class DataEditorViewModel
     private void ConfirmRenameColumn()
     {
         if (CurrentColumn is not { } column) return;
+        if (RenameColumnTo(CurrentCellIndex, EditColumnName)) EditColumnVisible = false;
+        else if (EditColumnName.Trim() == TableOf(column).Headers[column.SheetColumn]) EditColumnVisible = false;
+    }
+
+    /// <summary>
+    /// Renames the header of a data column (in place, from the header or the column menu). References to it are rewritten when saving, after the user confirmed.
+    /// Returns false, with a message in the status line, when the name is empty or already taken.
+    /// </summary>
+    public bool RenameColumnTo(int cellIndex, string newName)
+    {
+        if (cellIndex < 1 || cellIndex > Columns.Count) return false;
+        var column = Columns[cellIndex - 1];
         var table = TableOf(column);
         var old = table.Headers[column.SheetColumn];
-        var name = EditColumnName.Trim();
-        if (name.Length == 0) { ShowStatus("Enter the new column name.", isError: true); return; }
-        if (name == old) { EditColumnVisible = false; return; }
-        if (table.FindColumn(name) >= 0) { ShowStatus($"The {table.SheetName} sheet already has a column '{name}'.", isError: true); return; }
+        var name = newName.Trim();
+        if (name.Length == 0) { ShowStatus("Enter the new column name.", isError: true); return false; }
+        if (name == old) return false;
+        if (table.FindColumn(name) >= 0) { ShowStatus($"The {table.SheetName} sheet already has a column '{name}'.", isError: true); return false; }
         Record($"rename column {old} to {name}");
         table.RenameColumn(column.SheetColumn, name);
-        EditColumnVisible = false;
         MarkChanged();
         BuildRows();
-        ShowStatus($"Renamed {old} to {name}. Templates still use _variable_ names — check the Preview if this was a request column.", isError: false);
+        ShowStatus($"Renamed {old} to {name}. Saving asks before it rewrites the <From_…> references to it. Templates still use _variable_ names — check the Preview if this was a request column.", isError: false);
+        return true;
+    }
+
+    /// <summary>Sets the assertion verb of an expected-value column, e.g. <c>{eq}Login.id</c> to <c>{contains}Login.id</c>.</summary>
+    public bool ChangeColumnVerb(int cellIndex, string verb)
+    {
+        if (cellIndex < 1 || cellIndex > Columns.Count || Columns[cellIndex - 1].Group != ColumnGroup.Response) return false;
+        var column = Columns[cellIndex - 1];
+        var header = TableOf(column).Headers[column.SheetColumn];
+        var current = header.Trim().StartsWith('{') && header.IndexOf('}') is var close and > 0 ? header.Trim()[1..close] : string.Empty;
+        if (current.Equals(verb, StringComparison.OrdinalIgnoreCase)) return false;
+        return RenameColumnTo(cellIndex, $"{{{verb}}}{StripVerb(header)}");
+    }
+
+    /// <summary>The verb in braces at the start of an expected column's header, or empty.</summary>
+    public string VerbOf(int cellIndex)
+    {
+        if (cellIndex < 1 || cellIndex > Columns.Count) return string.Empty;
+        var column = Columns[cellIndex - 1];
+        var header = TableOf(column).Headers[column.SheetColumn].Trim();
+        return header.StartsWith('{') && header.IndexOf('}') is var close and > 0 ? header[1..close] : string.Empty;
     }
 
     [RelayCommand]

@@ -65,6 +65,12 @@ public class ColumnStructureTests
         vm.ConfirmRenameColumnCommand.Execute(null);
         Assert.Contains("CreateCustomer.mail", vm.Columns.Select(c => c.Title));
         vm.SaveCommand.Execute(null);
+        Assert.True(vm.RenameFixVisible);                       // saving asks first
+        Assert.Contains("config!F2:", vm.RenameFixList);
+        Assert.Contains("CreateCustomer.mail", vm.RenameFixList);
+        Assert.True(vm.IsDirty);
+        vm.SaveFixingReferencesCommand.Execute(null);
+        Assert.False(vm.RenameFixVisible);
 
         var model = new WorkbookReader().Read(path);
         Assert.Equal("https://api.example.test/customer2@example.test", model.Testcases[0].Steps[0].TargetUrl);

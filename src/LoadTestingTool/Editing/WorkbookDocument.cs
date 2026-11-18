@@ -195,6 +195,22 @@ public sealed partial class WorkbookDocument
     /// formulas and other sheets are untouched. Throws <see cref="WorkbookChangedException"/> if the
     /// file was changed by someone else since it was loaded.
     /// </summary>
+    /// <summary>True when a column was renamed since the last save.</summary>
+    public bool HasRenamedColumns => Request.RenamedHeaders().Count + Response.RenamedHeaders().Count + _others.Sum(t => t.RenamedHeaders().Count) > 0;
+
+    /// <summary>The cells whose references a save would rewrite because of renamed columns, as they would be written (empty when nothing was renamed).</summary>
+    public IReadOnlyList<ReferenceFix> PendingReferenceFixes()
+    {
+        if (!HasRenamedColumns) return [];
+        using var stream = new MemoryStream(_baselineBytes, writable: false);
+        using var workbook = new XLWorkbook(stream);
+        Config.ApplyTo(workbook.Worksheet(Config.SheetName));
+        Request.ApplyTo(workbook.Worksheet(Request.SheetName));
+        Response.ApplyTo(workbook.Worksheet(Response.SheetName));
+        ApplyOtherSheets(workbook);
+        return RowInsertion.PreviewRenames(workbook, [Request, Response, .. _others]);
+    }
+
     public SaveResult Save(WorkbookSaveOptions? options = null)
     {
         options ??= new WorkbookSaveOptions();
@@ -215,7 +231,7 @@ public sealed partial class WorkbookDocument
         var columns = Request.PendingColumnInserts + Response.PendingColumnInserts + (Request.HasRemovedColumns ? 1 : 0) + (Response.HasRemovedColumns ? 1 : 0);
         columns += Request.RenamedHeaders().Count + Response.RenamedHeaders().Count > 0 ? 1 : 0;
         if (inserted > 0) EnsureRowsCanMove();
-        var renumbered = RowInsertion.Apply(workbook, [Request, Response, .. _others]); // also renames references to renamed columns
+        var renumbered = RowInsertion.Apply(workbook, [Request, Response, .. _others], options.FixRenamedReferences); // also renames references to renamed columns
         Config.ApplyFormats(workbook.Worksheet(Config.SheetName));
         Request.ApplyFormats(workbook.Worksheet(Request.SheetName));
         Response.ApplyFormats(workbook.Worksheet(Response.SheetName));

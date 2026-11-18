@@ -420,7 +420,8 @@ public partial class DataEditorWindow : Window
         grid.RemoveHandler(PointerPressedEvent, OnDataGridHeaderPressed);
         grid.AddHandler(PointerPressedEvent, OnDataGridHeaderPressed, RoutingStrategies.Tunnel);
         editor.CurrentCellIndex = -1;
-        _pickedColumn = null;
+        _picked.Clear();
+        _pickAnchor = null;
         grid.Columns.Clear();
         grid.Columns.Add(CreateTickColumn(editor));
         grid.Columns.Add(CreateColumn(new GridColumn("Data ID", ColumnGroup.Id, 0, -1)));
@@ -428,6 +429,7 @@ public partial class DataEditorWindow : Window
         foreach (var column in editor.Columns)
         {
             var created = CreateColumn(column);
+            created.Header = CreateHeader(column, editor.ExcelLetterOf(column), column.Group == ColumnGroup.Response ? OpenVerbMenu : null);
             if (created is FormattedTextColumn formatted)
             {
                 formatted.ExpectedColumn = column.Group == ColumnGroup.Response;
@@ -554,7 +556,11 @@ public partial class DataEditorWindow : Window
         CanUserSort = false
     };
 
-    private static Control CreateHeader(GridColumn column)
+    /// <summary>
+    /// A column header: a grey bar with the Excel letter on top (click it to pick the column, Ctrl/Shift for several, right-click for the menu),
+    /// then REQUEST / EXPECTED and the name. Expected columns also get a ✦ button for the assertion verb.
+    /// </summary>
+    private static Control CreateHeader(GridColumn column, string letter = "", Action<GridColumn, Control>? openVerbs = null)
     {
         var (label, color) = column.Group switch
         {
@@ -563,6 +569,23 @@ public partial class DataEditorWindow : Window
             _ => (string.Empty, "#8EA4BC")
         };
         var panel = new StackPanel { Spacing = 1, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
+        if (letter.Length > 0)
+        {
+            var bar = new Avalonia.Controls.Grid { Tag = "column-letter", ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            var text = new TextBlock { Text = letter, FontSize = 10.5, FontWeight = FontWeight.SemiBold, Foreground = new SolidColorBrush(Color.Parse("#B7C7D9")), HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center };
+            bar.Children.Add(text);
+            if (openVerbs is not null)
+            {
+                var wizard = new Button { Content = "✦", Tag = "header-wizard", FontSize = 11, Padding = new Avalonia.Thickness(4, 0), MinHeight = 0, MinWidth = 0, Background = Brushes.Transparent, BorderThickness = new Avalonia.Thickness(0), Foreground = new SolidColorBrush(Color.Parse("#F6C76B")) };
+                ToolTip.SetTip(wizard, "Assertion verb of this column (eq, contains, …)");
+                wizard.Click += (_, e) => { e.Handled = true; openVerbs(column, wizard); };
+                Avalonia.Controls.Grid.SetColumn(wizard, 1);
+                bar.Children.Add(wizard);
+            }
+            var holder = new Border { Background = new SolidColorBrush(Color.Parse("#26374A")), CornerRadius = new Avalonia.CornerRadius(3), Padding = new Avalonia.Thickness(4, 1), Margin = new Avalonia.Thickness(0, 0, 0, 2), Child = bar, Tag = "column-letter-bar" };
+            ToolTip.SetTip(holder, $"{(column.Group == ColumnGroup.Response ? "Response" : "Request")} sheet, column {letter}. Click to pick the column, Ctrl+click or Shift+click for several, right-click for the menu, double-click the header to rename it.");
+            panel.Children.Add(holder);
+        }
         if (label.Length > 0)
             panel.Children.Add(new TextBlock { Text = label, FontSize = 9.5, FontWeight = FontWeight.Bold, Foreground = new SolidColorBrush(Color.Parse(color)) });
         panel.Children.Add(new TextBlock { Text = column.Title, FontSize = 12.5, FontWeight = FontWeight.SemiBold });

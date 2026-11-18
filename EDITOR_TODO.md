@@ -603,3 +603,11 @@ Example row:
 - Not offered inside a word (the closing `_` of `_name_` does not reopen it).
 - Decided: unquoted variables in template validation stay as they are ("forget this").
 - Not done: the old step wizard / step configuration windows open the editor without the list.
+
+## Done: Column letter bar, multi-column menu, header rename and verb button
+- Every request/expected header has a grey bar with the Excel letter of the column in its own sheet (a column added in the editor shows e.g. `H+` until saved). Request and expected letters can repeat, the tooltip names the sheet.
+- Click picks a column, Ctrl+click adds/removes, Shift+click picks a range, right-click opens the menu for all picked columns: insert left/right, rename header, delete, copy, fill down, clear, highlight, wrap. With two or more rows selected the actions cover only those rows (the menu text says so); otherwise all shown rows. Picked columns x selected rows is the multi-cell selection.
+- Double-click a header (or menu "Rename header") renames it in place; Enter/Escape.
+- Expected columns have a ✦ button in the bar listing the assertion verbs (current one ticked); choosing one renames `{old}Step.path` to `{new}Step.path`.
+- Saving after a rename that changes `<From_…>` references shows a bar listing the cells: Rename and fix / Only rename / Cancel. No question when nothing refers to the column.
+- Not done: dragging a rectangle of cells (the grid control cannot); F2 shortcut for the rename box.

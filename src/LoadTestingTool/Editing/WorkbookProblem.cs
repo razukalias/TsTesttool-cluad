@@ -44,6 +44,9 @@ public sealed class WorkbookSaveOptions
 
     /// <summary>Replace the file even if it changed on disk after it was loaded.</summary>
     public bool OverwriteExternalChanges { get; init; }
+
+    /// <summary>When a column was renamed, rewrite the <c>&lt;From_…&gt;</c> references that point at it (default). False renames only.</summary>
+    public bool FixRenamedReferences { get; init; } = true;
 }
 
 /// <summary>The workbook file changed on disk (for example in Excel) after it was loaded for editing.</summary>

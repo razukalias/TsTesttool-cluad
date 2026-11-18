@@ -82,7 +82,7 @@ public class CellWizardHoverAndStepTests
     {
         using var dir = new TempDir();
         var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 3), "Customers");
-        window.Width = 1440; window.Height = 700; window.Show();
+        window.Width = 1440; window.Height = 820; window.Show();
         Dispatcher.UIThread.RunJobs();
         var grid = window.FindControl<DataGrid>("Grid")!;
         var column = grid.Columns.OfType<FormattedTextColumn>().First(c => c.Tag is int tag && tag > 0);

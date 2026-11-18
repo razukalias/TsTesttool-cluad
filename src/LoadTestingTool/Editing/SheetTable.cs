@@ -157,6 +157,9 @@ public sealed class SheetTable
         => _columns.Where(c => c.OriginalHeader is not null && !string.Equals(c.Header, c.OriginalHeader, StringComparison.Ordinal))
             .ToDictionary(c => c.OriginalHeader!, c => c.Header, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The Excel column number (1 = A) a column has in the workbook file, or null for one that does not exist there yet.</summary>
+    public int? SourceColumnOf(int index) => index >= 0 && index < _columns.Count ? _columns[index].SourceColumn : null;
+
     internal int PendingColumnInserts => _columns.Count(c => c.SourceColumn is null && c.InsertBeforeColumn is not null);
     internal bool HasRemovedColumns => _removedSourceColumns.Count > 0;
 

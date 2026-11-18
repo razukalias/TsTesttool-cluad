@@ -6,6 +6,9 @@ namespace LoadTestingTool.Editing;
 /// <summary>A cell whose text refers to a worksheet row by number, e.g. <c>&lt;From_request_title_4&gt;</c>.</summary>
 public sealed record RowReference(string Sheet, string Cell, string Token, string TargetSheet, int TargetRow);
 
+/// <summary>A reference that a column rename changes: the cell, and its text before and after.</summary>
+public sealed record ReferenceFix(string Sheet, string Cell, string Before, string After);
+
 /// <summary>
 /// Inserts rows in the middle of a sheet without breaking absolute-row references. Every
 /// <c>&lt;From_sheet_header_N&gt;</c> and <c>&lt;From_header_N&gt;</c> in any cell of any sheet is renumbered, and the
@@ -42,13 +45,31 @@ internal static class RowInsertion
         return found;
     }
 
+    /// <summary>The cells whose <c>&lt;From_…&gt;</c> text a pending column rename would change (what a save with "fix references" rewrites).</summary>
+    public static List<ReferenceFix> PreviewRenames(XLWorkbook workbook, IReadOnlyList<SheetTable> tables)
+    {
+        var renames = tables.ToDictionary(t => t.SheetName, t => t.RenamedHeaders(), StringComparer.OrdinalIgnoreCase);
+        var fixes = new List<ReferenceFix>();
+        if (renames.Values.All(r => r.Count == 0)) return fixes;
+        var noRows = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var sheet in workbook.Worksheets)
+            foreach (var cell in sheet.CellsUsed())
+            {
+                var text = TextOf(cell);
+                if (text is null || !text.Contains("<From_", StringComparison.OrdinalIgnoreCase)) continue;
+                var updated = Rewrite(text, sheet.Name, noRows, renames, null);
+                if (updated != text) fixes.Add(new ReferenceFix(sheet.Name, cell.Address.ToStringRelative(), text, updated));
+            }
+        return fixes;
+    }
+
     /// <summary>
     /// Inserts the pending rows of the given tables (already positioned by the caller) and renumbers references.
     /// Returns how many references were rewritten. Throws, leaving the in-memory workbook unusable, if verification fails.
     /// </summary>
-    public static int Apply(XLWorkbook workbook, IReadOnlyList<SheetTable> tables)
+    public static int Apply(XLWorkbook workbook, IReadOnlyList<SheetTable> tables, bool fixRenamedReferences = true)
     {
-        var renames = tables.ToDictionary(t => t.SheetName, t => t.RenamedHeaders(), StringComparer.OrdinalIgnoreCase);
+        var renames = tables.ToDictionary(t => t.SheetName, t => fixRenamedReferences ? t.RenamedHeaders() : new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
         var inserts = tables.ToDictionary(t => t, t => t.PendingInserts(), ReferenceEqualityComparer.Instance as IEqualityComparer<SheetTable>);
         var positions = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
         foreach (var table in tables)

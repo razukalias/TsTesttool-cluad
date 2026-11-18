@@ -546,6 +546,8 @@ public sealed partial class DataEditorViewModel : ObservableObject
     {
         try
         {
+            if (AskAboutRenamedReferences()) return false;
+            options = new LoadTestingTool.Editing.WorkbookSaveOptions { CreateBackup = options.CreateBackup, BackupFolder = options.BackupFolder, OverwriteExternalChanges = options.OverwriteExternalChanges, FixRenamedReferences = _fixReferencesChoice ?? true };
             var keepRow = SelectedRow?.Cells[0];
             SavingWorkbook?.Invoke(); // open step forms write their template files too
             RemoveLegacyColumns();
