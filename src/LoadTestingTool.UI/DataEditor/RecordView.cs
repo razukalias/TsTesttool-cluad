@@ -18,11 +18,79 @@ public sealed class RecordView : UserControl
     public RecordView(DataEditorViewModel editor)
     {
         _editor = editor;
-        Content = new ScrollViewer { Content = _body, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
+        Focusable = true;
+        var scroll = new ScrollViewer { Content = _body, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled };
+        var bar = new ScrollViewer
+        {
+            Content = _bar, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+            Margin = new Thickness(14, 10, 14, 0), Tag = "row-bar",
+        };
+        DockPanel.SetDock(bar, Dock.Top);
+        Content = new DockPanel { Children = { bar, scroll } };
+        _barHost = bar;
         editor.RequestLines.CollectionChanged += (_, _) => Rebuild();
         editor.ExpectedLines.CollectionChanged += (_, _) => Rebuild();
-        editor.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(DataEditorViewModel.RecordTitle)) Rebuild(); };
+        editor.VisibleRows.CollectionChanged += (_, _) => UpdateBar();
+        editor.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(DataEditorViewModel.RecordTitle)) { Rebuild(); UpdateBar(); }
+        };
+        AddHandler(PointerPressedEvent, (_, e) =>
+        {
+            // a click on plain space gives the view the keyboard, so Left and Right switch rows; a click in a box or on a button keeps its own focus
+            if (e.Source is Avalonia.Visual v && (Avalonia.VisualTree.VisualExtensions.FindAncestorOfType<TextBox>(v, true) is not null || Avalonia.VisualTree.VisualExtensions.FindAncestorOfType<Button>(v, true) is not null)) return;
+            Focus();
+        }, Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);
+        UpdateBar();
         Rebuild();
+    }
+
+    private readonly StackPanel _bar = new() { Orientation = Orientation.Horizontal, Spacing = 4 };
+    private readonly ScrollViewer _barHost;
+
+    /// <summary>The row bar: one button per row shown in Table view (position and Data ID); the selected row is highlighted and a row that failed is red. Buttons are reused so the focus stays where it is.</summary>
+    private void UpdateBar()
+    {
+        var rows = _editor.VisibleRows;
+        _barHost.IsVisible = rows.Count > 0;
+        if (_bar.Children.Count != rows.Count)
+        {
+            _bar.Children.Clear();
+            for (var i = 0; i < rows.Count; i++)
+            {
+                var button = new Button { Tag = "row-switch", MinHeight = 28, Padding = new Thickness(10, 2) };
+                var index = i;
+                button.Click += (_, _) => { if (index < _editor.VisibleRows.Count) _editor.SelectedRow = _editor.VisibleRows[index]; };
+                _bar.Children.Add(button);
+            }
+        }
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var button = (Button)_bar.Children[i];
+            var row = rows[i];
+            var active = ReferenceEquals(row, _editor.SelectedRow);
+            var label = new TextBlock { Text = $"{i + 1} · {row.CurrentDataId}" };
+            if (row.Outcome is { Passed: false } && !active) label.Foreground = Brush.Parse("#FF7588");   // a null Foreground would draw nothing, so it is only set for a failed row
+            button.Content = label;
+            if (active) { if (!button.Classes.Contains("primary")) button.Classes.Add("primary"); }
+            else button.Classes.Remove("primary");
+            ToolTip.SetTip(button, row.Outcome is { Passed: false } ? "This row failed in the latest run" : "Show this row (or use the Left and Right arrow keys)");
+            if (active) Avalonia.Threading.Dispatcher.UIThread.Post(() => button.BringIntoView());
+        }
+    }
+
+    /// <summary>Left and Right move to the previous and next row, unless the keys are being used to edit text.</summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Handled || e.KeyModifiers != KeyModifiers.None || e.Key is not (Key.Left or Key.Right)) return;
+        if (TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox) return;
+        var rows = _editor.VisibleRows;
+        var at = _editor.SelectedRow is null ? -1 : rows.IndexOf(_editor.SelectedRow);
+        var next = Math.Clamp(at + (e.Key == Key.Right ? 1 : -1), 0, rows.Count - 1);
+        if (rows.Count == 0 || next == at) { e.Handled = rows.Count > 0; return; }
+        _editor.SelectedRow = rows[next];
+        e.Handled = true;
     }
 
     private bool _pending;
