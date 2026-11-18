@@ -40,8 +40,12 @@ public sealed partial class DataEditorViewModel
         var step = StepRows.FirstOrDefault(s => string.Equals(s.CurrentName, PreviewStepName, StringComparison.OrdinalIgnoreCase));
         if (step is null || SelectedTestcase is not { } testcase) return;
         var type = step.Row.Get("steptype");
-        EditTemplateRequested?.Invoke(this, new TemplateEditRequest(TemplatesFolder, step.Row.Get("templetsource"), type.Length == 0 ? "HTTP" : type, testcase.Name, step.CurrentName, SaveTemplateChoice(step)));
+        EditTemplateRequested?.Invoke(this, new TemplateEditRequest(TemplatesFolder, step.Row.Get("templetsource"), type.Length == 0 ? "HTTP" : type, testcase.Name, step.CurrentName, SaveTemplateChoice(step), StepVariables(step.CurrentName)));
     }
+
+    /// <summary>The variables a template of this step can use: the request-sheet columns named "Step.variable", without the step name. Read when the list opens, so new columns show up.</summary>
+    private Func<IReadOnlyList<string>> StepVariables(string step) => () => _document.Request.Headers
+        .Where(h => h.StartsWith(step + ".", StringComparison.OrdinalIgnoreCase)).Select(h => h[(step.Length + 1)..]).ToList();
 
     /// <summary>Called by the template editor after it wrote a file: points the step at it if the name changed, and refreshes the preview.</summary>
     private Action<string> SaveTemplateChoice(StepRowViewModel step) => relative =>
@@ -69,4 +73,4 @@ public sealed partial class DataEditorViewModel
         });
 }
 
-public sealed record TemplateEditRequest(string TemplatesFolder, string Source, string StepType, string Testcase, string Step, Action<string> Saved);
+public sealed record TemplateEditRequest(string TemplatesFolder, string Source, string StepType, string Testcase, string Step, Action<string> Saved, Func<IReadOnlyList<string>>? Variables = null);

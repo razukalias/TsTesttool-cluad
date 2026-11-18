@@ -597,3 +597,9 @@ Example row:
 - Follows the Overview filter boxes (include, exclude, testcase; not status/environment, since it compares environments).
 - "Response values that differ between environments" section, even when all assertions passed.
 - "Compare with an earlier run" picker: got worse / got fixed / different error / new / not run this time.
+
+## Done: Template editor autocomplete
+- Typing `_` in the template editor (opened from the data editor) lists the step's variables (request columns `Step.name` shown as `_name_`); typing narrows the list, Enter/Tab inserts.
+- Not offered inside a word (the closing `_` of `_name_` does not reopen it).
+- Decided: unquoted variables in template validation stay as they are ("forget this").
+- Not done: the old step wizard / step configuration windows open the editor without the list.

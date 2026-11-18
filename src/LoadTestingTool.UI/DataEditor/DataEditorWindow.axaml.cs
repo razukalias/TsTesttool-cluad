@@ -215,7 +215,7 @@ public partial class DataEditorWindow : Window
     private void OnEditTemplateRequested(object? sender, TemplateEditRequest request)
     {
         var editor = sender as DataEditorViewModel;
-        new TemplateEditorWindow(request.TemplatesFolder, request.Source, request.StepType, request.Saved, editor?.InstanceName, request.Testcase, request.Step).Show(this);
+        new TemplateEditorWindow(request.TemplatesFolder, request.Source, request.StepType, request.Saved, editor?.InstanceName, request.Testcase, request.Step, request.Variables).Show(this);
     }
 
     private async void OnCsvFileRequested(object? sender, bool import)

@@ -6,6 +6,11 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using AvaloniaEdit;
+using AvaloniaEdit.CodeCompletion;
+using AvaloniaEdit.Document;
+using AvaloniaEdit.Editing;
+using Avalonia.Input;
+using Avalonia.Media;
 
 namespace LoadTestingTool.UI;
 
@@ -23,9 +28,12 @@ internal sealed class TemplateEditorWindow : Window
     private readonly string _testcaseName;
     private readonly string _stepName;
     private double _fontSize = 12;
+    private readonly Func<IReadOnlyList<string>>? _variables;
+    private CompletionWindow? _completion;
 
-    public TemplateEditorWindow(string templatesFolder, string sourcePath, string stepType, Action<string> saved, string? instanceName = null, string? testcaseName = null, string? stepName = null)
+    public TemplateEditorWindow(string templatesFolder, string sourcePath, string stepType, Action<string> saved, string? instanceName = null, string? testcaseName = null, string? stepName = null, Func<IReadOnlyList<string>>? variables = null)
     {
+        _variables = variables;
         _templatesFolder = Path.GetFullPath(templatesFolder);
         Directory.CreateDirectory(_templatesFolder);
         _saved = saved;
@@ -37,6 +45,7 @@ internal sealed class TemplateEditorWindow : Window
         _content = new TextEditor { IsReadOnly = false, ShowLineNumbers = true, WordWrap = false, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, FontFamily = new FontFamily("Consolas"), FontSize = _fontSize, Foreground = DashboardStyle.Brush("#E3EDF9"), MinHeight = 360, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch, SearchResultsBrush = DashboardStyle.Brush("#F6A623") };
         _content.TextArea.SelectionBrush = DashboardStyle.Brush("#F6A623");
         _content.TextArea.SelectionForeground = Brushes.Black;
+        _content.TextArea.TextEntered += OnTextEntered;
         _content.AttachedToVisualTree += (_, _) => ApplySearch();
         _search.TextChanged += (_, _) => UpdateMatchCount();
         LoadFile();
@@ -58,6 +67,33 @@ internal sealed class TemplateEditorWindow : Window
         DockPanel.SetDock(actions, Dock.Top); shell.Children.Add(actions); shell.Children.Add(body);
         Content = new Border { Padding = new Thickness(18), Background = DashboardStyle.Panel, Child = shell };
         UpdateMatchCount();
+    }
+
+    /// <summary>Typing "_" (not in the middle of a word) lists the step's variables; typing on narrows the list, Enter or Tab inserts _name_.</summary>
+    private void OnTextEntered(object? sender, TextInputEventArgs e)
+    {
+        if (e.Text != "_" || _variables is null) return;
+        var area = _content.TextArea;
+        var offset = area.Caret.Offset;
+        if (offset >= 2 && IsWordChar(area.Document.GetCharAt(offset - 2))) return;
+        var names = _variables().Where(n => n.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        if (names.Count == 0) return;
+        _completion = new CompletionWindow(area) { StartOffset = offset - 1, CloseWhenCaretAtBeginning = true };
+        foreach (var name in names) _completion.CompletionList.CompletionData.Add(new VariableCompletion(name));
+        _completion.Closed += (_, _) => _completion = null;
+        _completion.Show();
+    }
+
+    private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
+
+    internal sealed class VariableCompletion(string name) : ICompletionData
+    {
+        public string Text => $"_{name}_";
+        public object Content => Text;
+        public object Description => $"Value of the step's column \"{name}\" for the row that runs.";
+        public IImage? Image => null;
+        public double Priority => 0;
+        public void Complete(TextArea textArea, ISegment completionSegment, EventArgs insertionRequestEventArgs) => textArea.Document.Replace(completionSegment, Text);
     }
 
     private static string Display(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value;
