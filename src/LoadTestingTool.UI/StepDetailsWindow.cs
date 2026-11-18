@@ -141,6 +141,9 @@ public sealed class StepDetailsWindow : Window
         try
         {
             if (!File.Exists(_logPath)) { problem = $"The internal log file was not found:\n{_logPath}"; return []; }
+            // Entries of rows that ran in parallel are interleaved, so first try to pick this step's entries by request id.
+            var byRequest = StepLogView.SelectBlocks(File.ReadAllText(_logPath), _dataId, _stepName);
+            if (byRequest.Count > 0) return byRequest;
             var lines = File.ReadAllLines(_logPath);
             var starts = lines.Select((line, index) => (line, index))
                 .Where(x => x.line.Contains("---- STEP ", StringComparison.OrdinalIgnoreCase))

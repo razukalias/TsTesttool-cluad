@@ -71,6 +71,56 @@ public static class StepLogView
         return entries;
     }
 
+    private static readonly Regex IdInHead = new(@"\[((?:REQ|STEP|MANUAL)-[^\]]+)\]|RequestId=(?<id>[^;\s]+)", RegexOptions.Compiled);
+    private static readonly Regex DataIdInHead = new(@"dataid=(?<v>[^;|]+?)\s*(?:;|\||$)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex StepInHead = new(@"(?:stepName=|---- STEP \d+: )(?<v>[^;|]+?)\s*(?:;|\||$)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// The log sections of one step of one data row. Rows run in parallel, so their entries are interleaved in the file: a section is
+    /// therefore not "the lines up to the next STEP header" but every entry that carries one request id (REQ-…, STEP-…), in file order.
+    /// Returns an empty list when the log has no request ids (the caller then falls back to header sections).
+    /// </summary>
+    public static List<string> SelectBlocks(string logText, string dataId, string stepName)
+    {
+        // raw entries: a time-stamped line plus the continuation lines after it
+        var chunks = new List<List<string>>();
+        foreach (var raw in logText.Replace("\r\n", "\n").Split('\n'))
+        {
+            if (Prefix.IsMatch(raw) || chunks.Count == 0) chunks.Add([raw]);
+            else chunks[^1].Add(raw);
+        }
+        string HeadOf(List<string> chunk) => Prefix.Match(chunk[0]) is { Success: true } m ? m.Groups["msg"].Value : chunk[0];
+        static string? Id(string head) => IdInHead.Match(head) is { Success: true } m ? (m.Groups["id"].Success ? m.Groups["id"].Value : m.Groups[1].Value) : null;
+
+        var owner = new Dictionary<string, (string DataId, string Step)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var chunk in chunks)
+        {
+            var head = HeadOf(chunk);
+            if (Id(head) is not { } id || owner.ContainsKey(id)) continue;
+            if (DataIdInHead.Match(head) is { Success: true } d && StepInHead.Match(head) is { Success: true } st) owner[id] = (d.Groups["v"].Value.Trim(), st.Groups["v"].Value.Trim());
+        }
+        var mine = owner.Where(o => o.Value.DataId.Equals(dataId, StringComparison.OrdinalIgnoreCase) && o.Value.Step.Equals(stepName, StringComparison.OrdinalIgnoreCase)).Select(o => o.Key).ToList();
+        if (mine.Count == 0) return [];
+
+        var manual = mine.Where(i => i.StartsWith("MANUAL-", StringComparison.OrdinalIgnoreCase)).ToList();
+        var real = mine.Where(i => !manual.Contains(i)).ToList();
+        string Section(IReadOnlyCollection<string> ids)
+        {
+            var wanted = chunks.Where(c => Id(HeadOf(c)) is { } id && ids.Contains(id, StringComparer.OrdinalIgnoreCase)).ToList();
+            // the "---- STEP n: name | dataid=… ----" line that opened this step for this row, for the overview
+            var first = wanted.Count == 0 ? -1 : chunks.IndexOf(wanted[0]);
+            var header = chunks.Take(Math.Max(first, 0)).LastOrDefault(c => HeadOf(c).StartsWith("---- STEP", StringComparison.OrdinalIgnoreCase)
+                && DataIdInHead.Match(HeadOf(c)) is { Success: true } d && d.Groups["v"].Value.Trim().Equals(dataId, StringComparison.OrdinalIgnoreCase)
+                && StepInHead.Match(HeadOf(c)) is { Success: true } st && st.Groups["v"].Value.Trim().Equals(stepName, StringComparison.OrdinalIgnoreCase));
+            return string.Join("\n", (header is null ? [] : new List<List<string>> { header }).Concat(wanted).SelectMany(c => c));
+        }
+        // a manual wait of the step belongs to the step's first real run; with no real run it stands alone
+        if (real.Count == 0) return [Section(manual)];
+        var sections = real.Select(id => Section([id])).ToList();
+        if (manual.Count > 0) sections[0] = Section(manual.Concat([real[0]]).ToList());
+        return sections;
+    }
+
     /// <summary>Builds the tabs. <paramref name="blocks"/> are the log sections that belong to the step (more than one when it ran several times).</summary>
     public static IReadOnlyList<StepSection> Build(IReadOnlyList<string> blocks, string stepType, string environment)
     {

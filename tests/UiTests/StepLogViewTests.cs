@@ -291,4 +291,46 @@ public class StepLogViewTests
         window.CaptureRenderedFrame()!.Save(Path.Combine(shots, "step-details-log.png"));
         window.Close();
     }
+
+    private static string Row(string id, string dataId, int status, string body) => string.Join('\n',
+        P + $"STEP REQUEST [{id}]", "TYPE: HTTP", "STEP: FetchUser", "ENVIRONMENT: staging", $"TARGET: http://h/users/{dataId}", "METHOD: GET", "TEMPLATE: g.json", "HEADERS:", "", "DETAILS:", "contentType=json", "BODY:", "",
+        P + $"STEP RESPONSE [{id}]", $"STATUS: {status}", "HEADERS:", "", "BODY:", body);
+
+    [Fact]
+    public void Rows_that_ran_in_parallel_do_not_mix_their_entries_the_step_shows_its_own_status()
+    {
+        // three rows of the same step run at once: their entries are interleaved in the file
+        var log = string.Join('\n',
+            P + "---- STEP 1: FetchUser | type=HTTP | dataid=HTTP001 | iteration=1 ----",
+            P + "---- STEP 1: FetchUser | type=HTTP | dataid=HTTP002 | iteration=1 ----",
+            P + "---- STEP 1: FetchUser | type=HTTP | dataid=HTTP003 | iteration=1 ----",
+            P + "Request starting. RequestId=REQ-00000001; testcase=6; dataid=HTTP001; stepName=FetchUser; thread=1; iteration=1; verb=GET; url=http://h/users/HTTP001; template=g.json; ignoreempty=False",
+            P + "Request starting. RequestId=REQ-00000002; testcase=6; dataid=HTTP002; stepName=FetchUser; thread=2; iteration=1; verb=GET; url=http://h/users/HTTP002; template=g.json; ignoreempty=False",
+            P + "Request starting. RequestId=REQ-00000003; testcase=6; dataid=HTTP003; stepName=FetchUser; thread=3; iteration=1; verb=GET; url=http://h/users/HTTP003; template=g.json; ignoreempty=False",
+            Row("REQ-00000001", "HTTP001", 200, "{\"name\":\"one\"}"),
+            Row("REQ-00000002", "HTTP002", 200, "{\"name\":\"two\"}"),
+            Row("REQ-00000003", "HTTP003", 404, "{\"message\":\"not found\"}"),
+            E + "HTTP STATUS FAILURE [REQ-00000003] | testcase=6 | dataid=HTTP003 | step=FetchUser | actual=404 | expected=200",
+            P + "REQUEST COMPLETED [REQ-00000001] testcase=6; testcaseName=HttpFlow; dataid=HTTP001; stepName=FetchUser; result=PASS; status=200; durationMs=5",
+            P + "REQUEST COMPLETED [REQ-00000002] testcase=6; testcaseName=HttpFlow; dataid=HTTP002; stepName=FetchUser; result=PASS; status=200; durationMs=6",
+            P + "REQUEST COMPLETED [REQ-00000003] testcase=6; testcaseName=HttpFlow; dataid=HTTP003; stepName=FetchUser; result=FAIL; status=404; durationMs=7");
+
+        var blocks = StepLogView.SelectBlocks(log, "HTTP003", "FetchUser");
+        var sections = StepLogView.Build(blocks, "HTTP", "staging");
+
+        Assert.Single(blocks);
+        var response = Text(sections, "Response");
+        Assert.Contains("Status      404", response);
+        Assert.Contains("not found", response);
+        Assert.DoesNotContain("200", response);
+        Assert.DoesNotContain("two", response);
+        Assert.DoesNotContain("HTTP002", string.Join("\n", sections.Select(x => x.Text)));
+        Assert.Contains("HTTP003", Text(sections, "Request"));
+        Assert.Contains("actual=404", Text(sections, "Errors"));
+
+        // and the first row gets its own 200
+        var one = StepLogView.Build(StepLogView.SelectBlocks(log, "HTTP001", "FetchUser"), "HTTP", "staging");
+        Assert.Contains("Status      200", Text(one, "Response"));
+        Assert.DoesNotContain("actual=404", Text(one, "Errors"));
+    }
 }
