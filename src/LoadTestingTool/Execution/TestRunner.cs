@@ -30,6 +30,16 @@ internal sealed class RuntimeReferenceException : Exception
 public sealed class TestRunner
 {
     private readonly HttpClient _client; private readonly AssertionEngine _assertions; private readonly string _templatesFolder; private readonly int _timeoutSeconds; private readonly Action<RequestResult>? _requestCompleted; private readonly Action<RequestResult, string, int>? _manualPending; private readonly string _manualControlFolder; private readonly bool _allowConsoleManual; private readonly InternalLogger _logger; private readonly FeatureConfig _features; private readonly ExecutionPipeline _pipeline; private int _sequence;
+    // the row (and step) being run on this async flow, stamped on every finished step so the dashboard can list steps in workbook order
+    private static readonly AsyncLocal<(int Row, int Step)> Position = new();
+
+    private void Publish(RequestResult result)
+    {
+        result.ExcelRowNumber = Position.Value.Row;
+        result.StepOrder = Position.Value.Step;
+        _requestCompleted?.Invoke(result);
+    }
+
     public TestRunner(HttpClient client, AssertionEngine assertions, string templatesFolder, int timeoutSeconds, Action<RequestResult>? requestCompleted = null, InternalLogger? logger = null, FeatureConfig? features = null, Action<RequestResult, string, int>? manualPending = null, string? manualControlFolder = null, bool allowConsoleManual = false)
     {
         _client = client; _assertions = assertions; _templatesFolder = templatesFolder; _timeoutSeconds = Math.Max(1, timeoutSeconds); _requestCompleted = requestCompleted; _manualPending = manualPending; _manualControlFolder = manualControlFolder ?? string.Empty; _allowConsoleManual = allowConsoleManual; _logger = logger ?? new InternalLogger(string.Empty, "disabled", "disabled", false); _features = features ?? new FeatureConfig { WorkspaceRoot = Directory.GetCurrentDirectory() };
@@ -65,6 +75,7 @@ public sealed class TestRunner
                     foreach (var saved in rowMemory.PreviousRow(rowKey)) correlation[saved.Key] = saved.Value;   // what earlier steps extracted in the last run
                 foreach (var request in testcase.Steps)
                 {
+                    Position.Value = (data.ExcelRowNumber, stepOrder + 1);
                     _logger.Info($"---- STEP {stepOrder + 1}: {request.StepName} | type={request.StepType.WireName()} | dataid={data.DataId} | iteration={iteration} ----");
                     if (data.Dontrun.Contains(request.StepName, StringComparer.OrdinalIgnoreCase))
                     {
@@ -127,7 +138,7 @@ public sealed class TestRunner
                     {
                         var failure = CreateRuntimeReferenceFailure(run, testcase, data.DataId, request, ++stepOrder, threadId, iteration, environment, ex);
                         testcaseResult.Requests.Add(failure);
-                        _requestCompleted?.Invoke(failure);
+                        Publish(failure);
                         _logger.Warn($"Stopping current data row after missing runtime reference. testcase={testcase.TestcaseIndex}; dataid={data.DataId}; stepName={request.StepName}; iteration={iteration}; reference={ex.Reference}");
                         break;
                     }
@@ -209,7 +220,7 @@ public sealed class TestRunner
         request.EndedAt = DateTimeOffset.Now;
         request.DurationMs = (long)(request.EndedAt - request.StartedAt).TotalMilliseconds;
         _logger.Info($"ACTION MANUAL COMPLETED [{request.RequestId}] result={request.Result}; comment={request.ManualComment}; durationMs={request.DurationMs}{OptionalError(request.ErrorMessage)}");
-        _requestCompleted?.Invoke(request);
+        Publish(request);
         return request;
     }
 
@@ -359,7 +370,7 @@ public sealed class TestRunner
             sw.Stop(); result.DurationMs = sw.ElapsedMilliseconds; result.EndedAt = DateTimeOffset.Now;
             _logger.Info($"REQUEST COMPLETED [{requestId}] testcase={testcase.TestcaseIndex}; testcaseName={testcase.Testcase}; dataid={dataId}; stepName={step.StepName}; result={result.Result}; status={result.HttpStatus}; durationMs={result.DurationMs}{OptionalError(result.ErrorMessage)}");
         }
-        _requestCompleted?.Invoke(result); return result;
+        Publish(result); return result;
     }
 
     private async Task<RequestResult> ExecuteNonHttpAsync(RunResult run, TestcaseDefinition testcase, string dataId, RequestStep step, Dictionary<string, string> variables, IReadOnlySet<string> redactedVariables, IReadOnlyList<AssertionDefinition> definitions, IReadOnlyDictionary<string, string> requestReferences, int sequence, int thread, int iteration, Dictionary<string, string> correlation, Dictionary<string, CorrelationRecord> correlationSources, LoadTestingTool.Domain.ExecutionContext context, CancellationToken cancellationToken, string environment)
@@ -429,7 +440,7 @@ public sealed class TestRunner
             result.EndedAt = DateTimeOffset.Now; result.DurationMs = (long)(result.EndedAt - result.StartedAt).TotalMilliseconds;
             _logger.Info($"STEP COMPLETED [{requestId}] testcase={testcase.TestcaseIndex}; testcaseName={testcase.Testcase}; dataid={dataId}; stepName={step.StepName}; stepType={step.StepType.WireName()}; result={result.Result}; status={result.HttpStatus}; durationMs={result.DurationMs}{OptionalError(result.ErrorMessage)}");
         }
-        _requestCompleted?.Invoke(result); return result;
+        Publish(result); return result;
     }
     private static string SafeManualId(string value)
         => string.Concat(value.Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' ? ch : '_'));

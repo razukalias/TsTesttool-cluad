@@ -274,6 +274,9 @@ public sealed class RequestResult
     public string RunId { get; init; } = string.Empty;
     public string RequestId { get; init; } = Guid.NewGuid().ToString("N");
     public int TestcaseIndex { get; init; }
+    /// <summary>The data row's row number in the workbook and the step's position in the row; they let a list of finished steps be put in workbook order.</summary>
+    public int ExcelRowNumber { get; set; }
+    public int StepOrder { get; set; }
     public string Testcase { get; init; } = string.Empty;
     public string DataId { get; init; } = string.Empty;
     public string StepName { get; init; } = string.Empty;

@@ -1604,7 +1604,7 @@ public sealed partial class MainWindow
         var stepTotals = requests
             .GroupBy(request => $"{request.Testcase}\u001F{request.DataId}\u001F{request.Environment}", StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
-        var filteredRequests = requests.Where(MatchesOverviewStep).ToList();
+        var filteredRequests = DashboardRequest.InWorkbookOrder(requests.Where(MatchesOverviewStep));
         var overviewTotalPages = Math.Max(1, (int)Math.Ceiling(filteredRequests.Count / (double)DashboardPageSize));
         _overviewPage = Math.Clamp(_overviewPage, 1, overviewTotalPages);
         var pageRequests = filteredRequests.Skip((_overviewPage - 1) * DashboardPageSize).Take(DashboardPageSize);
@@ -1920,7 +1920,7 @@ public sealed partial class MainWindow
         var type = Str("eventType");
         if (type == "request-completed")
         {
-            item.Requests.Add(new DashboardRequest(Str("stepName"), Str("stepType"), Str("testcase"), Str("dataId"), Str("environment"), Str("result"), Long("durationMs"), Str("failureCategory"), Str("errorMessage")));
+            item.Requests.Add(new DashboardRequest(Str("stepName"), Str("stepType"), Str("testcase"), Str("dataId"), Str("environment"), Str("result"), Long("durationMs"), Str("failureCategory"), Str("errorMessage"), (int)Long("testcaseIndex"), (int)Long("excelRow"), (int)Long("stepOrder")));
             item.EventMessages.Add($"{DateTime.Now:HH:mm:ss}  {Str("result"),-5}  {Str("stepType")} / {Str("stepName")} / {Long("durationMs")} ms / {Str("failureCategory")}");
         }
         else if (type == "run-completed")
@@ -1933,7 +1933,14 @@ public sealed partial class MainWindow
     }
 }
 
-public sealed record DashboardRequest(string StepName, string StepType, string Testcase, string DataId, string Environment, string Result, long DurationMs, string FailureCategory, string Error);
+/// <param name="TestcaseIndex">The testcase's number in the workbook, with <paramref name="ExcelRow"/> and <paramref name="StepOrder"/> the sort key that lists steps in workbook order (0 when an older run did not record them).</param>
+public sealed record DashboardRequest(string StepName, string StepType, string Testcase, string DataId, string Environment, string Result, long DurationMs, string FailureCategory, string Error, int TestcaseIndex = 0, int ExcelRow = 0, int StepOrder = 0)
+{
+    /// <summary>Steps in workbook order: environment, then testcase, then the data row's position in the sheet, then the step's position. Ties keep the order they finished in.</summary>
+    public static List<DashboardRequest> InWorkbookOrder(IEnumerable<DashboardRequest> requests)
+        => requests.OrderBy(r => string.IsNullOrWhiteSpace(r.Environment) ? "default" : r.Environment, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(r => r.TestcaseIndex).ThenBy(r => r.ExcelRow).ThenBy(r => r.StepOrder).ToList();
+}
 internal sealed record DashboardRowSummary(string Testcase, string DataId, string Environment, int Steps, int Passed, int Failed, int Unexpected, int Skipped, string Status, string Details);
 internal sealed record RunPlanRow(string Testcase, int SkippedSteps, int ExecutableSteps, bool HasAssertions);
 internal sealed record RunPlanSummary(int Testcases, int SelectedSteps, int RowsSelected, int RowsWithDontrun, int RowsFullySkipped, long SkippedSteps, long PlannedSteps, int Environments, int MaxParallelRows, int Iterations, int RowsWithAssertions, int RowsWithoutAssertions, IReadOnlyList<string> EnvironmentNames, IReadOnlyList<RunPlanRow> Rows)

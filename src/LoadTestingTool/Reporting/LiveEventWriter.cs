@@ -31,6 +31,8 @@ public sealed class LiveEventWriter : IDisposable
             testcaseIndex = request.TestcaseIndex,
             testcase = request.Testcase,
             dataId = request.DataId,
+            excelRow = request.ExcelRowNumber,
+            stepOrder = request.StepOrder,
             stepName = request.StepName,
             stepType = request.StepType,
             template = request.TemplateSource,
