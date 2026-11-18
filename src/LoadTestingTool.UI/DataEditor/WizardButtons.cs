@@ -15,7 +15,11 @@ internal static class WizardButtons
             IsVisible = cell.Classes.Contains(":current"),
         };
         ToolTip.SetTip(button, "Open the wizard for this cell. With several rows selected, the result is written to all of them");
-        cell.Classes.CollectionChanged += (_, _) => button.IsVisible = cell.Classes.Contains(":current");
+        var hovered = false;
+        void Update() => button.IsVisible = hovered || cell.Classes.Contains(":current");
+        cell.Classes.CollectionChanged += (_, _) => Update();
+        cell.PointerEntered += (_, _) => { hovered = true; Update(); };
+        cell.PointerExited += (_, _) => { hovered = false; Update(); };
         button.Click += (_, e) => { e.Handled = true; open(cell, button); };
         button.PointerPressed += (_, e) => e.Handled = true;   // do not let the grid start editing or move the selection
         return button;

@@ -9,7 +9,7 @@ namespace LoadTestingTool.UI.DataEditor;
 /// One step of a testcase: a row of the config sheet. Cell 0 is the step name, followed by the other config
 /// columns in sheet order. Editing a cell writes through to the workbook.
 /// </summary>
-public sealed partial class StepRowViewModel : ObservableObject, IFormattedRow
+public sealed partial class StepRowViewModel : ObservableObject, IFormattedRow, ICellRow
 {
     private readonly SheetTable? _table;
     private readonly IReadOnlyList<GridColumn> _columns;

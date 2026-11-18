@@ -74,3 +74,49 @@ public class CellWizardShot
         window.Close();
     }
 }
+
+public class CellWizardHoverAndStepTests
+{
+    [AvaloniaFact]
+    public void The_button_also_shows_on_the_cell_under_the_pointer()
+    {
+        using var dir = new TempDir();
+        var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 3), "Customers");
+        window.Width = 1440; window.Height = 700; window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var grid = window.FindControl<DataGrid>("Grid")!;
+        var column = grid.Columns.OfType<FormattedTextColumn>().First(c => c.Tag is int tag && tag > 0);
+        grid.SelectedItem = window.ViewModel.VisibleRows[0];
+        grid.CurrentColumn = column;
+        Dispatcher.UIThread.RunJobs();
+        List<Button> Shown() => grid.GetVisualDescendants().OfType<Button>().Where(b => b.Tag as string == "cell-wizard" && b.IsVisible).ToList();
+        Assert.Single(Shown());
+
+        var other = grid.GetVisualDescendants().OfType<DataGridCell>().First(c => ReferenceEquals(c.DataContext, window.ViewModel.VisibleRows[1]) && c.GetVisualDescendants().OfType<Button>().Any(b => b.Tag as string == "cell-wizard"));
+        var at = Avalonia.VisualExtensions.TranslatePoint(other, new Avalonia.Point(other.Bounds.Width / 2, other.Bounds.Height / 2), window)!.Value;
+        window.MouseMove(at);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(2, Shown().Count);
+
+        window.MouseMove(new Avalonia.Point(5, 5));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Single(Shown());
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_step_grid_has_the_button_on_its_text_cells_and_not_on_the_drop_downs()
+    {
+        using var dir = new TempDir();
+        var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 3), "Customers");
+        window.Width = 1440; window.Height = 700; window.Show();
+        window.ViewModel.OpenStepsTabCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        var steps = window.FindControl<DataGrid>("StepsGrid")!;
+        var text = steps.Columns.OfType<FormattedTextColumn>().Where(c => c.Tag is int tag && tag > 0).ToList();
+        Assert.NotEmpty(text);
+        Assert.All(text, c => Assert.NotNull(c.OpenWizard));
+        Assert.Null(steps.Columns.OfType<FormattedTextColumn>().First(c => c.Tag is int tag && tag == 0).OpenWizard);   // stepname
+        window.Close();
+    }
+}

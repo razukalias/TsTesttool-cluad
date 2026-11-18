@@ -455,7 +455,11 @@ public partial class DataEditorWindow : Window
         grid.Columns.Clear();
         grid.Columns.Add(CreateColumn(new GridColumn("stepname", ColumnGroup.Id, 0, -1)));
         foreach (var column in editor.StepColumns)
-            grid.Columns.Add(StepOptions.For(column.Title) is { } options ? CreateChoiceColumn(column, options) : CreateColumn(column, step: true));
+        {
+            DataGridColumn created = StepOptions.For(column.Title) is { } options ? CreateChoiceColumn(column, options) : CreateColumn(column, step: true);
+            if (created is FormattedTextColumn formatted) formatted.OpenWizard = (cell, anchor) => ShowStepCellWizard(cell, anchor, column);
+            grid.Columns.Add(created);
+        }
         Dispatcher.UIThread.Post(() =>
         {
             if (editor.SelectedStep is null && editor.StepRows.Count > 0) editor.SelectedStep = editor.StepRows[0];
