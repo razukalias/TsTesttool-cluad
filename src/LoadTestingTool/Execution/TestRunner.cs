@@ -331,9 +331,14 @@ public sealed class TestRunner
             _logger.Info($"STEP RESPONSE [{requestId}]\nSTATUS: {result.HttpStatus}\nHEADERS:\n{result.ResponseHeaders}\nBODY:\n{result.ResponseBody}");
             if (step.AssertEnabled)
             {
-                var resolvedDefinitions = await ResolveAssertionReferencesAsync(definitions, correlation, requestReferences, executionContext, cancellationToken);
-                result.Assertions.AddRange(_assertions.Evaluate(result.ResponseBody, result.ContentType, resolvedDefinitions, run.RunId, requestId, result.HttpStatus, step.IgnoreEmpty, step.AssertOnlyResponse));
+                var (plain, bugs) = BugTag.Strip(definitions, environment);
+                var resolvedDefinitions = await ResolveAssertionReferencesAsync(plain, correlation, requestReferences, executionContext, cancellationToken);
+                var evaluated = _assertions.Evaluate(result.ResponseBody, result.ContentType, resolvedDefinitions, run.RunId, requestId, result.HttpStatus, step.IgnoreEmpty, step.AssertOnlyResponse);
+                BugTag.Apply(evaluated, bugs);
+                result.Assertions.AddRange(evaluated);
             }
+            foreach (var bug in result.Assertions.Where(a => a.Result == "KNOWN_BUG"))
+                _logger.Warn($"KNOWN BUG [{requestId}] step={step.StepName}; responsePath={bug.ResponsePath}; expected={bug.ExpectedValue}; actual={bug.ActualValue}; bug={bug.BugDescription}");
             var failedAssertions = result.Assertions.Where(a => a.Result == "FAIL").ToList();
             if (failedAssertions.Count > 0) result.FailureCategory = FailureCategories.Assertion;
             _logger.Info($"ASSERTIONS COMPLETED [{requestId}]\nPASSED: {result.Assertions.Count(a => a.Result == "PASS")}\nFAILED: {failedAssertions.Count}");
@@ -408,8 +413,11 @@ public sealed class TestRunner
             foreach (var output in execution.Outputs) { var text = output.Value is string s ? s : JsonSerializer.Serialize(output.Value); var record = new CorrelationRecord { DataId = dataId, SourceStepName = step.StepName, ResponsePath = output.Key, Variable = output.Key, ExtractedValue = text }; correlation[output.Key] = text; correlationSources[output.Key] = record; result.Correlations.Add(record); }
             if (step.AssertEnabled)
             {
-                var resolvedDefinitions = await ResolveAssertionReferencesAsync(definitions, correlation, requestReferences, context, cancellationToken);
-                result.Assertions.AddRange(_assertions.Evaluate(result.ResponseBody, "json", resolvedDefinitions, run.RunId, requestId, result.HttpStatus, step.IgnoreEmpty, step.AssertOnlyResponse));
+                var (plain, bugs) = BugTag.Strip(definitions, environment);
+                var resolvedDefinitions = await ResolveAssertionReferencesAsync(plain, correlation, requestReferences, context, cancellationToken);
+                var evaluated = _assertions.Evaluate(result.ResponseBody, "json", resolvedDefinitions, run.RunId, requestId, result.HttpStatus, step.IgnoreEmpty, step.AssertOnlyResponse);
+                BugTag.Apply(evaluated, bugs);
+                result.Assertions.AddRange(evaluated);
             }
             foreach (var assertion in result.Assertions.Where(a => a.Result == "FAIL"))
             {

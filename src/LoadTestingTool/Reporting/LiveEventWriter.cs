@@ -44,6 +44,7 @@ public sealed class LiveEventWriter : IDisposable
             durationMs = request.DurationMs,
             assertionsPassed = request.Assertions.Count(a => a.Result == "PASS"),
             assertionsFailed = request.Assertions.Count(a => a.Result == "FAIL"),
+            knownBugs = request.Assertions.Count(a => a.Result == "KNOWN_BUG"),
             errorMessage = request.ErrorMessage,
             failureCategory = request.FailureCategory,
             runtimeReference = request.RuntimeReference,
@@ -68,7 +69,10 @@ public sealed class LiveEventWriter : IDisposable
             expectedValue = assertion.ExpectedValue,
             actualValue = assertion.ActualValue,
             result = assertion.Result,
-            failureMessage = assertion.FailureMessage
+            failureMessage = assertion.FailureMessage,
+            knownBug = assertion.KnownBug,
+            bugDescription = assertion.BugDescription,
+            bugEnvironments = assertion.BugEnvironments
             ,sourceSheet = "response"
             ,excelRowNumber = assertion.ExcelRowNumber
             ,expectedValueColumn = assertion.ExpectedValueColumn

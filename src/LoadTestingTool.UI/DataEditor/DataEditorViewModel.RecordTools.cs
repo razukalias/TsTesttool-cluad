@@ -115,6 +115,25 @@ public sealed partial class DataEditorViewModel
         return warnings;
     }
 
+    /// <summary>The warnings function for a column: the known-bug tag check, then the dontrun or reference checks.</summary>
+    internal Func<IEnumerable<ValuePart>, string?, List<string>> WarningsFor(bool expected, bool dontRun)
+    {
+        var inner = dontRun ? (Func<IEnumerable<ValuePart>, string?, List<string>>)DontRunWarnings : LineWarnings;
+        return (parts, step) => BugTagWarnings(ValueParts.Format(parts), expected).Concat(inner(parts, step)).ToList();
+    }
+
+    /// <summary>What looks wrong about a <c>&lt;bug: environments; description&gt;</c> tag: not written as a tag, no environment, or on a request cell where it cannot do anything.</summary>
+    public static List<string> BugTagWarnings(string text, bool expected)
+    {
+        var warnings = new List<string>();
+        if (text.IndexOf("<bug", StringComparison.OrdinalIgnoreCase) < 0) return warnings;
+        var (_, tag) = LoadTestingTool.Execution.BugTag.Parse(text);
+        if (tag is null) warnings.Add("This looks like a bug tag but is not written as one. Use <bug: dev,test; description> (or all instead of the environments).");
+        else if (tag.Environments.Count == 0) warnings.Add("The bug tag lists no environment, so it does nothing. Write the environments (dev,test) or all before the semicolon.");
+        else if (!expected) warnings.Add("A bug tag only works on an expected-value cell (it makes a failing assertion a known bug), so it does nothing here.");
+        return warnings;
+    }
+
     /// <summary>What looks wrong about a <c>dontrun</c> value: a name that is no step of the testcase (a typo skips nothing), or every step listed.</summary>
     internal List<string> DontRunWarnings(IEnumerable<ValuePart> parts, string? ownStep)
     {

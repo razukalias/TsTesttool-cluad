@@ -157,11 +157,19 @@ public sealed class AssertionDefinition
     public string ResponsePath { get; init; } = string.Empty;
     public string AssertionVerb { get; init; } = "eq";
     public string HeaderAssertionVerb { get; init; } = "eq";
-    public string ExpectedValue { get; init; } = string.Empty;
+    public string ExpectedValue { get; set; } = string.Empty;
     public string? ExtractVariable { get; init; }
     public int ExcelRowNumber { get; init; }
     public int ExpectedValueColumn { get; init; }
     public int ResponseColumn { get; init; }
+
+    /// <summary>A copy that expects another value (used to take a known-bug tag out of the cell text).</summary>
+    internal AssertionDefinition WithExpectedValue(string value)
+    {
+        var copy = (AssertionDefinition)MemberwiseClone();
+        copy.ExpectedValue = value;
+        return copy;
+    }
 }
 
 public sealed class WorkbookModel
@@ -338,8 +346,14 @@ public sealed class AssertionResult
     public string AssertionMeaning { get; init; } = string.Empty;
     public string ExpectedValue { get; init; } = string.Empty;
     public string ActualValue { get; init; } = string.Empty;
-    public string Result { get; init; } = "FAIL";
+    /// <summary>PASS, FAIL, or KNOWN_BUG: the assertion failed, but its cell carries a &lt;bug: …&gt; tag for this environment, so it does not fail the test.</summary>
+    public string Result { get; set; } = "FAIL";
     public string FailureMessage { get; init; } = string.Empty;
+    /// <summary>True when the cell carries a &lt;bug: …&gt; tag for this environment (the assertion passing then means the bug may be fixed).</summary>
+    public bool KnownBug { get; set; }
+    public string BugDescription { get; set; } = string.Empty;
+    /// <summary>The environments the tag lists (comma separated, or <c>all</c>).</summary>
+    public string BugEnvironments { get; set; } = string.Empty;
     public string? ExtractVariable { get; init; }
     public int ExcelRowNumber { get; init; }
     public int ExpectedValueColumn { get; init; }

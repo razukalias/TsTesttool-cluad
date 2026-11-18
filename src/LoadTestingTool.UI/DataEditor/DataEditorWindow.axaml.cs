@@ -427,7 +427,8 @@ public partial class DataEditorWindow : Window
         foreach (var column in editor.Columns)
         {
             var created = CreateColumn(column);
-            if (created is FormattedTextColumn formatted) formatted.OpenWizard = (cell, anchor) => ShowCellWizard(cell, anchor, column);
+            if (created is FormattedTextColumn formatted) formatted.ExpectedColumn = column.Group == ColumnGroup.Response;
+            if (created is FormattedTextColumn formatted2) formatted2.OpenWizard = (cell, anchor) => ShowCellWizard(cell, anchor, column);
             grid.Columns.Add(created);
         }
         // The grid drops its selection while columns are rebuilt; keep the first row selected so Duplicate/Remove work.

@@ -16,7 +16,7 @@ public sealed partial class DataEditorWindow
         var grid = this.FindControl<DataGrid>("Grid");
         var expected = column.Group == ColumnGroup.Response;
         var dontRun = !expected && column.Title.Equals("dontrun", StringComparison.OrdinalIgnoreCase);
-        var line = new RecordLineViewModel(row, column.CellIndex, column.Title, expected, dontRun ? editor.DontRunWarnings : editor.LineWarnings);
+        var line = new RecordLineViewModel(row, column.CellIndex, column.Title, expected, editor.WarningsFor(expected, dontRun));
         var before = row.Cells[column.CellIndex] ?? string.Empty;
         var others = grid?.SelectedItems.OfType<DataRowViewModel>().Where(r => !ReferenceEquals(r, row)).ToList() ?? [];
         var content = new StackPanel { Spacing = 6, MinWidth = 520, MaxWidth = 720 };
@@ -38,7 +38,7 @@ public sealed partial class DataEditorWindow
     {
         if (_shell.Current is not { IsOtherSheet: true } editor || cell.DataContext is not SheetRowViewModel row) return;
         var grid = this.FindControl<DataGrid>("SheetGrid");
-        var line = new RecordLineViewModel(row, cellIndex, editor.SheetHeaders[cellIndex], expected: false);
+        var line = new RecordLineViewModel(row, cellIndex, editor.SheetHeaders[cellIndex], expected: false);   // no warnings: a bug tag means nothing on these sheets
         var before = row.Cells[cellIndex] ?? string.Empty;
         var others = grid?.SelectedItems.OfType<SheetRowViewModel>().Where(r => !ReferenceEquals(r, row) && r.Editable).ToList() ?? [];
         var content = new StackPanel { Spacing = 6, MinWidth = 520, MaxWidth = 720 };

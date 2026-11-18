@@ -33,6 +33,27 @@ public sealed class FormattedTextColumn : DataGridTextColumn
         else header.Classes.Remove("colsel");
     }
 
+    /// <summary>A small ⚑ in front of a cell that holds a &lt;bug: …&gt; tag; its tooltip says what the tag does, or what is wrong with it.</summary>
+    private Control BugMarked(TextBlock text)
+    {
+        var flag = new TextBlock { Text = "⚑", FontSize = 11, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Margin = new Avalonia.Thickness(4, 0, 0, 0), IsVisible = false, Tag = "bug-mark" };
+        var holder = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Children = { flag, text } };
+        void Refresh()
+        {
+            var value = text.Text ?? string.Empty;
+            flag.IsVisible = value.Contains("<bug", StringComparison.OrdinalIgnoreCase);
+            if (!flag.IsVisible) { ToolTip.SetTip(holder, null); return; }
+            var problems = DataEditorViewModel.BugTagWarnings(value, ExpectedColumn);
+            flag.Foreground = Avalonia.Media.Brush.Parse(problems.Count == 0 ? "#8CC1FF" : "#F6C76B");
+            var tag = LoadTestingTool.Execution.BugTag.Parse(value).Tag;
+            ToolTip.SetTip(holder, problems.Count > 0 ? string.Join(" ", problems)
+                : $"Known bug in {string.Join(", ", tag!.Environments)}: a failing assertion of this cell does not fail the test; it is listed in the Bugs tab. {tag.Description}");
+        }
+        text.PropertyChanged += (_, e) => { if (e.Property == TextBlock.TextProperty) Refresh(); };
+        Refresh();
+        return holder;
+    }
+
     /// <summary>Lays a translucent tint over the cell while the column is selected; it never takes mouse input.</summary>
     private Control Tinted(Control content, DataGridCell? cell = null)
     {
@@ -42,6 +63,9 @@ public sealed class FormattedTextColumn : DataGridTextColumn
         if (OpenWizard is not null && cell is not null) grid.Children.Add(WizardButton(cell));
         return grid;
     }
+
+    /// <summary>True for an expected-value column: only there does a known-bug tag mean something.</summary>
+    public bool ExpectedColumn { get; set; }
 
     /// <summary>When set, the current cell shows a small button on its border that calls this with the cell and the button (the Record view's wizard).</summary>
     public Action<DataGridCell, Control>? OpenWizard { get; set; }
@@ -67,6 +91,7 @@ public sealed class FormattedTextColumn : DataGridTextColumn
             text.Bind(TextBlock.TextWrappingProperty, new Binding($"Formats[{_cell}].Wrapping"));
             text.Bind(TextBlock.ForegroundProperty, new Binding($"Formats[{_cell}].Foreground"));
         }
+        if (element is TextBlock plain && _rule is null) return Tinted(BugMarked(plain), cell);
         if (_rule is null || element is not TextBlock shown) return Tinted(element, cell);
 
         // A ⚠ beside a value the runner would misread, with the reason as its tooltip; an ⓘ where it only deserves a note.

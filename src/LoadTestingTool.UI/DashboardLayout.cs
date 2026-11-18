@@ -479,6 +479,7 @@ public sealed partial class MainWindow
             _manualTab,
             new TabItem { Header = "Run Summary", Content = Scroll(_runSummaryPanel) },
             new TabItem { Header = "Assertions", Content = assertionPanel },
+            new TabItem { Header = "Bugs", Content = Scroll(_bugItems) },
             new TabItem { Header = "Artifacts", Content = Scroll(_artifactPanel) }
         };
         _overviewPanel.Children.Insert(0, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _overviewFilter, DashboardStyle.Action("Copy overview", () => _ = CopyOverviewAsync()) } });
@@ -1575,7 +1576,7 @@ public sealed partial class MainWindow
         AddOverview(KeyValue("Avg. latency", average is null ? "—" : $"{average:F1} ms"), average?.ToString() ?? "Available");
         AddOverview(KeyValue("p95 latency", scoped ? "—" : item.P95Ms is null ? "Available on completion" : $"{item.P95Ms} ms"), item.P95Ms?.ToString() ?? "Available");
         AddOverview(KeyValue("Throughput", scoped ? "—" : item.RequestsPerSecond is null ? "Available on completion" : $"{item.RequestsPerSecond:F2} requests / sec"), item.RequestsPerSecond?.ToString() ?? "Available");
-        AddOverview(KeyValue("Assertions", $"{assertions.Count(a => a.Result == "PASS")} passed / {assertions.Count(a => a.Result == "FAIL")} failed"), $"{assertions.Count} pass fail");
+        AddOverview(KeyValue("Assertions", $"{assertions.Count(a => a.Result == "PASS")} passed / {assertions.Count(a => a.Result == "FAIL")} failed" + (assertions.Any(a => a.Result == "KNOWN_BUG") ? $" / {assertions.Count(a => a.Result == "KNOWN_BUG")} known bugs" : string.Empty)), $"{assertions.Count} pass fail known bugs");
         if (issues.Count > 0)
         {
             _overviewPanel.Children.Add(DashboardStyle.Text($"Run issues  ·  {issues.Count(i => i.Severity.Equals("Error", StringComparison.OrdinalIgnoreCase))} error(s) / {issues.Count(i => i.Severity.Equals("Warning", StringComparison.OrdinalIgnoreCase))} warning(s)", 13, true));

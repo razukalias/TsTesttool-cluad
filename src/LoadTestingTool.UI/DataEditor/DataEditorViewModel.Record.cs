@@ -34,7 +34,7 @@ public sealed partial class DataEditorViewModel
         {
             var expected = column.Group == ColumnGroup.Response;
             var dontRun = !expected && column.Title.Equals("dontrun", StringComparison.OrdinalIgnoreCase);
-            (expected ? ExpectedLines : RequestLines).Add(new RecordLineViewModel(row, column.CellIndex, column.Title, expected, dontRun ? DontRunWarnings : LineWarnings));
+            (expected ? ExpectedLines : RequestLines).Add(new RecordLineViewModel(row, column.CellIndex, column.Title, expected, WarningsFor(expected, dontRun)));
         }
     }
 

@@ -136,6 +136,10 @@ public sealed class AssertionInfo
     public string Environment { get; init; } = string.Empty;
     public int ExcelRowNumber { get; init; }
     public int ExpectedValueColumn { get; init; }
+    /// <summary>The cell carries a &lt;bug: …&gt; tag for this environment: a failure is a known bug (Result KNOWN_BUG), a pass means it may be fixed.</summary>
+    public bool KnownBug { get; set; }
+    public string BugDescription { get; init; } = string.Empty;
+    public string BugEnvironments { get; init; } = string.Empty;
 }
 
 internal sealed record AssertionSnapshot(
@@ -214,7 +218,7 @@ public sealed partial class MainWindow : Window
         var meaning = string.IsNullOrWhiteSpace(assertion.AssertionMeaning) ? AssertionSemanticsUi.Meaning(assertion.AssertionVerb, assertion.ActualValue, assertion.FailureMessage) : assertion.AssertionMeaning;
         var text = DashboardStyle.Text($"[{assertion.Environment}] {assertion.Testcase} / Data {assertion.DataId}\n{assertion.StepName} / {assertion.ResponsePath} {assertion.AssertionVerb}\nType: {type}\nMeaning: {meaning}\nExpected: {assertion.ExpectedValue}\nActual: {assertion.ActualValue}", 12);
         text.TextWrapping = TextWrapping.Wrap;
-        var content = new StackPanel { Spacing = 6, Children = { DashboardStyle.Badge(assertion.Result == "PASS" ? "Passed" : "Failed"), text } };
+        var content = new StackPanel { Spacing = 6, Children = { DashboardStyle.Badge(assertion.Result == "PASS" ? "Passed" : assertion.Result == "KNOWN_BUG" ? "Known bug" : "Failed"), text } };
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("30,*") };
         row.Children.Add(check); Grid.SetColumn(content, 1); row.Children.Add(content);
         text.PointerPressed += (_, _) => OpenAssertionEditor(assertion);
@@ -236,6 +240,7 @@ public sealed partial class MainWindow : Window
         foreach (var assertion in pageValues) _assertionItems.Children.Add(CreateAssertionRow(assertion));
         if (_assertionPreviousButton is not null)
             UpdatePagination(_assertionPageLabel, _assertionPreviousButton, _assertionNextButton, _assertionPage, values.Count, DashboardPageSize);
+        RefreshBugList();
         UiLog($"Assertion list refreshed. instance={_selectedInstance?.Name ?? "<none>"}; environment={selectedEnvironment ?? "<none>"}; failedOnly={_failedOnly.IsChecked == true}; page={_assertionPage}; pageSize={DashboardPageSize}; visible={values.Count}; total={_selectedInstance?.Assertions.Count ?? 0}");
     }
     private static bool MatchesTerms(string value, string? filter) => (filter ?? string.Empty).Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).All(term => value.Contains(term, StringComparison.OrdinalIgnoreCase));
@@ -1288,7 +1293,8 @@ public sealed partial class MainWindow : Window
                 TestcaseIndex = e.GetProperty("testcaseIndex").GetInt32(), Testcase = e.GetProperty("testcase").GetString() ?? "", DataId = e.GetProperty("dataId").GetString() ?? "", StepName = e.GetProperty("stepName").GetString() ?? "",
                 ResponsePath = e.GetProperty("responsePath").GetString() ?? "", ResponseHeader = $"{e.GetProperty("stepName").GetString()}.{e.GetProperty("responsePath").GetString()}", AssertionVerb = e.GetProperty("assertionVerb").GetString() ?? "", AssertionType = e.TryGetProperty("assertionType", out var assertionType) ? assertionType.GetString() ?? "" : "", AssertionMeaning = e.TryGetProperty("assertionMeaning", out var assertionMeaning) ? assertionMeaning.GetString() ?? "" : "", ExpectedValue = e.GetProperty("expectedValue").GetString() ?? "", ActualValue = e.GetProperty("actualValue").GetString() ?? "", Result = e.GetProperty("result").GetString() ?? "", FailureMessage = e.GetProperty("failureMessage").GetString() ?? "", ExtractVariable = "",
                 Environment = e.TryGetProperty("environment", out var environment) ? environment.GetString() ?? "" : "",
-                ExcelRowNumber = e.TryGetProperty("excelRowNumber", out var row) ? row.GetInt32() : 0, ExpectedValueColumn = e.TryGetProperty("expectedValueColumn", out var col) ? col.GetInt32() : 0
+                ExcelRowNumber = e.TryGetProperty("excelRowNumber", out var row) ? row.GetInt32() : 0, ExpectedValueColumn = e.TryGetProperty("expectedValueColumn", out var col) ? col.GetInt32() : 0,
+                KnownBug = e.TryGetProperty("knownBug", out var bug) && bug.ValueKind == JsonValueKind.True, BugDescription = e.TryGetProperty("bugDescription", out var bugText) ? bugText.GetString() ?? "" : "", BugEnvironments = e.TryGetProperty("bugEnvironments", out var bugEnvs) ? bugEnvs.GetString() ?? "" : ""
             };
             item.Assertions.Add(assertion);
             if (assertion.Result == "FAIL") item.LastEvent = $"FAILED: {assertion.ResponsePath} expected {assertion.ExpectedValue} actual {assertion.ActualValue}";
