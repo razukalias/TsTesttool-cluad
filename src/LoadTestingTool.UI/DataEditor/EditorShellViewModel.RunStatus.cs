@@ -30,6 +30,7 @@ public sealed partial class EditorShellViewModel
         }
         OnPropertyChanged(nameof(AnyRunning));
         OnPropertyChanged(nameof(CanRunTicked));
+        OnPropertyChanged(nameof(CanRunShown));
     }
 
     /// <summary>Run ticked is available when something is ticked and none of the ticked instances is already running.</summary>

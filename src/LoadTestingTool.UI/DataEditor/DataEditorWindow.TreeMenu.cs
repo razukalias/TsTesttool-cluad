@@ -43,6 +43,10 @@ public partial class DataEditorWindow
         Closed += (_, _) => _statusTimer?.Stop();
         if (this.FindControl<Button>("RunTickedButton") is { } runTicked)
             runTicked.Click += (_, _) => _ = _shell.RunTickedAsync();
+        if (this.FindControl<Button>("RunShownButton") is { } runShown)
+            runShown.Click += (_, _) => _ = _shell.RunShownAsync();
+        if (this.FindControl<TextBox>("InstanceFilterBox") is { } filterBox)
+            filterBox.KeyDown += (_, e) => { if (e.Key == Key.Escape) { filterBox.Text = string.Empty; e.Handled = true; } };
         if (this.FindControl<Button>("ExpandAllButton") is { } expandAll) expandAll.Click += (_, _) => _shell.SetAllExpanded(true);
         if (this.FindControl<Button>("CollapseAllButton") is { } collapseAll) collapseAll.Click += (_, _) => _shell.SetAllExpanded(false);
         tree.AddHandler(KeyDownEvent, (_, e) =>

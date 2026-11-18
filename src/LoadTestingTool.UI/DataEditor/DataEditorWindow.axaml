@@ -194,6 +194,18 @@
           <Button x:Name="CollapseAllButton" Content="⊟" Classes="treemove" FontSize="14" ToolTip.Tip="Collapse everything to the instance rows" />
           <TextBlock Text="{Binding TickedText}" VerticalAlignment="Center" FontSize="11" Foreground="#8EA4BC" />
         </StackPanel>
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="6,0,0,8">
+          <TextBox x:Name="InstanceFilterBox" Text="{Binding InstanceFilter, Mode=TwoWay}" Watermark="Filter instances: term1 &amp; term2…" MinHeight="28" FontSize="12"
+                   ToolTip.Tip="Show only the instances whose name contains every word (separate words with &amp;). Esc clears it." />
+          <Button x:Name="RunShownButton" Grid.Column="1" Margin="6,0,0,0" IsEnabled="{Binding CanRunShown}" MinHeight="28" Padding="10,2" FontSize="12"
+                  ToolTip.Tip="Run every instance shown in the tree completely (all testcases and rows), whatever is ticked. Save first.">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="▶ Run shown" />
+              <TextBlock Text="{Binding RunShownBadge}" FontWeight="SemiBold" />
+            </StackPanel>
+          </Button>
+        </Grid>
+        <TextBlock DockPanel.Dock="Top" Text="{Binding InstanceFilterText}" Margin="8,-4,0,6" FontSize="11" Foreground="#8EA4BC" IsVisible="{Binding InstanceFilterText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <!-- Run settings: one small button opens Environments / Rows; the chosen values are written beneath -->
         <StackPanel DockPanel.Dock="Top" Margin="2,0,0,8" Spacing="1" IsVisible="{Binding HasRunSettings}">
           <Grid ColumnDefinitions="*,Auto">
@@ -247,7 +259,7 @@
                 ToolTip.Tip="Preview and permanently delete old workbook backups, logs, history and results." />
         <CheckBox DockPanel.Dock="Bottom" Content="Load instances only when opened" IsChecked="{Binding LazyLoading, Mode=TwoWay}" Margin="6,12,0,0" FontSize="12"
                   ToolTip.Tip="On: a workbook is read the first time you click its instance, so the editor opens quickly with many or large workbooks. Off: every workbook is read when the editor opens." />
-        <TreeView x:Name="Tree" Padding="0,0,14,0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
+        <TreeView x:Name="Tree" Padding="0,0,14,0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding VisibleInstances}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
           <TreeView.DataTemplates>
             <TreeDataTemplate DataType="vm:InstanceNode" ItemsSource="{Binding Testcases}">
               <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,3,0,3">

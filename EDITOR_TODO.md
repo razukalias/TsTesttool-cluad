@@ -571,3 +571,4 @@ Example row:
 - [x] Right-click menu on the column headers of the other sheets (done 2026-11-17): insert left/right with a count, rename, remove, fill down, clear. **Not done:** highlight / wrap for these sheets (their grid does not show cell colours yet).
 
 - Done 2026-11-18: left tree: the `DataEngine_` prefix is hidden on instance names (full name in the tooltip; folder, file and the rest of the editor keep the real name), expand/collapse is a small ＋ / − box instead of the arrow, and the gap between it, the tick box and the name is tighter.
+- Done 2026-11-18: instance filter box under *Run ticked* (names only, words joined with `&`, Esc clears, non-matching instances hidden, "x of y instances shown") and a **Run shown (n)** button that runs every shown instance completely whatever is ticked.

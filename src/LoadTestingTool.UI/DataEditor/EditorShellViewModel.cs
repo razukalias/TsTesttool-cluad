@@ -177,6 +177,69 @@ public sealed partial class EditorShellViewModel : ObservableObject
 
     public ObservableCollection<InstanceNode> Instances { get; } = [];
 
+    // ---- Instance filter ------------------------------------------------------------------------
+
+    private ObservableCollection<InstanceNode>? _visibleInstances;
+    private string _instanceFilter = string.Empty;
+
+    /// <summary>The instances the tree shows: all of them, or the ones whose name matches the filter box.</summary>
+    public ObservableCollection<InstanceNode> VisibleInstances
+    {
+        get
+        {
+            if (_visibleInstances is null)
+            {
+                _visibleInstances = [];
+                Instances.CollectionChanged += (_, _) => ApplyInstanceFilter();
+                ApplyInstanceFilter();
+            }
+            return _visibleInstances;
+        }
+    }
+
+    /// <summary>Words (joined with &amp;) that an instance's name must all contain; empty shows every instance.</summary>
+    public string InstanceFilter
+    {
+        get => _instanceFilter;
+        set { if (_instanceFilter == value) return; _instanceFilter = value; OnPropertyChanged(); ApplyInstanceFilter(); }
+    }
+
+    internal static bool NameMatches(InstanceNode instance, string filter)
+        => filter.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .All(term => instance.Name.Contains(term, StringComparison.OrdinalIgnoreCase) || instance.DisplayName.Contains(term, StringComparison.OrdinalIgnoreCase));
+
+    private void ApplyInstanceFilter()
+    {
+        var shown = Instances.Where(i => NameMatches(i, _instanceFilter)).ToList();
+        var target = VisibleInstances;
+        if (!target.SequenceEqual(shown))
+        {
+            for (var i = target.Count - 1; i >= 0; i--) if (!shown.Contains(target[i])) target.RemoveAt(i);
+            for (var i = 0; i < shown.Count; i++)
+                if (i >= target.Count || !ReferenceEquals(target[i], shown[i])) target.Insert(i, shown[i]);
+        }
+        OnPropertyChanged(nameof(InstanceFilterText));
+        OnPropertyChanged(nameof(CanRunShown));
+        OnPropertyChanged(nameof(RunShownBadge));
+    }
+
+    public string InstanceFilterText => string.IsNullOrWhiteSpace(_instanceFilter) ? string.Empty : $"{VisibleInstances.Count} of {Instances.Count} instances shown";
+    public string RunShownBadge => $"({VisibleInstances.Count})";
+
+    /// <summary>Run shown is available when the filter leaves something and none of the shown instances is running.</summary>
+    public bool CanRunShown => VisibleInstances.Count > 0 && !VisibleInstances.Any(i => i.Run.IsRunning);
+
+    /// <summary>Runs every shown instance completely (all testcases, all rows), whatever is ticked.</summary>
+    public async Task RunShownAsync()
+    {
+        foreach (var instance in VisibleInstances.ToList())
+        {
+            if (instance.CanLoad) await LoadAsync(instance);
+            if (instance.Editor is not { } editor) continue;
+            await editor.RunFromTreeAsync(new RunRequest([], [], editor.RowsMode == DataEditorViewModel.RowsModeOptions[0] ? null : editor.RowsMode.ToLowerInvariant(), HasEnvironments ? instance.RunParallel : null), $"all of {instance.Name}");
+        }
+    }
+
     /// <summary>The editor for the instance currently shown; the main area binds to this.</summary>
     [ObservableProperty] private DataEditorViewModel? _current;
 

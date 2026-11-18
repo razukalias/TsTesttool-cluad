@@ -29,6 +29,31 @@ public class EditorShellTests
     }
 
     [Fact]
+    public void The_instance_filter_hides_instances_by_name_and_clearing_it_shows_them_again()
+    {
+        using var dir = new TempDir();
+        var (shell, _) = Open(dir);
+        Assert.Equal(2, shell.VisibleInstances.Count);
+        Assert.Equal("", shell.InstanceFilterText);
+
+        shell.InstanceFilter = "integration";                       // case-insensitive, matches the hidden prefix part too
+        Assert.Equal(["DataEngine_IntegrationScenarios"], shell.VisibleInstances.Select(i => i.Name));
+        Assert.Equal("1 of 2 instances shown", shell.InstanceFilterText);
+        Assert.Equal("(1)", shell.RunShownBadge);
+
+        shell.InstanceFilter = "dataengine & scen";                 // every word must match
+        Assert.Single(shell.VisibleInstances);
+        shell.InstanceFilter = "customers & scen";
+        Assert.Empty(shell.VisibleInstances);
+        Assert.False(shell.CanRunShown);
+
+        shell.InstanceFilter = "";
+        Assert.Equal(["DataEngine_IntegrationScenarios", "Customers"], shell.VisibleInstances.Select(i => i.Name));
+        Assert.True(shell.CanRunShown);
+        Assert.Equal(2, shell.Instances.Count);                      // filtering never removes an instance
+    }
+
+    [Fact]
     public void Instances_are_parents_and_open_on_the_requested_one()
     {
         using var dir = new TempDir();
