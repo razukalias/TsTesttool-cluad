@@ -572,3 +572,6 @@ Example row:
 
 - Done 2026-11-18: left tree: the `DataEngine_` prefix is hidden on instance names (full name in the tooltip; folder, file and the rest of the editor keep the real name), expand/collapse is a small ＋ / − box instead of the arrow, and the gap between it, the tick box and the name is tighter.
 - Done 2026-11-18: instance filter box under *Run ticked* (names only, words joined with `&`, Esc clears, non-matching instances hidden, "x of y instances shown") and a **Run shown (n)** button that runs every shown instance completely whatever is ticked.
+
+## For discussion
+- [ ] Overview: a second filter box that **excludes** steps from the step execution timeline (the existing box includes matches; this one hides matches). To settle: which fields it matches (step name, testcase, data id, result, error text), word syntax (same `&` joining as the include box?), whether it also affects the counts/charts or only the list, and whether it is remembered between runs.
