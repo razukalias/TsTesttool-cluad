@@ -611,3 +611,7 @@ Example row:
 - Expected columns have a ✦ button in the bar listing the assertion verbs (current one ticked); choosing one renames `{old}Step.path` to `{new}Step.path`.
 - Saving after a rename that changes `<From_…>` references shows a bar listing the cells: Rename and fix / Only rename / Cancel. No question when nothing refers to the column.
 - Not done: dragging a rectangle of cells (the grid control cannot); F2 shortcut for the rename box.
+
+## Done: How-to-fill guide per step type
+- A ⓘ button next to "<TYPE> SETTINGS" in the step form (HTTP, GraphQL, CaseQL, SQL, File, Script, ActionManual): a flyout with numbered steps for filling that type and an example Step config. "Use this example" fills Step config only while it is empty. Texts live in `StepTypeGuide`.
+- Not done: the same guide in the older step wizard and in Config edit mode.

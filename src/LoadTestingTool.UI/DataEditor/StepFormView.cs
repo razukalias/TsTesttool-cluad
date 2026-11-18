@@ -426,7 +426,9 @@ public sealed class StepFormView : UserControl
         {
             _typeCard.Child = null;
             var body = new StackPanel { Spacing = 8 };
-            body.Children.Add(Text($"{type.ToUpperInvariant()} SETTINGS", 11, Muted, bold: true));
+            var heading = new StackPanel { Orientation = Orientation.Horizontal, Children = { Text($"{type.ToUpperInvariant()} SETTINGS", 11, Muted, bold: true) } };
+            if (StepTypeGuide.Icon(type, () => _step.Value("stepconfig"), example => _step.Write("stepconfig", example)) is { } guide) heading.Children.Add(guide);
+            body.Children.Add(heading);
             body.Children.Add(new StepTypeSection(_step));
             _typeCard.Child = CardOf(body);
         }
