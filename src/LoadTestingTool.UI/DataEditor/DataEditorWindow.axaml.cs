@@ -422,6 +422,21 @@ public partial class DataEditorWindow : Window
         foreach (var column in grid.Columns)
             column.IsVisible = !(editor.ShowFailedColumns || editor.ShowBugColumns) || column.Tag is not int cell || cell < 1
                 || editor.ShowFailedColumns && editor.FailedColumnCells.Contains(cell) || editor.ShowBugColumns && editor.BugColumnCells.Contains(cell);
+        StretchLastColumn(grid);
+    }
+
+    private DataGridColumn? _stretched;
+    private DataGridLength _stretchedWidth;
+
+    /// <summary>The last shown column takes the space that is left, so the grid has no empty strip on its right (a click there used to hang the editor).</summary>
+    private void StretchLastColumn(DataGrid grid)
+    {
+        if (_stretched is not null) { _stretched.Width = _stretchedWidth; _stretched = null; }
+        var last = grid.Columns.Where(c => c.IsVisible).OrderBy(c => c.DisplayIndex).LastOrDefault();
+        if (last is null) return;
+        _stretched = last;
+        _stretchedWidth = last.Width;
+        last.Width = new DataGridLength(1, DataGridLengthUnitType.Star);
     }
 
     private void RebuildColumns()
