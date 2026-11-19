@@ -664,3 +664,9 @@ The automated suites pass, but none of the items below has been tried on screen 
 - [ ] **Step-type guide (ⓘ):** every type's flyout on screen; run one SQL and one File example against a real instance (the SQL example needs a `MainDb` profile); "Use this example" on an empty and a filled Step config.
 - [ ] **Row order on save:** a real workbook with several testcases where rows were added out of order: result in Excel, references, colours/heights; and the cases the pass does not handle yet: data validation, merged cells, conditional formatting, formulas that refer to row numbers, a table (ListObject) over the data. Also a sheet with a blank or non-numeric testcase index (must be left alone) and the config sheet when steps of testcase 1 were added after testcase 2.
 - [ ] **Cross-checks after all of the above:** open the saved workbook in Excel (no repair prompt), run it once from the app, and compare the result with the run before the edits.
+
+## Done: performance and "Failed columns only" (2026-11-19)
+- A run with thousands of filled/failed cells made the editor hang or crash when switching steps or using "Failed rows only" / "Failed cells only". Causes: one change notification per row/cell (quadratic redraw), a non-virtualized failed-cells list, buttons built for every cell, and a crash when a cell from the previous step's column set was asked about a row with fewer cells.
+- Fixed with bulk list replacement, a virtualized failed-cells list, lazily built cell buttons/markers, a cached failure lookup and bounds checks. Regression tests in `LargeRunTests`.
+- New option **Failed columns only**: hides every column without a failed assertion (combinable with Failed rows only). It shows the failed *expected* columns, not their matching request columns.
+- Known remaining cost: the "all steps" grid with ~90 columns takes about 0.85 s to rebuild; that is the DataGrid itself. Not yet tried on the real 4500-cell workbook.

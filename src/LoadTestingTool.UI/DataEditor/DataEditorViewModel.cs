@@ -52,7 +52,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
     public string? LastBackupPath { get; private set; }
 
     public ObservableCollection<TestcaseItem> Testcases { get; } = [];
-    public ObservableCollection<DataRowViewModel> VisibleRows { get; } = [];
+    public BulkObservableCollection<DataRowViewModel> VisibleRows { get; } = new();
     public ObservableCollection<ProblemViewModel> Problems { get; } = [];
     public IReadOnlyList<GridColumn> Columns { get; private set; } = [];
 
@@ -260,8 +260,8 @@ public sealed partial class DataEditorViewModel : ObservableObject
     {
         var text = FilterText.Trim();
         var keep = SelectedRow;
-        VisibleRows.Clear();
         var numbers = ParseRowNumbers(RowNumberFilter);
+        var shown = new List<DataRowViewModel>();
         for (var n = 0; n < _allRows.Count; n++)
         {
             var row = _allRows[n];
@@ -269,11 +269,13 @@ public sealed partial class DataEditorViewModel : ObservableObject
             if (ShowFailedOnly && row.Outcome is not { Passed: false }) continue;
             if (!PassesColumnFilters(row)) continue;
             if (text.Length == 0 || row.Cells.Any(c => c.Contains(text, StringComparison.OrdinalIgnoreCase)))
-                VisibleRows.Add(row);
+                shown.Add(row);
         }
+        VisibleRows.ReplaceAll(shown);   // one notification, not one per row
         if (keep is not null && VisibleRows.Contains(keep)) SelectedRow = keep;
         OnPropertyChanged(nameof(RowCountText));
         if (ShowFailedCells) RefreshFailedCells();   // the shown rows changed (a filter, or Undo / Redo rebuilt them)
+        if (ShowFailedColumns) RefreshFailedColumns();
     }
 
     /// <summary>
@@ -403,6 +405,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         }
         MarkChanged();
         if (ShowFailedCells) RefreshFailedCells();   // an edited cell may have become (or stopped being) a failed one
+        if (ShowFailedColumns) RefreshFailedColumns();
     }
 
     private TableRow EnsureResponse(DataRowViewModel row)

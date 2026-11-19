@@ -115,6 +115,7 @@ public partial class DataEditorWindow : Window
         if (_subscribed is not null)
         {
             _subscribed.ColumnsChanged -= OnColumnsChanged;
+            _subscribed.FailedColumnsChanged -= OnFailedColumnsChanged;
             _subscribed.SheetColumnsChanged -= OnSheetColumnsChanged;
             _subscribed.StepColumnsChanged -= OnStepColumnsChanged;
             _subscribed.PropertyChanged -= OnEditorPropertyChanged;
@@ -128,6 +129,7 @@ public partial class DataEditorWindow : Window
         if (_subscribed is null) return;
         Title = $"Data editor — {_subscribed.InstanceName}";
         _subscribed.ColumnsChanged += OnColumnsChanged;
+        _subscribed.FailedColumnsChanged += OnFailedColumnsChanged;
         _subscribed.SheetColumnsChanged += OnSheetColumnsChanged;
         _subscribed.StepColumnsChanged += OnStepColumnsChanged;
         _subscribed.PropertyChanged += OnEditorPropertyChanged;
@@ -410,6 +412,16 @@ public partial class DataEditorWindow : Window
         this.FindControl<DataGrid>("SheetGrid")?.CommitEdit();
     }
 
+    /// <summary>Hides the columns without a failure while "Failed columns only" is on; the Data ID, tick and result columns always stay.</summary>
+    private void OnFailedColumnsChanged(object? sender, EventArgs e) => ApplyColumnVisibility();
+
+    private void ApplyColumnVisibility()
+    {
+        if (this.FindControl<DataGrid>("Grid") is not { } grid || _shell?.Current is not { } editor) return;
+        foreach (var column in grid.Columns)
+            column.IsVisible = !editor.ShowFailedColumns || column.Tag is not int cell || cell < 1 || editor.FailedColumnCells.Contains(cell);
+    }
+
     private void RebuildColumns()
     {
         var grid = this.FindControl<DataGrid>("Grid");
@@ -422,14 +434,16 @@ public partial class DataEditorWindow : Window
         editor.CurrentCellIndex = -1;
         _picked.Clear();
         _pickAnchor = null;
+        // Adding a column to a grid that shows rows redraws every shown row each time (columns x rows work); with no rows attached it is one pass at the end.
+        var shownRows = grid.ItemsSource;
+        grid.ItemsSource = null;
         grid.Columns.Clear();
         grid.Columns.Add(CreateTickColumn(editor));
         grid.Columns.Add(CreateColumn(new GridColumn("Data ID", ColumnGroup.Id, 0, -1)));
         grid.Columns.Add(CreateResultColumn());
         foreach (var column in editor.Columns)
         {
-            var created = CreateColumn(column);
-            created.Header = CreateHeader(column, editor.ExcelLetterOf(column), column.Group == ColumnGroup.Response ? OpenVerbMenu : null);
+            var created = CreateColumn(column, editor.ExcelLetterOf(column), column.Group == ColumnGroup.Response ? OpenVerbMenu : null);
             if (created is FormattedTextColumn formatted)
             {
                 formatted.ExpectedColumn = column.Group == ColumnGroup.Response;
@@ -439,6 +453,8 @@ public partial class DataEditorWindow : Window
             if (created is FormattedTextColumn formatted2) formatted2.OpenWizard = (cell, anchor) => ShowCellWizard(cell, anchor, column);
             grid.Columns.Add(created);
         }
+        grid.ItemsSource = shownRows;
+        ApplyColumnVisibility();
         // The grid drops its selection while columns are rebuilt; keep the first row selected so Duplicate/Remove work.
         Dispatcher.UIThread.Post(() =>
         {
@@ -545,10 +561,10 @@ public partial class DataEditorWindow : Window
         })
     };
 
-    private static DataGridTextColumn CreateColumn(GridColumn column, bool step = false) => new FormattedTextColumn(column.CellIndex, step ? column.Title : null)
+    private static DataGridTextColumn CreateColumn(GridColumn column, string letter = "", Action<GridColumn, Control>? openVerbs = null, bool step = false) => new FormattedTextColumn(column.CellIndex, step ? column.Title : null)
     {
         Tag = column.CellIndex,
-        Header = CreateHeader(step ? column with { Group = ColumnGroup.Id } : column),
+        Header = CreateHeader(step ? column with { Group = ColumnGroup.Id } : column, letter, openVerbs),
         Binding = new Binding($"Cells[{column.CellIndex}]") { Mode = BindingMode.TwoWay },
         MinWidth = 110,
         MaxWidth = 320,

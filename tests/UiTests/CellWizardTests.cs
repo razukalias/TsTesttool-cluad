@@ -92,7 +92,10 @@ public class CellWizardHoverAndStepTests
         List<Button> Shown() => grid.GetVisualDescendants().OfType<Button>().Where(b => b.Tag as string == "cell-wizard" && b.IsVisible).ToList();
         Assert.Single(Shown());
 
-        var other = grid.GetVisualDescendants().OfType<DataGridCell>().First(c => ReferenceEquals(c.DataContext, window.ViewModel.VisibleRows[1]) && c.GetVisualDescendants().OfType<Button>().Any(b => b.Tag as string == "cell-wizard"));
+        var row1 = grid.GetVisualDescendants().OfType<DataGridRow>().First(r => ReferenceEquals(r.DataContext, window.ViewModel.VisibleRows[1]));
+        var row0 = grid.GetVisualDescendants().OfType<DataGridRow>().First(r => ReferenceEquals(r.DataContext, window.ViewModel.VisibleRows[0]));
+        var index = row0.GetVisualDescendants().OfType<DataGridCell>().ToList().FindIndex(c => c.Classes.Contains(":current"));
+        var other = row1.GetVisualDescendants().OfType<DataGridCell>().ElementAt(index);   // the button is only built once a cell is current or hovered
         var at = Avalonia.VisualExtensions.TranslatePoint(other, new Avalonia.Point(other.Bounds.Width / 2, other.Bounds.Height / 2), window)!.Value;
         window.MouseMove(at);
         Dispatcher.UIThread.RunJobs();

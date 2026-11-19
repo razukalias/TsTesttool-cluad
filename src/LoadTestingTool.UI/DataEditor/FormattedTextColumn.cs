@@ -78,20 +78,32 @@ public sealed class FormattedTextColumn : DataGridTextColumn
     /// <summary>A red tint and a small red mark on a cell whose assertion failed in the latest run; it goes once a value is assigned or a new run passes.</summary>
     private Control FailureMarked(Control content, DataGridCell cell)
     {
-        var tint = new Border { Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#40FF5A6E")), IsHitTestVisible = false, IsVisible = false };
-        var mark = new Button
-        {
-            Content = "!", Tag = "failed-cell", Width = 18, Height = 18, Padding = new Avalonia.Thickness(0), FontSize = 11, FontWeight = Avalonia.Media.FontWeight.Bold, CornerRadius = new Avalonia.CornerRadius(9),
-            Background = Avalonia.Media.Brush.Parse("#E5484D"), Foreground = Avalonia.Media.Brushes.White, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-            HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center, VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Center, Margin = new Avalonia.Thickness(0, 0, 24, 0), IsVisible = false,
-        };
-        ToolTip.SetTip(mark, "This expected value failed in the latest run. Click to see what the run got");
+        // The red tint and the "!" button are built only for a cell that really failed; most cells never get them.
+        var host = new Grid { Children = { content } };
+        Border? tint = null;
+        Button? mark = null;
         FailureDetail? current = null;
         DataRowViewModel? hooked = null;
         void Refresh()
         {
             current = cell.DataContext is DataRowViewModel row ? FailureAt?.Invoke(row, _cell) : null;
-            tint.IsVisible = mark.IsVisible = current is not null;
+            if (current is null && mark is null) return;
+            if (mark is null)
+            {
+                tint = new Border { Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#40FF5A6E")), IsHitTestVisible = false };
+                mark = new Button
+                {
+                    Content = "!", Tag = "failed-cell", Width = 18, Height = 18, Padding = new Avalonia.Thickness(0), FontSize = 11, FontWeight = Avalonia.Media.FontWeight.Bold, CornerRadius = new Avalonia.CornerRadius(9),
+                    Background = Avalonia.Media.Brush.Parse("#E5484D"), Foreground = Avalonia.Media.Brushes.White, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                    HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center, VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Center, Margin = new Avalonia.Thickness(0, 0, 24, 0),
+                };
+                ToolTip.SetTip(mark, "This expected value failed in the latest run. Click to see what the run got");
+                mark.Click += (_, e) => { e.Handled = true; if (current is not null && hooked is not null) OpenFailure?.Invoke(cell, mark, hooked, current); };
+                mark.PointerPressed += (_, e) => e.Handled = true;
+                host.Children.Insert(0, tint);
+                host.Children.Add(mark);
+            }
+            tint!.IsVisible = mark.IsVisible = current is not null;
         }
         void Hook()
         {
@@ -105,10 +117,8 @@ public sealed class FormattedTextColumn : DataGridTextColumn
         cell.DataContextChanged += (_, _) => Hook();
         cell.DetachedFromVisualTree += (_, _) => { if (hooked is not null) { hooked.PropertyChanged -= OnRowChanged; hooked.Cells.CollectionChanged -= OnCellsChanged; hooked = null; } };
         cell.AttachedToVisualTree += (_, _) => Hook();
-        mark.Click += (_, e) => { e.Handled = true; if (current is not null && hooked is not null) OpenFailure?.Invoke(cell, mark, hooked, current); };
-        mark.PointerPressed += (_, e) => e.Handled = true;
         Hook();
-        return new Grid { Children = { tint, content, mark } };
+        return host;
     }
 
     /// <summary>When set, the current cell shows a small button on its border that calls this with the cell and the button (the Record view's wizard).</summary>
