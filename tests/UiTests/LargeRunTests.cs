@@ -584,4 +584,39 @@ public class AssertionCategoryTests
         Assert.Equal("BUG", row.ResultText);
         Assert.Contains("BUG    CreateCustomer.name [dev]", row.CountsDetail);
     }
+
+    [Fact]
+    public void The_step_and_its_assertion_are_matched_whatever_the_case_of_the_names_and_the_tooltip_uses_the_header_spelling()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 2);
+        FakeRun.Write(FakeRun.Folder(path), $"events_{FakeRun.RunId}.ndjson",
+            FakeRun.Request(1, "CUST002", "CreateCustomer", result: "FAIL", status: 200, category: "Assertion", env: "Staging"),
+            FakeRun.Assertion(1, "CUST002", "createcustomer", "name", "eq", "Customer 2", "Kund 2", env: "staging"));   // the assertion event writes the step in lower case
+        var editor = new DataEditorViewModel(path, "Customers");
+        editor.ApplyResults(RunResultsReader.ReadLatest(editor.ResultsFolder));
+        var row = editor.VisibleRows.First(r => r.CurrentDataId == "CUST002");
+        Assert.Equal("1 failed", row.CountsText);                        // not 2: the step is the result of the assertion
+        Assert.DoesNotContain("(step)", row.CountsDetail);
+        Assert.Contains("CreateCustomer.name", row.CountsDetail);        // as the header writes it, not createcustomer.name
+    }
+
+    [Fact]
+    public void A_step_with_an_error_of_its_own_counts_once_and_its_assertions_stay_marked_but_are_not_counted()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 2);
+        FakeRun.Write(FakeRun.Folder(path), $"events_{FakeRun.RunId}.ndjson",
+            FakeRun.Request(1, "CUST002", "CreateCustomer", result: "FAIL", status: 500, error: "Expected status '200' but received '500'.", category: "HttpStatus", env: "dev"),
+            FakeRun.Assertion(1, "CUST002", "CreateCustomer", "name", "eq", "Customer 2", "", env: "dev"));
+        var editor = new DataEditorViewModel(path, "Customers");
+        editor.ApplyResults(RunResultsReader.ReadLatest(editor.ResultsFolder));
+        var row = editor.VisibleRows.First(r => r.CurrentDataId == "CUST002");
+        Assert.Equal("1 failed", row.CountsText);                        // the step error only
+        Assert.Contains("CreateCustomer (step)", row.CountsDetail);
+        Assert.Contains("ALSO   CreateCustomer.name", row.CountsDetail);
+        Assert.Equal("FAIL", row.ResultText);
+        var cell = editor.Columns.First(c => c.Group == ColumnGroup.Response && c.Title.EndsWith("CreateCustomer.name")).CellIndex;
+        Assert.NotNull(editor.FailureAt(row, cell));                      // the cell keeps its red mark
+    }
 }

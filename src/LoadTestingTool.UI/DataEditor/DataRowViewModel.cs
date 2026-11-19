@@ -256,6 +256,9 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
     /// <summary>Whether a failure of this row is a known bug (its expected cell carries a bug tag for the failure's environment); set by the editor.</summary>
     internal Func<DataRowViewModel, FailureDetail, bool>? KnownBugCheck { get; set; }
 
+    /// <summary>The path of a failed assertion as the column header spells it (the event can carry it in lower case); set by the editor.</summary>
+    internal Func<FailureDetail, string>? PathText { get; set; }
+
     /// <summary>PASS, FAIL, or BUG when everything that failed is a known bug (so the row is not a failure).</summary>
     public string ResultText => Outcome is null ? "—" : Standing;
     public string ResultColor => Outcome is null ? "#5E7590" : Standing switch { "PASS" => "#39D39B", "BUG" => "#F6A623", _ => "#FF7588" };
@@ -268,15 +271,15 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
             if (outcome.Passed) return "PASS";
             // Failures beyond the ones kept for the row cannot be checked: then it stays a failure
             if (KnownBugCheck is null || outcome.Failures.Count == 0 || outcome.Problems > outcome.Failures.Count) return "FAIL";
-            return outcome.Failures.All(f => KnownBugCheck(this, f)) ? "BUG" : "FAIL";
+            return outcome.Failures.Where(f => !f.IsSecondary).All(f => KnownBugCheck(this, f)) ? "BUG" : "FAIL";
         }
     }
 
     /// <summary>How many things failed in the latest run (failed assertions and failed steps) that are not known bugs.</summary>
-    public int FailedCount => Outcome is { Passed: false } outcome ? outcome.Failures.Count(f => !(KnownBugCheck?.Invoke(this, f) ?? false)) : 0;
+    public int FailedCount => Outcome is { Passed: false } outcome ? outcome.Failures.Count(f => !f.IsSecondary && !(KnownBugCheck?.Invoke(this, f) ?? false)) : 0;
 
     /// <summary>How many failed assertions of the latest run are tagged known bugs.</summary>
-    public int BugCount => Outcome is { Passed: false } outcome && KnownBugCheck is { } check ? outcome.Failures.Count(f => check(this, f)) : 0;
+    public int BugCount => Outcome is { Passed: false } outcome && KnownBugCheck is { } check ? outcome.Failures.Count(f => !f.IsSecondary && check(this, f)) : 0;
 
     /// <summary>How many cells of the row carry a &lt;bug: …&gt; tag (shown as ⚑ and a number beside the status, run or not).</summary>
     public int BugTagCount => Cells.Count(c => c is not null && c.Contains("<bug", StringComparison.OrdinalIgnoreCase));
@@ -298,7 +301,7 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
 
     /// <summary>One line per failure for the tooltip of the counts: whether it counts as failed or as a known bug, and which field.</summary>
     public string CountsDetail => Outcome is not { Passed: false } outcome ? string.Empty
-        : string.Join("\n", outcome.Failures.Select(f => (KnownBugCheck?.Invoke(this, f) ?? false ? "BUG    " : "FAILED ") + (f.IsAssertion ? $"{f.StepName}.{f.ResponsePath}" : $"{f.StepName} (step)") + (f.Environment.Length > 0 ? $" [{f.Environment}]" : string.Empty)));
+        : string.Join("\n", outcome.Failures.Select(f => (f.IsSecondary ? "ALSO   " : KnownBugCheck?.Invoke(this, f) ?? false ? "BUG    " : "FAILED ") + (f.IsAssertion ? PathText?.Invoke(f) ?? $"{f.StepName}.{f.ResponsePath}" : $"{f.StepName} (step)") + (f.Environment.Length > 0 ? $" [{f.Environment}]" : string.Empty)));
 
     /// <summary>True when the row's latest run failed for something other than a known bug.</summary>
     public bool FailedForReal => Outcome is not null && Standing == "FAIL";

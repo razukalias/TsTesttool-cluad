@@ -3,9 +3,12 @@ using System.Text.Json;
 namespace LoadTestingTool.UI.DataEditor;
 
 /// <summary>One thing that went wrong for a data row in a run: a failed step, or a failed assertion.</summary>
-public sealed record FailureDetail(string StepName, string? ResponsePath, string? Verb, string? Expected, string? Actual, string Message, string Environment, bool Bare = false)
+public sealed record FailureDetail(string StepName, string? ResponsePath, string? Verb, string? Expected, string? Actual, string Message, string Environment, bool Bare = false, bool Secondary = false)
 {
     public bool IsAssertion => ResponsePath is not null;
+
+    /// <summary>A failed assertion of a step that also failed for its own reason: the step error is what counts, the assertion stays marked in its cell.</summary>
+    public bool IsSecondary => Secondary;
 }
 
 /// <summary>How one data row (a request/response row pair) fared in the latest run, across steps, iterations, threads and environments.</summary>
@@ -19,7 +22,10 @@ public sealed class RowOutcome
     public int ExplainedRequests { get; internal set; }
 
     /// <summary>Distinct things to look at: failed assertions plus steps that failed for their own reason.</summary>
-    public int Problems => FailedAssertions + FailedRequests - ExplainedRequests;
+    public int Problems => FailedAssertions + FailedRequests - ExplainedRequests - SecondaryAssertions;
+
+    /// <summary>Failed assertions of steps that failed for their own reason; the step error counts instead.</summary>
+    public int SecondaryAssertions { get; internal set; }
     public long MaxDurationMs { get; internal set; }
     public List<FailureDetail> Failures { get; } = [];
     public bool Passed => FailedRequests == 0 && FailedAssertions == 0 && Requests > 0;
@@ -66,12 +72,28 @@ public static class RunResultsReader
         return new RunResults { RunId = runId, WhenLocal = runFiles.Max(f => f.LastWriteTime), Rows = rows };
     }
 
-    /// <summary>A step marked failed only because one of its assertions failed is not a second problem; keep the assertion.</summary>
+    /// <summary>
+    /// One real error must not count twice. A step marked failed only because its assertions failed is not a second problem: the assertions count.
+    /// A step that failed for its own reason (HTTP status, timeout, missing reference) counts as that one error, and its failed assertions stay marked in their cells but are not counted.
+    /// Step and assertion are matched by name and environment ignoring case: the runner can write the step name differently in the two events.
+    /// </summary>
     private static void FoldExplainedRequests(RowOutcome outcome)
     {
-        var explained = outcome.Failures.Where(f => f.Bare && outcome.Failures.Any(a => a.IsAssertion && a.StepName == f.StepName && a.Environment == f.Environment)).ToList();
+        static bool Same(FailureDetail a, FailureDetail b) => string.Equals(a.StepName, b.StepName, StringComparison.OrdinalIgnoreCase) && string.Equals(a.Environment, b.Environment, StringComparison.OrdinalIgnoreCase);
+        var explained = outcome.Failures.Where(f => !f.IsAssertion && f.Bare && outcome.Failures.Any(a => a.IsAssertion && Same(a, f))).ToList();
         foreach (var failure in explained) outcome.Failures.Remove(failure);
         outcome.ExplainedRequests = explained.Count;
+        // steps with an error of their own: their assertions are secondary
+        var own = outcome.Failures.Where(f => !f.IsAssertion).ToList();
+        var secondary = 0;
+        for (var i = 0; i < outcome.Failures.Count; i++)
+        {
+            var failure = outcome.Failures[i];
+            if (!failure.IsAssertion || !own.Any(o => Same(o, failure))) continue;
+            outcome.Failures[i] = failure with { Secondary = true };
+            secondary++;
+        }
+        outcome.SecondaryAssertions = secondary;
     }
 
     /// <summary>Largest run the editor refreshes by itself; bigger ones (long load tests) are only read when asked.</summary>

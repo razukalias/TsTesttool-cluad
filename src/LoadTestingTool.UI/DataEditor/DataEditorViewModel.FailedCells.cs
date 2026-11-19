@@ -75,7 +75,16 @@ public sealed partial class DataEditorViewModel
     // "Step.path" (without the verb) -> grid cell of that expected column; rebuilt when the columns change. Looked up for every cell that is drawn.
     private IReadOnlyList<GridColumn>? _failureCellsFor;
     private Dictionary<string, int> _failureCells = new(StringComparer.OrdinalIgnoreCase);
-    private Dictionary<string, int> _responseColumnOf = new(StringComparer.OrdinalIgnoreCase);   // "Step.path" -> column of the response sheet, whatever step is shown
+    private Dictionary<string, int> _responseColumnOf = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, string> _headerSpelling = new(StringComparer.OrdinalIgnoreCase);   // "step.path" in any case -> the header's own spelling, without the verb   // "Step.path" -> column of the response sheet, whatever step is shown
+
+    /// <summary>"Step.path" the way the column header writes it (capitals as typed), for tooltips and messages.</summary>
+    internal string DisplayPath(FailureDetail failure)
+    {
+        CellOfFailure(failure);   // makes sure the header map is current
+        var key = $"{failure.StepName}.{failure.ResponsePath}";
+        return _headerSpelling.TryGetValue(key, out var spelling) ? spelling : key;
+    }
 
     private int CellOfFailure(FailureDetail failure)
     {
@@ -83,7 +92,8 @@ public sealed partial class DataEditorViewModel
         {
             _responseColumnOf = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             var headers = _document.Response.Headers;
-            for (var i = 0; i < headers.Count; i++) _responseColumnOf.TryAdd(StripVerb(headers[i]), i);
+            _headerSpelling = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < headers.Count; i++) { _responseColumnOf.TryAdd(StripVerb(headers[i]), i); _headerSpelling.TryAdd(StripVerb(headers[i]), StripVerb(headers[i])); }
             _failureCells = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             foreach (var column in Columns.Where(c => c.Group == ColumnGroup.Response)) _failureCells.TryAdd(StripVerb(column.Title), column.CellIndex);
             _failureCellsFor = Columns;

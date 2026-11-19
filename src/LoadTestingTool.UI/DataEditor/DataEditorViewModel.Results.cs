@@ -104,6 +104,7 @@ public sealed partial class DataEditorViewModel
         foreach (var row in _allRows)
         {
             row.KnownBugCheck = IsKnownBug;
+            row.PathText = DisplayPath;
             row.Outcome = _results?.Find(row.TestcaseIndex, row.CurrentDataId);
         }
         UpdateRunSummary();   // also after Undo / Redo, which rebuild the rows
