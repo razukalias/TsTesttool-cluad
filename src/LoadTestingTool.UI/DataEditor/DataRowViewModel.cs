@@ -278,6 +278,11 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
     /// <summary>How many failed assertions of the latest run are tagged known bugs.</summary>
     public int BugCount => Outcome is { Passed: false } outcome && KnownBugCheck is { } check ? outcome.Failures.Count(f => check(this, f)) : 0;
 
+    /// <summary>How many cells of the row carry a &lt;bug: …&gt; tag (shown as ⚑ and a number beside the status, run or not).</summary>
+    public int BugTagCount => Cells.Count(c => c is not null && c.Contains("<bug", StringComparison.OrdinalIgnoreCase));
+
+    public string BugTagText => BugTagCount > 0 ? $"⚑ {BugTagCount}" : string.Empty;
+
     /// <summary>"2 failed · 1 bug" beside the PASS / FAIL / BUG status; empty when nothing failed.</summary>
     public string CountsText
     {
@@ -301,7 +306,7 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
     /// <summary>True when everything that failed in the latest run is a known bug.</summary>
     public bool OnlyKnownBugs => Outcome is not null && Standing == "BUG";
 
-    internal void RefreshStanding() { if (Outcome is not null) OnPropertyChanged(nameof(ResultText)); OnPropertyChanged(nameof(ResultColor)); OnPropertyChanged(nameof(CountsText)); OnPropertyChanged(nameof(CountsDetail)); }
+    internal void RefreshStanding() { if (Outcome is not null) OnPropertyChanged(nameof(ResultText)); OnPropertyChanged(nameof(ResultColor)); OnPropertyChanged(nameof(CountsText)); OnPropertyChanged(nameof(CountsDetail)); OnPropertyChanged(nameof(BugTagText)); }
 
     public int TestcaseIndex { get; }
     public TableRow Request { get; }
@@ -322,6 +327,7 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
     private void OnCellsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (_suppress || e.Action != NotifyCollectionChangedAction.Replace) return;
+        OnPropertyChanged(nameof(BugTagText));   // a typed or pasted bug tag counts at once
         var index = e.NewStartingIndex;
         _edited(this, index, Cells[index] ?? string.Empty);
     }

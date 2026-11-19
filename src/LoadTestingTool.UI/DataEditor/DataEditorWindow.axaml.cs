@@ -467,6 +467,7 @@ public partial class DataEditorWindow : Window
                 formatted.ExpectedColumn = column.Group == ColumnGroup.Response;
                 formatted.FailureAt = editor.FailureAt;
                 formatted.OpenFailure = ShowFailurePopup;
+                formatted.OpenBug = ShowBugPopup;
                 formatted.Selection = editor.CellSelection;
             }
             if (created is FormattedTextColumn formatted2) formatted2.OpenWizard = (cell, anchor) => ShowCellWizard(cell, anchor, column);
@@ -578,7 +579,10 @@ public partial class DataEditorWindow : Window
             text.Bind(TextBlock.ForegroundProperty, new Binding("ResultColor"));
             var counts = new TextBlock { FontSize = 10.5, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Foreground = Brush.Parse("#8EA4BC"), Tag = "row-counts" };
             counts.Bind(TextBlock.TextProperty, new Binding("CountsText"));
-            var panel = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Children = { text, counts } };
+            var tagged = new TextBlock { FontSize = 10.5, Margin = new Avalonia.Thickness(6, 0, 0, 0), VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Foreground = Brush.Parse("#8CC1FF"), Tag = "row-bug-tags" };
+            tagged.Bind(TextBlock.TextProperty, new Binding("BugTagText"));
+            ToolTip.SetTip(tagged, "Cells of this row that are tagged as a known bug");
+            var panel = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Children = { text, counts, tagged } };
             panel.Bind(ToolTip.TipProperty, new Binding("CountsDetail"));   // which failures count as failed and which as known bugs
             return panel;
         })

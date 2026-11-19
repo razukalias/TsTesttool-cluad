@@ -140,4 +140,33 @@ public sealed partial class DataEditorWindow
         content.Children.Add(new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { close, assign } });
         flyout.ShowAt(anchor);
     }
+
+    /// <summary>Click on a ⚑ flag: which environments the bug tag covers and its comment; the comment can be changed here and the tag removed.</summary>
+    private void ShowBugPopup(DataGridCell cell, Control anchor)
+    {
+        if (_shell.Current is not { } editor || cell.DataContext is not DataRowViewModel row || cell.Tag is not int index) return;
+        var tag = LoadTestingTool.Execution.BugTag.Parse(row.Cells[index] ?? string.Empty).Tag;
+        if (tag is null) return;
+        var title = editor.Columns.FirstOrDefault(c => c.CellIndex == index)?.Title ?? string.Empty;
+        var environments = string.Join(", ", tag.Environments);
+        var comment = new TextBox { Text = tag.Description, Watermark = "What is the bug? (a ticket number, what is wrong)", AcceptsReturn = false, MinWidth = 320, Tag = "bug-comment" };
+        var flyout = new Flyout { Placement = PlacementMode.BottomEdgeAlignedRight };
+        var save = new Button { Content = "Save comment", Classes = { "primary" }, Tag = "bug-comment-save" };
+        save.Click += (_, _) =>
+        {
+            var text = (comment.Text ?? string.Empty).Replace(';', ',').Replace('>', ')').Replace('<', '(').Trim();
+            flyout.Hide();
+            if (text != tag.Description) editor.TagCellsAsBug([(row, index)], environments, text);
+        };
+        var remove = new Button { Content = "Remove the bug tag", Tag = "bug-remove" };
+        remove.Click += (_, _) => { flyout.Hide(); editor.RemoveBugTags([(row, index)]); };
+        var content = new StackPanel { Spacing = 6, MinWidth = 340, MaxWidth = 520 };
+        content.Children.Add(new TextBlock { Text = $"Known bug · {title} · Data ID {row.CurrentDataId}", FontWeight = Avalonia.Media.FontWeight.SemiBold });
+        content.Children.Add(new TextBlock { Text = $"Environments: {environments}", FontSize = 11, Foreground = Avalonia.Media.Brush.Parse("#8EA4BC"), Tag = "bug-environments" });
+        content.Children.Add(new TextBlock { Text = "A failing assertion of this cell does not fail the test; it is listed in the Bugs tab.", FontSize = 11, Foreground = Avalonia.Media.Brush.Parse("#8EA4BC"), TextWrapping = Avalonia.Media.TextWrapping.Wrap });
+        content.Children.Add(comment);
+        content.Children.Add(new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { remove, save } });
+        flyout.Content = content;
+        flyout.ShowAt(anchor);
+    }
 }

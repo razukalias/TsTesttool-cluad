@@ -47,9 +47,10 @@ public sealed class FormattedTextColumn : DataGridTextColumn
     }
 
     /// <summary>A small ⚑ in front of a cell that holds a &lt;bug: …&gt; tag; its tooltip says what the tag does, or what is wrong with it.</summary>
-    private Control BugMarked(TextBlock text)
+    private Control BugMarked(TextBlock text, DataGridCell? cell = null)
     {
-        var flag = new TextBlock { Text = "⚑", FontSize = 11, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Margin = new Avalonia.Thickness(4, 0, 0, 0), IsVisible = false, Tag = "bug-mark" };
+        var flag = new TextBlock { Text = "⚑", FontSize = 11, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Margin = new Avalonia.Thickness(4, 0, 0, 0), IsVisible = false, Tag = "bug-mark", Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand) };
+        flag.PointerPressed += (_, e) => { if (cell is not null && OpenBug is not null) { e.Handled = true; OpenBug(cell, flag); } };   // click the flag: what the bug is
         var holder = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Children = { flag, text } };
         void Refresh()
         {
@@ -94,6 +95,9 @@ public sealed class FormattedTextColumn : DataGridTextColumn
 
     /// <summary>Called with the cell, the mark that was clicked, the row and the failure.</summary>
     public Action<DataGridCell, Control, DataRowViewModel, FailureDetail>? OpenFailure { get; set; }
+
+    /// <summary>Opens the popup of a ⚑ known-bug flag (environments, comment, edit and remove); set by the window.</summary>
+    public Action<DataGridCell, Control>? OpenBug { get; set; }
 
     /// <summary>A red tint and a small red mark on a cell whose assertion failed in the latest run; it goes once a value is assigned or a new run passes.</summary>
     private Control FailureMarked(Control content, DataGridCell cell)
@@ -166,7 +170,7 @@ public sealed class FormattedTextColumn : DataGridTextColumn
             text.Bind(TextBlock.TextWrappingProperty, new Binding($"Formats[{_cell}].Wrapping"));
             text.Bind(TextBlock.ForegroundProperty, new Binding($"Formats[{_cell}].Foreground"));
         }
-        if (element is TextBlock plain && _rule is null) return Tinted(BugMarked(plain), cell);
+        if (element is TextBlock plain && _rule is null) return Tinted(BugMarked(plain, cell), cell);
         if (_rule is null || element is not TextBlock shown) return Tinted(element, cell);
 
         // A ⚠ beside a value the runner would misread, with the reason as its tooltip; an ⓘ where it only deserves a note.

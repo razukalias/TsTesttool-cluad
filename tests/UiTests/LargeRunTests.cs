@@ -284,6 +284,38 @@ public class BugMenuTests
     }
 }
 
+public class BugCountAndCommentTests
+{
+    [Fact]
+    public void A_row_counts_its_bug_tagged_cells_beside_the_status()
+    {
+        using var dir = new TempDir();
+        var editor = new DataEditorViewModel(Samples.CreateLarge(dir, rows: 2), "Customers");
+        var expected = editor.Columns.Where(c => c.Group == ColumnGroup.Response).Select(c => c.CellIndex).Take(2).ToList();
+        var row = editor.VisibleRows[0];
+        Assert.Equal(string.Empty, row.BugTagText);
+        editor.TagCellsAsBug([(row, expected[0]), (row, expected[1])], "all", "ticket 12");
+        Assert.Equal("⚑ 2", row.BugTagText);
+        editor.RemoveBugTags([(row, expected[0])]);
+        Assert.Equal("⚑ 1", row.BugTagText);
+    }
+
+    [Fact]
+    public void Changing_the_comment_keeps_the_environments()
+    {
+        using var dir = new TempDir();
+        var editor = new DataEditorViewModel(Samples.CreateLarge(dir, rows: 2), "Customers");
+        var cell = editor.Columns.First(c => c.Group == ColumnGroup.Response).CellIndex;
+        var row = editor.VisibleRows[0];
+        editor.TagCellsAsBug([(row, cell)], "test, dev", "old");
+        var tag = LoadTestingTool.Execution.BugTag.Parse(row.Cells[cell]).Tag!;
+        editor.TagCellsAsBug([(row, cell)], string.Join(", ", tag.Environments), "ticket 99");
+        var after = LoadTestingTool.Execution.BugTag.Parse(row.Cells[cell]).Tag!;
+        Assert.Equal("ticket 99", after.Description);
+        Assert.Equal(tag.Environments, after.Environments);
+    }
+}
+
 public class CellSelectionTests
 {
     private static (DataEditorViewModel Editor, int Request, int Expected) Open(TempDir dir)
