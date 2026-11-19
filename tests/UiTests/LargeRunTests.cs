@@ -162,3 +162,93 @@ public class LargeRunTests
         window.Close();
     }
 }
+
+public class EnvironmentChoiceTests
+{
+    [Fact]
+    public void The_failed_views_can_be_limited_to_one_environment()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        FakeRun.Write(FakeRun.Folder(path), $"events_{FakeRun.RunId}.ndjson",
+            FakeRun.Assertion(1, "CUST001", "CreateCustomer", "name", "eq", "Customer 1", "x", env: "dev"),
+            FakeRun.Assertion(1, "CUST002", "CreateCustomer", "name", "eq", "Customer 2", "y", env: "test"),
+            FakeRun.Assertion(1, "CUST003", "CreateCustomer", "name", "eq", "Customer 3", "z", env: "test"));
+        var editor = new DataEditorViewModel(path, "Customers");
+        editor.ApplyResults(RunResultsReader.ReadLatest(editor.ResultsFolder));
+        Assert.Equal(["All environments", "dev", "test"], editor.EnvironmentOptions.ToArray());
+
+        editor.ShowFailedOnly = true; editor.ShowFailedCells = true;
+        Assert.Equal(3, editor.VisibleRows.Count);
+        Assert.Equal(3, editor.FailedCells.Count);
+
+        editor.EnvironmentChoice = "test";
+        Assert.Equal(["CUST002", "CUST003"], editor.VisibleRows.Select(r => r.CurrentDataId).ToArray());
+        Assert.Equal(2, editor.FailedCells.Count);
+        Assert.All(editor.FailedCells, c => Assert.Equal("test", c.Environment));
+
+        editor.EnvironmentChoice = "dev";
+        Assert.Equal(["CUST001"], editor.VisibleRows.Select(r => r.CurrentDataId).ToArray());
+
+        editor.EnvironmentChoice = EnvironmentChoiceTests_All;
+        Assert.Equal(3, editor.VisibleRows.Count);
+    }
+
+    private const string EnvironmentChoiceTests_All = DataEditorViewModel.AllEnvironments;
+}
+
+public class TagAsBugTests
+{
+    [Fact]
+    public void Any_expected_cell_can_be_tagged_as_a_known_bug_and_untagged_again()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        var editor = new DataEditorViewModel(path, "Customers");
+        var cell = editor.Columns.First(c => c.Group == ColumnGroup.Response).CellIndex;
+        var row = editor.VisibleRows[0];
+        var before = row.Cells[cell];
+
+        editor.TagAsBug([row], cell, "dev,test", "login is slow");   // no run at all: the status does not matter
+        var (value, tag) = LoadTestingTool.Execution.BugTag.Parse(row.Cells[cell]);
+        Assert.Equal(before.Trim(), value);
+        Assert.Equal(["dev", "test"], tag!.Environments.ToArray());
+        Assert.Equal("login is slow", tag.Description);
+
+        editor.TagAsBug([row], cell, "all", "again");                // replaces the tag, never stacks two
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(row.Cells[cell], "<bug"));
+
+        editor.RemoveBugTag([row], cell);
+        Assert.Equal(before.Trim(), row.Cells[cell].Trim());
+        editor.UndoCommand.Execute(null);   // undo rebuilds the rows
+        Assert.Contains("<bug", editor.VisibleRows[0].Cells[cell]);
+    }
+
+    [Fact]
+    public void A_request_cell_cannot_be_tagged()
+    {
+        using var dir = new TempDir();
+        var editor = new DataEditorViewModel(Samples.CreateLarge(dir, rows: 2), "Customers");
+        var request = editor.Columns.First(c => c.Group == ColumnGroup.Request).CellIndex;
+        var row = editor.VisibleRows[0];
+        var before = row.Cells[request];
+        editor.TagAsBug([row], request, "all");
+        Assert.Equal(before, row.Cells[request]);
+        Assert.False(editor.IsExpectedCell(request));
+    }
+
+    [Fact]
+    public void A_failed_cell_gets_what_the_run_got_as_the_description()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 2);
+        FakeRun.Write(FakeRun.Folder(path), $"events_{FakeRun.RunId}.ndjson",
+            FakeRun.Assertion(1, "CUST001", "CreateCustomer", "name", "eq", "Customer 1", "Kund 1", env: "test"));
+        var editor = new DataEditorViewModel(path, "Customers");
+        editor.ApplyResults(RunResultsReader.ReadLatest(editor.ResultsFolder));
+        var cell = editor.Columns.First(c => c.Group == ColumnGroup.Response && c.Title.EndsWith("CreateCustomer.name")).CellIndex;
+        var row = editor.VisibleRows.First(r => r.CurrentDataId == "CUST001");
+        editor.TagAsBug([row], cell, "test");
+        Assert.Equal("got Kund 1", LoadTestingTool.Execution.BugTag.Parse(row.Cells[cell]).Tag!.Description);
+    }
+}

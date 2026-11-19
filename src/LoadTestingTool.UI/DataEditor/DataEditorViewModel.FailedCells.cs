@@ -46,7 +46,7 @@ public sealed partial class DataEditorViewModel
             foreach (var row in VisibleRows)
             {
                 if (row.Outcome is not { } outcome) continue;
-                foreach (var failure in outcome.Failures.Where(f => f.IsAssertion))
+                foreach (var failure in FailuresOf(outcome).Where(f => f.IsAssertion))
                     if (CellOfFailure(failure) is >= 1 and var cell && !Assigned(row, cell, failure)) cells.Add(cell);
             }
         FailedColumnCells = cells;
@@ -78,7 +78,7 @@ public sealed partial class DataEditorViewModel
     {
         // While the columns are rebuilt (another step chosen) a cell can still hold a row from the other column set: no mark, no crash
         if (row.Outcome is not { } outcome || cellIndex < 1 || cellIndex >= row.Cells.Count) return null;
-        foreach (var failure in outcome.Failures)
+        foreach (var failure in FailuresOf(outcome))
             if (failure.IsAssertion && CellOfFailure(failure) == cellIndex && !Assigned(row, cellIndex, failure)) return failure;
         return null;
     }
@@ -108,7 +108,7 @@ public sealed partial class DataEditorViewModel
         foreach (var row in VisibleRows)
         {
             if (row.Outcome is not { } outcome) continue;
-            foreach (var failure in outcome.Failures.Where(f => f.IsAssertion))
+            foreach (var failure in FailuresOf(outcome).Where(f => f.IsAssertion))
             {
                 var cell = CellOfFailure(failure);
                 if (cell < 1 || Assigned(row, cell, failure)) continue;

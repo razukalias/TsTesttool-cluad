@@ -670,3 +670,7 @@ The automated suites pass, but none of the items below has been tried on screen 
 - Fixed with bulk list replacement, a virtualized failed-cells list, lazily built cell buttons/markers, a cached failure lookup and bounds checks. Regression tests in `LargeRunTests`.
 - New option **Failed columns only**: hides every column without a failed assertion (combinable with Failed rows only). It shows the failed *expected* columns, not their matching request columns.
 - Known remaining cost: the "all steps" grid with ~90 columns takes about 0.85 s to rebuild; that is the DataGrid itself. Not yet tried on the real 4500-cell workbook.
+
+## Done: environment drop-down and "Tag cell as known bug" (2026-11-19)
+- Results of a run cover all environments mixed. A drop-down next to the failed-view checkboxes (shown when the run has more than one environment) picks which environment the failed rows, columns, cells and red marks refer to; "All environments" is the default.
+- Right-click an expected-value cell: **⚑ Tag cell as known bug** (all environments, or one environment) and **Remove the bug tag**. Works whether or not the cell failed, on every selected row, one undo step. A failed cell gets "got <actual>" as description. Request cells are refused.

@@ -36,6 +36,41 @@ public sealed partial class DataEditorViewModel
     public string ResultsFolder => Path.Combine(Path.GetDirectoryName(WorkbookPath) ?? ".", "Results");
 
     [ObservableProperty] private bool _showFailedOnly;
+
+    public const string AllEnvironments = "All environments";
+
+    /// <summary>"All environments" plus every environment that has a failure in the shown run; empty when the run has no environment names.</summary>
+    public ObservableCollection<string> EnvironmentOptions { get; } = [];
+
+    /// <summary>Which environment's failures the failed rows / columns / cells views and the cell marks use; all of them mixed by default.</summary>
+    [ObservableProperty] private string _environmentChoice = AllEnvironments;
+
+    public bool HasEnvironmentChoice => EnvironmentOptions.Count > 2;
+
+    partial void OnEnvironmentChoiceChanged(string value)
+    {
+        if (value is null) { EnvironmentChoice = AllEnvironments; return; }
+        ApplyFilter();   // rebuilds the rows, so the cell marks are drawn again too
+        RefreshRowFailures();
+    }
+
+    private bool EnvironmentPicked => EnvironmentChoice is { Length: > 0 } choice && choice != AllEnvironments;
+
+    /// <summary>The failures of a row in the chosen environment (all of them when none is chosen).</summary>
+    private IEnumerable<FailureDetail> FailuresOf(RowOutcome outcome)
+        => EnvironmentPicked ? outcome.Failures.Where(f => string.Equals(f.Environment, EnvironmentChoice, StringComparison.OrdinalIgnoreCase)) : outcome.Failures;
+
+    private bool RowFailed(RowOutcome? outcome)
+        => outcome is not null && (EnvironmentPicked ? FailuresOf(outcome).Any() : !outcome.Passed);
+
+    private void RefreshEnvironmentOptions()
+    {
+        var names = _results?.Rows.Values.SelectMany(r => r.Failures).Select(f => f.Environment).Where(e => e.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList() ?? [];
+        var options = names.Count == 0 ? [] : new[] { AllEnvironments }.Concat(names).ToList();
+        if (!options.SequenceEqual(EnvironmentOptions)) { EnvironmentOptions.Clear(); foreach (var o in options) EnvironmentOptions.Add(o); }
+        if (!options.Contains(EnvironmentChoice)) EnvironmentChoice = AllEnvironments;
+        OnPropertyChanged(nameof(HasEnvironmentChoice));
+    }
     [ObservableProperty] private string _runSummaryText = "No results yet";
     [ObservableProperty] private FailureViewModel? _selectedFailure;
 
@@ -58,9 +93,10 @@ public sealed partial class DataEditorViewModel
             ? "No results yet"
             : $"Last run {results.WhenLocal.ToString("d MMM HH:mm", CultureInfo.CurrentCulture)}: {results.PassedRows} passed, {results.FailedRows} failed";
         OnPropertyChanged(nameof(HasResults));
+        RefreshEnvironmentOptions();
         AssignOutcomes();
         UpdateTestcaseResults();
-        if (ShowFailedOnly) ApplyFilter(); // otherwise the rows stay as they are, so selection and scroll position survive a refresh
+        if (ShowFailedOnly || EnvironmentPicked) ApplyFilter(); // otherwise the rows stay as they are, so selection and scroll position survive a refresh
         RefreshRowFailures();
         if (ShowFailedCells) RefreshFailedCells();
         if (ShowFailedColumns) RefreshFailedColumns();
@@ -105,7 +141,7 @@ public sealed partial class DataEditorViewModel
         var outcome = SelectedRow?.Outcome;
         if (outcome is null) { RowResultHeadline = string.Empty; return; }
 
-        foreach (var failure in outcome.Failures) RowFailures.Add(DescribeFailure(failure));
+        foreach (var failure in FailuresOf(outcome)) RowFailures.Add(DescribeFailure(failure));
         var problems = outcome.Problems;
         RowResultHeadline = outcome.Passed
             ? $"Passed · {outcome.Requests} {(outcome.Requests == 1 ? "request" : "requests")} · slowest {outcome.MaxDurationMs} ms"

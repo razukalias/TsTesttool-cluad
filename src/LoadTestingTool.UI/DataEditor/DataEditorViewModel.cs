@@ -266,7 +266,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         {
             var row = _allRows[n];
             if (numbers.Count > 0 && !numbers.Contains(n + 1)) continue;
-            if (ShowFailedOnly && row.Outcome is not { Passed: false }) continue;
+            if (ShowFailedOnly && !RowFailed(row.Outcome)) continue;
             if (!PassesColumnFilters(row)) continue;
             if (text.Length == 0 || row.Cells.Any(c => c.Contains(text, StringComparison.OrdinalIgnoreCase)))
                 shown.Add(row);
