@@ -1460,10 +1460,16 @@ public sealed partial class MainWindow
         => scope is null || (testcase.Equals(scope.Testcase, StringComparison.OrdinalIgnoreCase) && (scope.Step is null || step.Equals(scope.Step, StringComparison.OrdinalIgnoreCase)));
 
     private List<DashboardRequest> ScopedRequests(InstanceInfo item)
-        => ActiveScope(item) is { } scope ? item.Requests.Where(r => InScope(scope, r.Testcase, r.StepName)).ToList() : item.Requests;
+    {
+        ApplyBugTags(item);   // the workbook's bug tags as they are now, not only as they were when the run started
+        return ActiveScope(item) is { } scope ? item.Requests.Where(r => InScope(scope, r.Testcase, r.StepName)).ToList() : item.Requests;
+    }
 
     private List<AssertionInfo> ScopedAssertions(InstanceInfo item)
-        => ActiveScope(item) is { } scope ? item.Assertions.Where(a => InScope(scope, a.Testcase, a.StepName)).ToList() : item.Assertions;
+    {
+        ApplyBugTags(item);
+        return ActiveScope(item) is { } scope ? item.Assertions.Where(a => InScope(scope, a.Testcase, a.StepName)).ToList() : item.Assertions;
+    }
 
     private static string ScopeText(DataEditor.RunScope scope) => scope.Step is null ? $"testcase {scope.Testcase}" : $"step {scope.Step} of {scope.Testcase}";
 
@@ -1964,7 +1970,7 @@ public sealed partial class MainWindow
 }
 
 /// <param name="TestcaseIndex">The testcase's number in the workbook, with <paramref name="ExcelRow"/> and <paramref name="StepOrder"/> the sort key that lists steps in workbook order (0 when an older run did not record them).</param>
-public sealed record DashboardRequest(string StepName, string StepType, string Testcase, string DataId, string Environment, string Result, long DurationMs, string FailureCategory, string Error, int TestcaseIndex = 0, int ExcelRow = 0, int StepOrder = 0)
+public sealed record DashboardRequest(string StepName, string StepType, string Testcase, string DataId, string Environment, string Result, long DurationMs, string FailureCategory, string Error, int TestcaseIndex = 0, int ExcelRow = 0, int StepOrder = 0, string RunResult = "")
 {
     /// <summary>Steps in workbook order: environment, then testcase, then the data row's position in the sheet, then the step's position. Ties keep the order they finished in.</summary>
     public static List<DashboardRequest> InWorkbookOrder(IEnumerable<DashboardRequest> requests)

@@ -253,8 +253,32 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ResultText), nameof(ResultColor))]
     private RowOutcome? _outcome;
 
-    public string ResultText => Outcome is null ? "—" : Outcome.Passed ? "PASS" : "FAIL";
-    public string ResultColor => Outcome is null ? "#5E7590" : Outcome.Passed ? "#39D39B" : "#FF7588";
+    /// <summary>Whether a failure of this row is a known bug (its expected cell carries a bug tag for the failure's environment); set by the editor.</summary>
+    internal Func<DataRowViewModel, FailureDetail, bool>? KnownBugCheck { get; set; }
+
+    /// <summary>PASS, FAIL, or BUG when everything that failed is a known bug (so the row is not a failure).</summary>
+    public string ResultText => Outcome is null ? "—" : Standing;
+    public string ResultColor => Outcome is null ? "#5E7590" : Standing switch { "PASS" => "#39D39B", "BUG" => "#F6A623", _ => "#FF7588" };
+
+    private string Standing
+    {
+        get
+        {
+            if (Outcome is not { } outcome) return "—";
+            if (outcome.Passed) return "PASS";
+            // Failures beyond the ones kept for the row cannot be checked: then it stays a failure
+            if (KnownBugCheck is null || outcome.Failures.Count == 0 || outcome.Problems > outcome.Failures.Count) return "FAIL";
+            return outcome.Failures.All(f => KnownBugCheck(this, f)) ? "BUG" : "FAIL";
+        }
+    }
+
+    /// <summary>True when the row's latest run failed for something other than a known bug.</summary>
+    public bool FailedForReal => Outcome is not null && Standing == "FAIL";
+
+    /// <summary>True when everything that failed in the latest run is a known bug.</summary>
+    public bool OnlyKnownBugs => Outcome is not null && Standing == "BUG";
+
+    internal void RefreshStanding() { if (Outcome is not null) OnPropertyChanged(nameof(ResultText)); OnPropertyChanged(nameof(ResultColor)); }
 
     public int TestcaseIndex { get; }
     public TableRow Request { get; }

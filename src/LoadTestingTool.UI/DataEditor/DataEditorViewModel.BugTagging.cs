@@ -29,6 +29,8 @@ public sealed partial class DataEditorViewModel
             var tagged = (current.Length > 0 ? current + " " : string.Empty) + $"<bug: {wanted}" + (text.Length > 0 ? $"; {text}" : string.Empty) + ">";
             if (ApplyCell(row, cell, tagged) == CellResult.Changed) changed++;
         }
+        foreach (var row in rows) row.RefreshStanding();   // a tag decides whether a failed row is a failure or a known bug
+        UpdateRunSummary();
         FinishBulk(changed, $"Tagged {changed} {(changed == 1 ? "cell" : "cells")} as known bug ({wanted})", 0, 0);
         if (ShowFailedCells) RefreshFailedCells();
         if (ShowFailedColumns) RefreshFailedColumns();
@@ -40,6 +42,8 @@ public sealed partial class DataEditorViewModel
         if (!IsExpectedCell(cell) || rows.Count == 0) return;
         Record($"remove bug tag from {rows.Count} {(rows.Count == 1 ? "cell" : "cells")}");
         var changed = rows.Count(row => ApplyCell(row, cell, BugTag.Without(row.Cells[cell] ?? string.Empty)) == CellResult.Changed);
+        foreach (var row in rows) row.RefreshStanding();
+        UpdateRunSummary();
         FinishBulk(changed, $"Removed the bug tag from {changed} {(changed == 1 ? "cell" : "cells")}", 0, 0);
     }
 

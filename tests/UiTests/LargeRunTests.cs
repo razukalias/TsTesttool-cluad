@@ -310,3 +310,104 @@ public class WizardBugTagTests
         Assert.True(Bar(vm, vm.VisibleRows.Take(2).ToList(), cell, () => { }).Children.OfType<Avalonia.Controls.Button>().Single(b => b.Tag as string == "bug-untag").IsEnabled);
     }
 }
+
+public class DashboardBugOverlayTests
+{
+    private static readonly System.Reflection.BindingFlags Flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public;
+
+    [AvaloniaFact]
+    public void A_tag_written_after_the_run_makes_the_failure_a_known_bug_in_the_dashboard()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        var dashboard = new LoadTestingTool.UI.MainWindow();
+        var item = Activator.CreateInstance(typeof(LoadTestingTool.UI.MainWindow).Assembly.GetType("LoadTestingTool.UI.InstanceInfo")!, nonPublic: true)!;
+        var type = item.GetType();
+        type.GetProperty("Name")!.SetValue(item, "Demo");
+        type.GetProperty("WorkbookPath")!.SetValue(item, path);
+        ((System.Collections.IList)type.GetProperty("Requests")!.GetValue(item)!).Add(new LoadTestingTool.UI.DashboardRequest("CreateCustomer", "HTTP", "Customers", "CUST002", "", "FAIL", 5, "Assertion", ""));
+        var assertion = new LoadTestingTool.UI.AssertionInfo { TestcaseIndex = 1, Testcase = "Customers", DataId = "CUST002", StepName = "CreateCustomer", ResponsePath = "name", Result = "FAIL", ExpectedValue = "Customer 2", ActualValue = "Kund 2" };
+        ((System.Collections.IList)type.GetProperty("Assertions")!.GetValue(item)!).Add(assertion);
+        var scoped = typeof(LoadTestingTool.UI.MainWindow).GetMethod("ScopedAssertions", Flags)!;
+        var requests = typeof(LoadTestingTool.UI.MainWindow).GetMethod("ScopedRequests", Flags)!;
+
+        scoped.Invoke(dashboard, [item]);
+        Assert.Equal("FAIL", assertion.Result);                           // not tagged: as recorded
+
+        void SetCell(string text)
+        {
+            using (var workbook = new XLWorkbook(path))
+            {
+                var sheet = workbook.Worksheet("response");
+                var column = sheet.Row(1).CellsUsed().First(c => c.GetString().EndsWith("CreateCustomer.name")).Address.ColumnNumber;
+                var idColumn = sheet.Row(1).CellsUsed().First(c => c.GetString().Equals("dataid", StringComparison.OrdinalIgnoreCase)).Address.ColumnNumber;
+                var row = sheet.RowsUsed().First(r => r.Cell(idColumn).GetString() == "CUST002").RowNumber();
+                sheet.Cell(row, column).Value = text;
+                workbook.Save();
+            }
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddSeconds(Random.Shared.Next(5, 5000)));   // the cache looks at the write time
+        }
+
+        SetCell("Customer 2 <bug: all; wrong name>");
+        scoped.Invoke(dashboard, [item]);
+        Assert.Equal("KNOWN_BUG", assertion.Result);
+        Assert.True(assertion.KnownBug);
+        Assert.Equal("wrong name", assertion.BugDescription);
+        var list = (List<LoadTestingTool.UI.DashboardRequest>)requests.Invoke(dashboard, [item])!;
+        Assert.Equal("PASS", list[0].Result);                             // the step only failed because of the bug
+
+        SetCell("Customer 2");                                            // the tag is taken out again
+        scoped.Invoke(dashboard, [item]);
+        Assert.Equal("FAIL", assertion.Result);
+        Assert.Equal("FAIL", ((List<LoadTestingTool.UI.DashboardRequest>)requests.Invoke(dashboard, [item])!)[0].Result);
+    }
+}
+
+public class KnownBugStandingTests
+{
+    [Fact]
+    public void A_row_whose_only_failure_is_a_tagged_known_bug_is_a_bug_not_a_failure()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        FakeRun.Write(FakeRun.Folder(path), $"events_{FakeRun.RunId}.ndjson",
+            FakeRun.Request(1, "CUST001", "CreateCustomer", status: 201),
+            FakeRun.Assertion(1, "CUST001", "CreateCustomer", "name", "eq", "Customer 1", "Customer 1", result: "PASS"),
+            FakeRun.Request(1, "CUST002", "CreateCustomer", result: "FAIL", status: 201),
+            FakeRun.Assertion(1, "CUST002", "CreateCustomer", "name", "eq", "Customer 2", "Kund 2", message: "Values differ"));
+        var editor = new DataEditorViewModel(path, "Customers");
+        editor.ApplyResults(RunResultsReader.ReadLatest(editor.ResultsFolder));
+        var cell = editor.Columns.First(c => c.Group == ColumnGroup.Response && c.Title.EndsWith("CreateCustomer.name")).CellIndex;
+        var row = editor.VisibleRows.First(r => r.CurrentDataId == "CUST002");
+        Assert.Equal("FAIL", row.ResultText);
+        Assert.Contains("1 failed", editor.RunSummaryText);
+
+        editor.ShowFailedOnly = true;
+        Assert.Contains(row, editor.VisibleRows);
+        editor.TagAsBug([row], cell, "all");                           // no re-run needed
+        Assert.Equal("BUG", row.ResultText);
+        Assert.Contains("0 failed", editor.RunSummaryText);
+        Assert.Contains("1 known bug", editor.RunSummaryText);
+        Assert.Null(editor.FailureAt(row, cell));                      // no red mark
+        editor.ShowFailedOnly = false; editor.ShowFailedOnly = true;
+        Assert.DoesNotContain(editor.VisibleRows, r => r.CurrentDataId == "CUST002");   // not listed as a failed row
+
+        editor.RemoveBugTag([editor.VisibleRows.FirstOrDefault() ?? row], cell);
+    }
+
+    [Fact]
+    public void A_bug_tag_for_another_environment_does_not_hide_the_failure()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 2);
+        FakeRun.Write(FakeRun.Folder(path), $"events_{FakeRun.RunId}.ndjson",
+            FakeRun.Request(1, "CUST002", "CreateCustomer", result: "FAIL", status: 201),
+            FakeRun.Assertion(1, "CUST002", "CreateCustomer", "name", "eq", "Customer 2", "Kund 2", env: "prod"));
+        var editor = new DataEditorViewModel(path, "Customers");
+        editor.ApplyResults(RunResultsReader.ReadLatest(editor.ResultsFolder));
+        var cell = editor.Columns.First(c => c.Group == ColumnGroup.Response && c.Title.EndsWith("CreateCustomer.name")).CellIndex;
+        var row = editor.VisibleRows.First(r => r.CurrentDataId == "CUST002");
+        editor.TagAsBug([row], cell, "dev");
+        Assert.Equal("FAIL", row.ResultText);
+    }
+}

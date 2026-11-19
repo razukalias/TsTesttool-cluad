@@ -130,7 +130,10 @@ public sealed class AssertionInfo
     public string AssertionMeaning { get; set; } = string.Empty;
     public string ExpectedValue { get; set; } = string.Empty;
     public string ActualValue { get; init; } = string.Empty;
-    public string Result { get; init; } = string.Empty;
+    public string Result { get; set; } = string.Empty;
+    /// <summary>What the run recorded (before the workbook's bug tags were looked at again), or empty while nothing was changed.</summary>
+    public string RunResult { get; set; } = string.Empty;
+    public bool RunKnownBug { get; set; }
     public string FailureMessage { get; init; } = string.Empty;
     public string ExtractVariable { get; set; } = string.Empty;
     public string Environment { get; init; } = string.Empty;
@@ -138,8 +141,8 @@ public sealed class AssertionInfo
     public int ExpectedValueColumn { get; init; }
     /// <summary>The cell carries a &lt;bug: …&gt; tag for this environment: a failure is a known bug (Result KNOWN_BUG), a pass means it may be fixed.</summary>
     public bool KnownBug { get; set; }
-    public string BugDescription { get; init; } = string.Empty;
-    public string BugEnvironments { get; init; } = string.Empty;
+    public string BugDescription { get; set; } = string.Empty;
+    public string BugEnvironments { get; set; } = string.Empty;
 }
 
 internal sealed record AssertionSnapshot(

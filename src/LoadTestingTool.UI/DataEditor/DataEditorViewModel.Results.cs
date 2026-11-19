@@ -60,8 +60,8 @@ public sealed partial class DataEditorViewModel
     private IEnumerable<FailureDetail> FailuresOf(RowOutcome outcome)
         => EnvironmentPicked ? outcome.Failures.Where(f => string.Equals(f.Environment, EnvironmentChoice, StringComparison.OrdinalIgnoreCase)) : outcome.Failures;
 
-    private bool RowFailed(RowOutcome? outcome)
-        => outcome is not null && (EnvironmentPicked ? FailuresOf(outcome).Any() : !outcome.Passed);
+    private bool RowFailed(DataRowViewModel row)
+        => row.Outcome is { } outcome && (EnvironmentPicked ? FailuresOf(outcome).Any(f => !IsKnownBug(row, f)) : row.FailedForReal);
 
     private void RefreshEnvironmentOptions()
     {
@@ -89,9 +89,6 @@ public sealed partial class DataEditorViewModel
     public void ApplyResults(RunResults? results)
     {
         _results = results;
-        RunSummaryText = results is null
-            ? "No results yet"
-            : $"Last run {results.WhenLocal.ToString("d MMM HH:mm", CultureInfo.CurrentCulture)}: {results.PassedRows} passed, {results.FailedRows} failed";
         OnPropertyChanged(nameof(HasResults));
         RefreshEnvironmentOptions();
         AssignOutcomes();
@@ -104,7 +101,28 @@ public sealed partial class DataEditorViewModel
 
     private void AssignOutcomes()
     {
-        foreach (var row in _allRows) row.Outcome = _results?.Find(row.TestcaseIndex, row.CurrentDataId);
+        foreach (var row in _allRows)
+        {
+            row.KnownBugCheck = IsKnownBug;
+            row.Outcome = _results?.Find(row.TestcaseIndex, row.CurrentDataId);
+        }
+        UpdateRunSummary();   // also after Undo / Redo, which rebuild the rows
+    }
+
+    /// <summary>"Last run …: N passed, M failed, K known bugs": a row whose only failures are tagged known bugs counts as a known bug, not a failure.</summary>
+    private void UpdateRunSummary()
+    {
+        if (_results is null) { RunSummaryText = "No results yet"; return; }
+        var passed = 0; var failed = 0; var bugs = 0;
+        var rows = new Dictionary<(int, string), DataRowViewModel>();
+        foreach (var r in _allRows) rows[(r.TestcaseIndex, r.CurrentDataId.Trim().ToUpperInvariant())] = r;
+        foreach (var (key, outcome) in _results.Rows)
+        {
+            if (outcome.Passed) { passed++; continue; }
+            if (!rows.TryGetValue(key, out var row)) { failed++; continue; }
+            if (row.OnlyKnownBugs) bugs++; else failed++;
+        }
+        RunSummaryText = $"Last run {_results.WhenLocal.ToString("d MMM HH:mm", CultureInfo.CurrentCulture)}: {passed} passed, {failed} failed" + (bugs > 0 ? $", {bugs} known {(bugs == 1 ? "bug" : "bugs")}" : string.Empty);
     }
 
     private void UpdateTestcaseResults()
@@ -141,8 +159,14 @@ public sealed partial class DataEditorViewModel
         var outcome = SelectedRow?.Outcome;
         if (outcome is null) { RowResultHeadline = string.Empty; return; }
 
-        foreach (var failure in FailuresOf(outcome)) RowFailures.Add(DescribeFailure(failure));
+        foreach (var failure in FailuresOf(outcome).Where(f => !IsKnownBug(SelectedRow!, f))) RowFailures.Add(DescribeFailure(failure));
         var problems = outcome.Problems;
+        if (SelectedRow!.OnlyKnownBugs)
+        {
+            RowResultHeadline = $"Known {(problems == 1 ? "bug" : "bugs")} · {problems} tagged, nothing else failed · {outcome.Requests} {(outcome.Requests == 1 ? "request" : "requests")}";
+            RowResultColor = "#F6A623";
+            return;
+        }
         RowResultHeadline = outcome.Passed
             ? $"Passed · {outcome.Requests} {(outcome.Requests == 1 ? "request" : "requests")} · slowest {outcome.MaxDurationMs} ms"
             : $"Failed · {problems} {(problems == 1 ? "problem" : "problems")} in {outcome.Requests} {(outcome.Requests == 1 ? "request" : "requests")}";

@@ -47,7 +47,7 @@ public sealed partial class DataEditorViewModel
             {
                 if (row.Outcome is not { } outcome) continue;
                 foreach (var failure in FailuresOf(outcome).Where(f => f.IsAssertion))
-                    if (CellOfFailure(failure) is >= 1 and var cell && !Assigned(row, cell, failure)) cells.Add(cell);
+                    if (CellOfFailure(failure) is >= 1 and var cell && !Assigned(row, cell, failure) && !IsKnownBug(row, failure)) cells.Add(cell);
             }
         FailedColumnCells = cells;
         FailedColumnsChanged?.Invoke(this, EventArgs.Empty);
@@ -58,16 +58,34 @@ public sealed partial class DataEditorViewModel
     // "Step.path" (without the verb) -> grid cell of that expected column; rebuilt when the columns change. Looked up for every cell that is drawn.
     private IReadOnlyList<GridColumn>? _failureCellsFor;
     private Dictionary<string, int> _failureCells = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, int> _responseColumnOf = new(StringComparer.OrdinalIgnoreCase);   // "Step.path" -> column of the response sheet, whatever step is shown
 
     private int CellOfFailure(FailureDetail failure)
     {
         if (!ReferenceEquals(_failureCellsFor, Columns))
         {
+            _responseColumnOf = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var headers = _document.Response.Headers;
+            for (var i = 0; i < headers.Count; i++) _responseColumnOf.TryAdd(StripVerb(headers[i]), i);
             _failureCells = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             foreach (var column in Columns.Where(c => c.Group == ColumnGroup.Response)) _failureCells.TryAdd(StripVerb(column.Title), column.CellIndex);
             _failureCellsFor = Columns;
         }
         return _failureCells.TryGetValue($"{failure.StepName}.{failure.ResponsePath}", out var cell) ? cell : -1;
+    }
+
+    /// <summary>
+    /// The failure's expected cell carries a <c>&lt;bug: …&gt;</c> tag for the failure's environment: the runner counts it as a known bug, not a failure.
+    /// Read from the workbook table, so it also works while another step's columns are shown, and the moment a tag is written (no re-run needed).
+    /// </summary>
+    internal bool IsKnownBug(DataRowViewModel row, FailureDetail failure)
+    {
+        if (!failure.IsAssertion || row.Response is not { } response) return false;
+        CellOfFailure(failure);   // makes sure the column maps are current
+        if (!_responseColumnOf.TryGetValue($"{failure.StepName}.{failure.ResponsePath}", out var column)) return false;
+        var text = response.GetAt(column);
+        if (text.IndexOf("<bug", StringComparison.OrdinalIgnoreCase) < 0) return false;
+        return LoadTestingTool.Execution.BugTag.Parse(text).Tag is { } tag && tag.AppliesTo(failure.Environment);
     }
 
     private static bool Assigned(DataRowViewModel row, int cell, FailureDetail failure)
@@ -79,7 +97,7 @@ public sealed partial class DataEditorViewModel
         // While the columns are rebuilt (another step chosen) a cell can still hold a row from the other column set: no mark, no crash
         if (row.Outcome is not { } outcome || cellIndex < 1 || cellIndex >= row.Cells.Count) return null;
         foreach (var failure in FailuresOf(outcome))
-            if (failure.IsAssertion && CellOfFailure(failure) == cellIndex && !Assigned(row, cellIndex, failure)) return failure;
+            if (failure.IsAssertion && CellOfFailure(failure) == cellIndex && !Assigned(row, cellIndex, failure) && !IsKnownBug(row, failure)) return failure;
         return null;
     }
 
@@ -111,7 +129,7 @@ public sealed partial class DataEditorViewModel
             foreach (var failure in FailuresOf(outcome).Where(f => f.IsAssertion))
             {
                 var cell = CellOfFailure(failure);
-                if (cell < 1 || Assigned(row, cell, failure)) continue;
+                if (cell < 1 || Assigned(row, cell, failure) || IsKnownBug(row, failure)) continue;
                 found.Add(new FailedCell(row, cell, titles[cell], row.CurrentDataId, ValueParts.SplitCell(row.Cells[cell] ?? string.Empty).Expected, failure.Actual ?? string.Empty,
                     failure.Verb ?? string.Empty, failure.Environment, CanAssign(row, cell, failure)));
             }

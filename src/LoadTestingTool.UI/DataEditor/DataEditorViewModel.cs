@@ -266,7 +266,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         {
             var row = _allRows[n];
             if (numbers.Count > 0 && !numbers.Contains(n + 1)) continue;
-            if (ShowFailedOnly && !RowFailed(row.Outcome)) continue;
+            if (ShowFailedOnly && !RowFailed(row)) continue;
             if (!PassesColumnFilters(row)) continue;
             if (text.Length == 0 || row.Cells.Any(c => c.Contains(text, StringComparison.OrdinalIgnoreCase)))
                 shown.Add(row);
@@ -404,6 +404,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             else EnsureResponse(row).SetAt(column.SheetColumn, value);
         }
         MarkChanged();
+        if (cellIndex > 0) { row.RefreshStanding(); UpdateRunSummary(); }   // a bug tag written or removed changes whether the row failed
         if (ShowFailedCells) RefreshFailedCells();   // an edited cell may have become (or stopped being) a failed one
         if (ShowFailedColumns) RefreshFailedColumns();
     }
