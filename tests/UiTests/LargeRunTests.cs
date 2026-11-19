@@ -252,3 +252,26 @@ public class TagAsBugTests
         Assert.Equal("got Kund 1", LoadTestingTool.Execution.BugTag.Parse(row.Cells[cell]).Tag!.Description);
     }
 }
+
+public class BugMenuTests
+{
+    [AvaloniaFact]
+    public void The_row_menu_offers_the_bug_tag_on_an_expected_cell_and_not_on_a_request_cell()
+    {
+        using var dir = new TempDir();
+        var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 3), "Customers");
+        window.Width = 1440; window.Height = 820; window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var grid = window.FindControl<DataGrid>("Grid")!;
+        var editor = window.ViewModel;
+        var expected = editor.Columns.First(c => c.Group == ColumnGroup.Response).CellIndex;
+        var request = editor.Columns.First(c => c.Group == ColumnGroup.Request).CellIndex;
+
+        MenuItem Bug(int cell) => window.BuildRowMenu(editor, grid, cell).Items.OfType<MenuItem>().Single(i => (i.Header as string)!.Contains("known bug"));
+        Assert.True(Bug(expected).IsEnabled);
+        Assert.Contains(Bug(expected).Items.OfType<MenuItem>(), i => (i.Header as string) == "In all environments");
+        Assert.False(Bug(request).IsEnabled);
+        Assert.False(Bug(-1).IsEnabled);
+        window.Close();
+    }
+}
