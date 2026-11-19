@@ -149,6 +149,8 @@ public sealed class MenuNode
     public ValuePart? Result { get; init; }
     public string? Prompt { get; init; }
     public Func<string, ValuePart?>? FromInput { get; init; }
+    /// <summary>An entry that opens a dialog of its own; it calls the given action with the part when the dialog gives one.</summary>
+    public Action<Action<ValuePart>>? Open { get; init; }
     public bool IsFolder => Children is not null;
     public string Display => IsFolder ? Title + "  ›" : Title;
 }
@@ -158,7 +160,10 @@ public static class RecordMenu
 {
     public sealed record Sources(IReadOnlyList<string> RequestHeaders, IReadOnlyList<string> ResponseFields, IReadOnlyList<string> ConfigHeaders, IReadOnlyList<string> Steps);
 
-    public static IReadOnlyList<MenuNode> Root(Sources sources) =>
+    /// <summary>What the Script entries do: use an existing template, or write a new one. Both end by handing over a part.</summary>
+    public sealed record ScriptHooks(Action<Action<ValuePart>> UseTemplate, Action<Action<ValuePart>> NewTemplate);
+
+    public static IReadOnlyList<MenuNode> Root(Sources sources, ScriptHooks? scripts = null) =>
     [
         new() { Title = "Text", Prompt = "Text", FromInput = t => t.Length == 0 ? null : ValuePart.Text(t) },
         new() { Title = "From", Children = () => FromSheets(sources) },
@@ -168,6 +173,9 @@ public static class RecordMenu
         new() { Title = "File", Children = () => [
             new MenuNode { Title = "File content as text", Prompt = "File name or path", FromInput = p => p.Trim().Length == 0 ? null : ValuePart.File(p.Trim()) },
             new MenuNode { Title = "File content as Base64", Prompt = "File name or path", FromInput = p => p.Trim().Length == 0 ? null : ValuePart.File(p.Trim(), base64: true) } ] },
+        .. (scripts is null ? Array.Empty<MenuNode>() : [new MenuNode { Title = "Script", Children = () => [
+            new MenuNode { Title = "Use an existing script…", Open = scripts.UseTemplate },
+            new MenuNode { Title = "Write a new script template…", Open = scripts.NewTemplate } ] }]),
     ];
 
     private static IReadOnlyList<MenuNode> FromSheets(Sources s) =>

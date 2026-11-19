@@ -79,7 +79,10 @@ public class InlineScriptTests
     {
         var broken = EnvironmentScript.Replace("return \"200\";   // the original had  return \"200;  here: a missing closing quote", "return \"200;");
         Assert.Contains("200;", broken);
-        await Assert.ThrowsAsync<CompilationErrorException>(() => Resolve("<runscript(template:s)>", "production", broken));
+        var ex = await Assert.ThrowsAsync<InvalidDataException>(() => Resolve("<runscript(template:s)>", "production", broken));
+        Assert.Contains("does not compile", ex.Message);
+        Assert.Contains("line ", ex.Message);   // the line inside the .csx, not only the exception text
+        Assert.IsType<CompilationErrorException>(ex.InnerException);
     }
 
     [Fact]
@@ -87,5 +90,34 @@ public class InlineScriptTests
     {
         var ex = await Assert.ThrowsAsync<FileNotFoundException>(() => Resolve("<runscript(template:nope)>", "test", EnvironmentScript));
         Assert.Contains("nope", ex.Message);
+    }
+
+    [Fact]
+    public async Task The_log_names_the_template_parameters_origin_result_and_time()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "inlinelog_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "Templates"));
+        File.WriteAllText(Path.Combine(root, "Templates", "greet.csx"), "return \"hello \" + Runtime.Get(\"who\");");
+        try
+        {
+            var features = new FeatureConfig { WorkspaceRoot = root, TemplatesFolder = "Templates" };
+            string log;
+            using (var logger = new InternalLogger(Path.Combine(root, "log"), "i", "r", enabled: true))
+            {
+                var runner = typeof(FeatureConfig).Assembly.GetType("LoadTestingTool.Execution.InlineScriptRunner")!;
+                runner.GetProperty("Origin", BindingFlags.Public | BindingFlags.Static)!.SetValue(null, "testcase=T1; dataid=D7; step=Login; environment=staging");
+                var method = runner.GetMethod("ResolveTokensAsync", BindingFlags.Public | BindingFlags.Static)!;
+                var result = await (Task<string>)method.Invoke(null, ["<runscript(template:greet, who:Ann)>", new RunnerExecutionContext(), root, features, logger, CancellationToken.None])!;
+                Assert.Equal("hello Ann", result);
+            }
+            log = string.Join("\n", Directory.GetFiles(Path.Combine(root, "log"), "*.log", SearchOption.AllDirectories).Select(File.ReadAllText));
+            Assert.Contains("template=greet", log);
+            Assert.Contains("who=Ann", log);
+            Assert.Contains("dataid=D7", log);
+            Assert.Contains("step=Login", log);
+            Assert.Contains("result=hello Ann", log);
+            Assert.Contains("elapsed=", log);
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 }

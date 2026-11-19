@@ -110,8 +110,7 @@ Request history and live request events include the category when available.
 
 This was a directly related safety correction discovered while wiring structured failures:
 
-- C# script steps are blocked unless `AllowTrustedScripts=true`.
-- Inline `<runscript(...)>` tokens are also blocked unless trusted scripts are enabled.
+- (Correction 2026-11-19: there is no `AllowTrustedScripts` setting in the code; C# script steps and inline `<runscript(...)>` tokens run whenever a workbook asks for them. See FEATURE_STEPS.md.)
 
 ## Verification performed
 

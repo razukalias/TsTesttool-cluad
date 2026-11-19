@@ -77,6 +77,7 @@ public sealed class TestRunner
                 {
                     Position.Value = (data.ExcelRowNumber, stepOrder + 1);
                     _logger.Info($"---- STEP {stepOrder + 1}: {request.StepName} | type={request.StepType.WireName()} | dataid={data.DataId} | iteration={iteration} ----");
+                    InlineScriptRunner.Origin = $"testcase={testcase.Testcase}; dataid={data.DataId}; step={request.StepName}; environment={(environment.Length == 0 ? "default" : environment)}; iteration={iteration}";
                     if (data.Dontrun.Contains(request.StepName, StringComparer.OrdinalIgnoreCase))
                     {
                         _logger.Info($"STEP SKIPPED | reason=request.dontrun | step={request.StepName}");

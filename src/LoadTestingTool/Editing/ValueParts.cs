@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace LoadTestingTool.Editing;
 
-public enum ValuePartKind { Text, RandomNumber, Guid, DateTime, Reference, File }
+public enum ValuePartKind { Text, RandomNumber, Guid, DateTime, Reference, File, Script }
 
 /// <summary>
 /// One piece of a cell value. <see cref="Raw"/> is the exact text the workbook holds for the piece, so the parts of a
@@ -24,14 +24,22 @@ public sealed record ValuePart(ValuePartKind Kind, string Raw)
     /// <summary>A value of the same row (<c>r</c>) or of a numbered row of the request, response or config sheet.</summary>
     public static ValuePart From(string sheet, string header, string row = "r") => new(ValuePartKind.Reference, $"<From_{sheet}_{header}_{row}>");
 
+    /// <summary>An inline script: <c>&lt;runscript(template:name, parameter:value)&gt;</c>.</summary>
+    public static ValuePart Script(string template, IEnumerable<(string Name, string Value)>? parameters = null)
+        => new(ValuePartKind.Script, ScriptTemplates.Token(template, parameters ?? []));
+
     public static ValuePart File(string path, bool base64 = false) => new(ValuePartKind.File, (base64 ? "<from_filepath_base64>" : "<from_filepath>") + path);
 
     public string Label => Kind switch
     {
         ValuePartKind.Text => Raw,
+        ValuePartKind.Script => ScriptLabel(Raw),
         ValuePartKind.File => Raw.StartsWith("<from_filepath_base64>", StringComparison.OrdinalIgnoreCase) ? "file (Base64): " + Raw["<from_filepath_base64>".Length..] : "file: " + Raw["<from_filepath>".Length..],
         _ => Raw.Trim('<', '>'),
     };
+
+    private static string ScriptLabel(string raw)
+        => ScriptTemplates.ParseToken(raw) is { } t ? "⚙ " + t.Template + (t.Parameters.Count == 0 ? string.Empty : "(" + string.Join(", ", t.Parameters.Select(p => p.Name + "=" + p.Value)) + ")") : "⚙ " + raw.Trim('<', '>');
 }
 
 /// <summary>Reads a cell value as parts and writes parts back as the cell text. Used by the Record view; the stored text is unchanged.</summary>
@@ -49,6 +57,7 @@ public static class ValueParts
         var parts = new List<ValuePart>();
         if (text.Length == 0) return parts;
         if (FileCell.IsMatch(text)) { parts.Add(new ValuePart(ValuePartKind.File, text)); return parts; }
+        if (text.Contains("<runscript", StringComparison.OrdinalIgnoreCase)) return ParseWithScripts(text);
         var at = 0;
         foreach (Match m in Token.Matches(text))
         {
@@ -58,6 +67,37 @@ public static class ValueParts
         }
         if (at < text.Length) parts.Add(ValuePart.Text(text[at..]));
         return parts;
+    }
+
+    private static readonly Regex ScriptStart = new(@"<runscript\s*\(", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    /// <summary>A value with inline scripts: each <c>&lt;runscript(…)&gt;</c> is one part (its parameters may hold &lt;From_…&gt; tokens); the text around is split as usual.</summary>
+    private static List<ValuePart> ParseWithScripts(string text)
+    {
+        var parts = new List<ValuePart>();
+        var at = 0;
+        while (at < text.Length)
+        {
+            var start = ScriptStart.Match(text, at);
+            var end = start.Success ? TokenEnd(text, start.Index + start.Length) : -1;
+            if (!start.Success || end < 0) { parts.AddRange(Parse(text[at..])); break; }
+            if (start.Index > at) parts.AddRange(Parse(text[at..start.Index]));
+            parts.Add(new ValuePart(ValuePartKind.Script, text[start.Index..(end + 2)]));
+            at = end + 2;
+        }
+        return parts;
+    }
+
+    private static int TokenEnd(string value, int from)
+    {
+        var depth = 1;
+        for (var i = from; i < value.Length - 1; i++)
+        {
+            if (value[i] == '<') depth++;
+            else if (value[i] == '>' && depth > 1) depth--;
+            else if (value[i] == ')' && value[i + 1] == '>' && depth == 1) return i;
+        }
+        return -1;
     }
 
     public static string Format(IEnumerable<ValuePart> parts) => string.Concat(parts.Select(p => p.Raw));
@@ -85,6 +125,7 @@ public static class ValueParts
                 ValuePartKind.Guid => "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
                 ValuePartKind.DateTime => DateTime.Now.ToString("yyyy-MM-dd"),
                 ValuePartKind.File => "(file content)",
+                ValuePartKind.Script => "(script result)",
                 _ => "‹" + part.Label + "›",
             });
         }

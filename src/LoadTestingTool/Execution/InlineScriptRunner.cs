@@ -13,6 +13,10 @@ namespace LoadTestingTool.Execution;
 internal static class InlineScriptRunner
 {
     private const int ScriptTimeoutSeconds = 30;
+    private static readonly AsyncLocal<string?> CurrentOrigin = new();
+
+    /// <summary>Where the script was asked for (testcase, data ID, step, environment); the runner sets it per step so every script log line says whose value it was.</summary>
+    public static string? Origin { get => CurrentOrigin.Value; set => CurrentOrigin.Value = value; }
     private static readonly Regex TokenStart = new(@"<runscript\s*\(", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static async Task<string> ResolveTokensAsync(string value, RunnerExecutionContext context, string workspaceRoot, FeatureConfig features, InternalLogger logger, CancellationToken cancellationToken)
@@ -61,7 +65,16 @@ internal static class InlineScriptRunner
 
     private static async Task<string> ExecuteAsync(string template, IReadOnlyDictionary<string, string> parameters, RunnerExecutionContext context, string workspaceRoot, FeatureConfig features, InternalLogger logger, CancellationToken cancellationToken)
     {
-        var path = ResolveScriptPath(template, workspaceRoot, features.TemplatesFolder);
+        var origin = string.IsNullOrWhiteSpace(Origin) ? "unknown origin" : Origin;
+        var parameterText = parameters.Count == 0 ? "(none)" : string.Join(", ", parameters.Select(x => $"{x.Key}={Shorten(x.Value)}"));
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        string path;
+        try { path = ResolveScriptPath(template, workspaceRoot, features.TemplatesFolder); }
+        catch (FileNotFoundException ex)
+        {
+            logger.Error($"INLINE SCRIPT NOT FOUND | template={template}; {origin}; {ex.Message}");
+            throw;
+        }
         var code = await File.ReadAllTextAsync(path, cancellationToken);
         foreach (var parameter in parameters) context.Set(parameter.Key, parameter.Value, VariableScope.Iteration);
         var runtime = new ScriptRuntime(context, null) { Logger = message => logger.Info($"INLINE SCRIPT LOG | template={template}; {message}") };
@@ -71,12 +84,40 @@ internal static class InlineScriptRunner
         timeout.CancelAfter(TimeSpan.FromSeconds(ScriptTimeoutSeconds));
         var options = ScriptMetadataReferences.CreateOptions(typeof(ScriptRuntime).Assembly)
             .AddImports("System", "System.Linq", "System.Collections.Generic", "LoadTestingTool.Domain");
-        logger.Info($"INLINE SCRIPT START | template={template}; parameters={string.Join(", ", parameters.Select(x => $"{x.Key}={x.Value}"))}");
-        var value = await CSharpScript.EvaluateAsync<object?>(scriptCode, options, globals, typeof(ScriptGlobals), timeout.Token);
-        var result = value is null ? string.Empty : value is string text ? text : JsonSerializer.Serialize(value);
-        logger.Info($"INLINE SCRIPT END | template={template}; result={result}");
-        return result;
+        logger.Info($"INLINE SCRIPT START | template={template}; file={path}; parameters={parameterText}; {origin}");
+        try
+        {
+            var value = await CSharpScript.EvaluateAsync<object?>(scriptCode, options, globals, typeof(ScriptGlobals), timeout.Token);
+            var result = value is null ? string.Empty : value is string text ? text : JsonSerializer.Serialize(value);
+            logger.Info($"INLINE SCRIPT END | template={template}; result={Shorten(result)}; elapsed={timer.ElapsedMilliseconds} ms");
+            if (result.Length == 0) logger.Warn($"INLINE SCRIPT EMPTY RESULT | template={template}; the script returned an empty value. Did it forget 'return'? {origin}");
+            return result;
+        }
+        catch (CompilationErrorException ex)
+        {
+            var errors = string.Join("; ", ex.Diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error).Select(Describe));
+            logger.Error($"INLINE SCRIPT COMPILE ERROR | template={template}; file={path}; {errors}; parameters={parameterText}; {origin}");
+            throw new InvalidDataException($"Inline script '{template}' does not compile: {errors}", ex);
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            logger.Error($"INLINE SCRIPT TIMEOUT | template={template}; ran longer than {ScriptTimeoutSeconds} s; parameters={parameterText}; {origin}");
+            throw new TimeoutException($"Inline script '{template}' ran longer than {ScriptTimeoutSeconds} seconds and was stopped.");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.Error($"INLINE SCRIPT ERROR | template={template}; {ex.GetType().Name}: {ex.Message}; elapsed={timer.ElapsedMilliseconds} ms; parameters={parameterText}; {origin}");
+            throw new InvalidOperationException($"Inline script '{template}' failed: {ex.Message}", ex);
+        }
     }
+
+    private static string Describe(Microsoft.CodeAnalysis.Diagnostic diagnostic)
+    {
+        var position = diagnostic.Location.GetLineSpan().StartLinePosition;
+        return $"line {position.Line + 1}, column {position.Character + 1}: {diagnostic.GetMessage()} ({diagnostic.Id})";
+    }
+
+    private static string Shorten(string value) => value.Length <= 120 ? value : value[..117] + "…";
 
     private static string ResolveScriptPath(string template, string workspaceRoot, string templatesFolder)
     {

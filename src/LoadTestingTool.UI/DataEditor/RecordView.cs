@@ -200,7 +200,7 @@ public sealed class RecordLineView : Border
     private static readonly IReadOnlyDictionary<ValuePartKind, (string Back, string Fore)> Colors = new Dictionary<ValuePartKind, (string, string)>
     {
         [ValuePartKind.Text] = ("#1C2E47", "#D6E2F2"), [ValuePartKind.RandomNumber] = ("#3A2A55", "#D9C4FF"), [ValuePartKind.Guid] = ("#4A3A1F", "#FFD58A"),
-        [ValuePartKind.DateTime] = ("#1F4A47", "#8FE8DD"), [ValuePartKind.Reference] = ("#16335A", "#8CC1FF"), [ValuePartKind.File] = ("#46283A", "#FFA6D0"),
+        [ValuePartKind.DateTime] = ("#1F4A47", "#8FE8DD"), [ValuePartKind.Reference] = ("#16335A", "#8CC1FF"), [ValuePartKind.File] = ("#46283A", "#FFA6D0"), [ValuePartKind.Script] = ("#2A3F1F", "#B9E58A"),
     };
 
     private readonly RecordLineViewModel _line;
@@ -294,11 +294,17 @@ public sealed class RecordLineView : Border
         var right = new Button { Content = "▶", Tag = "chip-right", IsEnabled = index < _line.Parts.Count - 1 };
         var remove = new Button { Content = "✕ Remove", Tag = "chip-remove" };
         var ok = new Button { Content = "OK", Classes = { "primary" }, Tag = "chip-ok" };
+        var editScript = new Button { Content = "⚙ Edit script…", Tag = "chip-edit-script", IsVisible = part.Kind == ValuePartKind.Script };
+        editScript.Click += (_, _) =>
+        {
+            flyout.Hide();
+            _ = AddScriptAsync(changed => { var i = index; _line.Remove(i); InsertAt(i, changed); }, part.Raw);
+        };
         left.Click += (_, _) => { flyout.Hide(); _line.Move(index, -1); };
         right.Click += (_, _) => { flyout.Hide(); _line.Move(index, 1); };
         remove.Click += (_, _) => { flyout.Hide(); _line.Remove(index); };
         ok.Click += (_, _) => Apply();
-        flyout.Content = new StackPanel { Spacing = 8, Children = { new TextBlock { Text = part.Kind == ValuePartKind.Text ? "Text" : "As stored in the workbook", Foreground = Brush.Parse("#8EA4BC"), FontSize = 11 }, box, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { left, right, remove, ok } } } };
+        flyout.Content = new StackPanel { Spacing = 8, Children = { new TextBlock { Text = part.Kind == ValuePartKind.Text ? "Text" : "As stored in the workbook", Foreground = Brush.Parse("#8EA4BC"), FontSize = 11 }, box, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { left, right, editScript, remove, ok } } } };
         flyout.Opened += (_, _) => { box.Focus(); box.SelectAll(); };
         return flyout;
     }
@@ -362,12 +368,32 @@ public sealed class RecordLineView : Border
         return copy;
     }
 
+    /// <summary>The Script dialog: pick a template and its parameters; the part is added to the line (or replaces the one being edited).</summary>
+    private async Task AddScriptAsync(Action<ValuePart> add, string? existingToken)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner) return;
+        if (await ScriptPartWindow.AskAsync(owner, _editor, existingToken) is { } part) add(part);
+    }
+
+    /// <summary>Writes a new template first, then opens the Script dialog with it selected.</summary>
+    private async Task NewTemplateThenAddAsync(Action<ValuePart> add)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner) return;
+        var root = Path.GetDirectoryName(Path.GetFullPath(_editor.WorkbookPath)) ?? ".";
+        var saved = await ScriptTemplateWindow.OpenAsync(owner, root, "Templates", null, _editor.MenuSources().RequestHeaders);
+        if (saved is null) return;
+        if (await ScriptPartWindow.AskAsync(owner, _editor, LoadTestingTool.Editing.ScriptTemplates.Token(saved, [])) is { } part) add(part);
+    }
+
     private Control AddButton()
     {
         var plus = new Button { Content = "＋", Tag = "add-part", MinHeight = 28, MinWidth = 32, Margin = new Thickness(0, 0, 0, 4), CornerRadius = new CornerRadius(14), Padding = new Thickness(8, 0) };
         ToolTip.SetTip(plus, "Add a part: text, a value from another cell, a random number, a GUID, a date or a file");
         var flyout = new Flyout { Placement = PlacementMode.BottomEdgeAlignedLeft };
-        var menu = new DrillDownMenu(RecordMenu.Root(_editor.MenuSources()), part => { flyout.Hide(); _line.Add(part); });
+        var hooks = new RecordMenu.ScriptHooks(
+            add => { flyout.Hide(); _ = AddScriptAsync(add, null); },
+            add => { flyout.Hide(); _ = NewTemplateThenAddAsync(add); });
+        var menu = new DrillDownMenu(RecordMenu.Root(_editor.MenuSources(), hooks), part => { flyout.Hide(); _line.Add(part); });
         flyout.Content = menu;
         flyout.Opened += (_, _) => menu.Reset();
         plus.Flyout = flyout;
@@ -485,6 +511,7 @@ public sealed class DrillDownMenu : UserControl
             _input.Focus();
             return;
         }
+        if (node.Open is { } open) { open(_picked); return; }
         if (node.Result is { } part) _picked(part);
     }
 

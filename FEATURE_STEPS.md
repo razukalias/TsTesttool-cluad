@@ -57,7 +57,13 @@ Connection profiles are defined in `appsettings.json`. `Microsoft.Data.SqlClient
 }
 ```
 
-Trusted scripts are disabled by default. Enable `AllowTrustedScripts` only for trusted authors. Scripts run in-process with a configurable timeout and receive the restricted `ScriptRuntime` object rather than the full application service container.
+There is no `AllowTrustedScripts` setting: script steps and inline `<runscript(...)>` tokens always run when the workbook asks for them, so only open workbooks and templates from authors you trust. Scripts run in-process, stop after 30 seconds, and receive the `ScriptRuntime` object (`Get`, `Set`, `Log`, `Assert`, `Response`) rather than the application's services.
+
+### Inline scripts in cells
+
+A cell can call a script template: `<runscript(template:name, parameter:value, other:<From_request_header_r>)>`. The runner looks for `name.csx` in the workspace folder, its `Templates` folder and the configured templates folder, gives the parameters to the script as variables (`Runtime.Get("parameter")` or `_parameter_`), and writes what the script returns into the cell. In the editor's value wizard, **+ → Script** picks a template and fills its parameters, or opens a form to write a new template with help, examples, autocomplete and a Validate button that compiles without running.
+
+The internal log writes `INLINE SCRIPT START` (template, file, parameters, testcase / Data ID / step / environment), `END` (result and time), and on a failure `COMPILE ERROR` (line and column inside the `.csx`), `TIMEOUT`, `NOT FOUND` (every folder searched) or `ERROR`; a script that returns an empty value logs a warning.
 
 ## Variable scope
 
