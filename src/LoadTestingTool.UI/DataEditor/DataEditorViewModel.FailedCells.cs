@@ -37,8 +37,16 @@ public sealed partial class DataEditorViewModel
     /// <summary>Raised when <see cref="FailedColumnCells"/> or the option changed, so the grid can hide or show columns.</summary>
     public event EventHandler? FailedColumnsChanged;
 
-    partial void OnShowFailedColumnsChanged(bool value) => RefreshFailedColumns();
+    /// <summary>"Bug columns only": the table shows only the expected-value columns that carry a known-bug tag in the rows shown. Can be combined with Failed columns only.</summary>
+    [ObservableProperty] private bool _showBugColumns;
 
+    /// <summary>The grid cells of the columns that hold a bug tag in the rows shown; refreshed while "Bug columns only" is on.</summary>
+    public HashSet<int> BugColumnCells { get; private set; } = [];
+
+    partial void OnShowFailedColumnsChanged(bool value) => RefreshFailedColumns();
+    partial void OnShowBugColumnsChanged(bool value) => RefreshFailedColumns();
+
+    /// <summary>Works out which columns the column options keep (failed columns, bug columns) and tells the grid.</summary>
     public void RefreshFailedColumns()
     {
         var cells = new HashSet<int>();
@@ -46,10 +54,19 @@ public sealed partial class DataEditorViewModel
             foreach (var row in VisibleRows)
             {
                 if (row.Outcome is not { } outcome) continue;
-                foreach (var failure in FailuresOf(outcome).Where(f => f.IsAssertion))
+                foreach (var failure in outcome.Failures.Where(f => f.IsAssertion))
                     if (CellOfFailure(failure) is >= 1 and var cell && !Assigned(row, cell, failure) && !IsKnownBug(row, failure)) cells.Add(cell);
             }
         FailedColumnCells = cells;
+        var bugs = new HashSet<int>();
+        if (ShowBugColumns)
+        {
+            var expected = Columns.Where(c => c.Group == ColumnGroup.Response).Select(c => c.CellIndex).ToList();
+            foreach (var row in VisibleRows)
+                foreach (var cell in expected)
+                    if (!bugs.Contains(cell) && cell < row.Cells.Count && row.Cells[cell] is { } text && text.IndexOf("<bug", StringComparison.OrdinalIgnoreCase) >= 0 && LoadTestingTool.Execution.BugTag.Parse(text).Tag is not null) bugs.Add(cell);
+        }
+        BugColumnCells = bugs;
         FailedColumnsChanged?.Invoke(this, EventArgs.Empty);
     }
 

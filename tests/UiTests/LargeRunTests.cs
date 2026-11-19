@@ -380,6 +380,7 @@ public class KnownBugStandingTests
         var cell = editor.Columns.First(c => c.Group == ColumnGroup.Response && c.Title.EndsWith("CreateCustomer.name")).CellIndex;
         var row = editor.VisibleRows.First(r => r.CurrentDataId == "CUST002");
         Assert.Equal("FAIL", row.ResultText);
+        Assert.Equal("1 failed", row.CountsText);
         Assert.Contains("1 failed", editor.RunSummaryText);
 
         editor.ShowFailedOnly = true;
@@ -388,6 +389,8 @@ public class KnownBugStandingTests
         Assert.Equal("BUG", row.ResultText);
         Assert.Contains("0 failed", editor.RunSummaryText);
         Assert.Contains("1 known bug", editor.RunSummaryText);
+        Assert.Contains("0 failed cells, 1 bug cell", editor.RunSummaryText);
+        Assert.Equal("1 bug", row.CountsText);
         Assert.Null(editor.FailureAt(row, cell));                      // no red mark
         editor.ShowFailedOnly = false; editor.ShowFailedOnly = true;
         Assert.DoesNotContain(editor.VisibleRows, r => r.CurrentDataId == "CUST002");   // not listed as a failed row
@@ -409,5 +412,36 @@ public class KnownBugStandingTests
         var row = editor.VisibleRows.First(r => r.CurrentDataId == "CUST002");
         editor.TagAsBug([row], cell, "dev");
         Assert.Equal("FAIL", row.ResultText);
+    }
+}
+
+public class BugColumnsOnlyTests
+{
+    [AvaloniaFact]
+    public void Bug_columns_only_keeps_the_columns_with_a_bug_tag_and_follows_tagging()
+    {
+        using var dir = new TempDir();
+        var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 3), "Customers");
+        window.Width = 1440; window.Height = 820; window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var vm = window.ViewModel;
+        var grid = window.FindControl<DataGrid>("Grid")!;
+        var all = grid.Columns.Count(c => c.IsVisible);
+        var cell = vm.Columns.First(c => c.Group == ColumnGroup.Response).CellIndex;
+
+        vm.ShowBugColumns = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Empty(vm.BugColumnCells);
+        Assert.DoesNotContain(grid.Columns.Where(c => c.IsVisible), c => c.Tag is int t && t >= 1);   // nothing tagged: only Data ID, tick and result stay
+
+        vm.TagAsBug([vm.VisibleRows[1]], cell, "all", "known");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal([cell], vm.BugColumnCells.ToArray());
+        Assert.Single(grid.Columns.Where(c => c.IsVisible && c.Tag is int t && t >= 1));
+
+        vm.ShowBugColumns = false;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(all, grid.Columns.Count(c => c.IsVisible));
+        window.Close();
     }
 }

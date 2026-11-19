@@ -96,7 +96,7 @@ public sealed partial class DataEditorViewModel
         if (ShowFailedOnly || EnvironmentPicked) ApplyFilter(); // otherwise the rows stay as they are, so selection and scroll position survive a refresh
         RefreshRowFailures();
         if (ShowFailedCells) RefreshFailedCells();
-        if (ShowFailedColumns) RefreshFailedColumns();
+        if (ShowFailedColumns || ShowBugColumns) RefreshFailedColumns();
     }
 
     private void AssignOutcomes()
@@ -113,7 +113,7 @@ public sealed partial class DataEditorViewModel
     private void UpdateRunSummary()
     {
         if (_results is null) { RunSummaryText = "No results yet"; return; }
-        var passed = 0; var failed = 0; var bugs = 0;
+        var passed = 0; var failed = 0; var bugs = 0; var failedCells = 0; var bugCells = 0;
         var rows = new Dictionary<(int, string), DataRowViewModel>();
         foreach (var r in _allRows) rows[(r.TestcaseIndex, r.CurrentDataId.Trim().ToUpperInvariant())] = r;
         foreach (var (key, outcome) in _results.Rows)
@@ -121,8 +121,10 @@ public sealed partial class DataEditorViewModel
             if (outcome.Passed) { passed++; continue; }
             if (!rows.TryGetValue(key, out var row)) { failed++; continue; }
             if (row.OnlyKnownBugs) bugs++; else failed++;
+            failedCells += row.FailedCount; bugCells += row.BugCount;
         }
-        RunSummaryText = $"Last run {_results.WhenLocal.ToString("d MMM HH:mm", CultureInfo.CurrentCulture)}: {passed} passed, {failed} failed" + (bugs > 0 ? $", {bugs} known {(bugs == 1 ? "bug" : "bugs")}" : string.Empty);
+        RunSummaryText = $"Last run {_results.WhenLocal.ToString("d MMM HH:mm", CultureInfo.CurrentCulture)}: {passed} passed, {failed} failed" + (bugs > 0 ? $", {bugs} known {(bugs == 1 ? "bug" : "bugs")}" : string.Empty)
+            + (failedCells + bugCells > 0 ? $" ({failedCells} failed {(failedCells == 1 ? "cell" : "cells")}, {bugCells} bug {(bugCells == 1 ? "cell" : "cells")})" : string.Empty);
     }
 
     private void UpdateTestcaseResults()

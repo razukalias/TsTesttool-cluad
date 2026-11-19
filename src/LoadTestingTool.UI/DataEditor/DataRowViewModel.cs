@@ -250,7 +250,7 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
     }
 
     /// <summary>How this row fared in the latest run, or null when there are no results for it.</summary>
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ResultText), nameof(ResultColor))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ResultText), nameof(ResultColor), nameof(CountsText))]
     private RowOutcome? _outcome;
 
     /// <summary>Whether a failure of this row is a known bug (its expected cell carries a bug tag for the failure's environment); set by the editor.</summary>
@@ -272,13 +272,32 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
         }
     }
 
+    /// <summary>How many things failed in the latest run (failed assertions and failed steps) that are not known bugs.</summary>
+    public int FailedCount => Outcome is { Passed: false } outcome ? outcome.Failures.Count(f => !(KnownBugCheck?.Invoke(this, f) ?? false)) : 0;
+
+    /// <summary>How many failed assertions of the latest run are tagged known bugs.</summary>
+    public int BugCount => Outcome is { Passed: false } outcome && KnownBugCheck is { } check ? outcome.Failures.Count(f => check(this, f)) : 0;
+
+    /// <summary>"2 failed · 1 bug" beside the PASS / FAIL / BUG status; empty when nothing failed.</summary>
+    public string CountsText
+    {
+        get
+        {
+            var failed = FailedCount; var bugs = BugCount;
+            var parts = new List<string>();
+            if (failed > 0) parts.Add($"{failed} failed");
+            if (bugs > 0) parts.Add($"{bugs} {(bugs == 1 ? "bug" : "bugs")}");
+            return string.Join(" · ", parts);
+        }
+    }
+
     /// <summary>True when the row's latest run failed for something other than a known bug.</summary>
     public bool FailedForReal => Outcome is not null && Standing == "FAIL";
 
     /// <summary>True when everything that failed in the latest run is a known bug.</summary>
     public bool OnlyKnownBugs => Outcome is not null && Standing == "BUG";
 
-    internal void RefreshStanding() { if (Outcome is not null) OnPropertyChanged(nameof(ResultText)); OnPropertyChanged(nameof(ResultColor)); }
+    internal void RefreshStanding() { if (Outcome is not null) OnPropertyChanged(nameof(ResultText)); OnPropertyChanged(nameof(ResultColor)); OnPropertyChanged(nameof(CountsText)); }
 
     public int TestcaseIndex { get; }
     public TableRow Request { get; }

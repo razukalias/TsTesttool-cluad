@@ -419,7 +419,8 @@ public partial class DataEditorWindow : Window
     {
         if (this.FindControl<DataGrid>("Grid") is not { } grid || _shell?.Current is not { } editor) return;
         foreach (var column in grid.Columns)
-            column.IsVisible = !editor.ShowFailedColumns || column.Tag is not int cell || cell < 1 || editor.FailedColumnCells.Contains(cell);
+            column.IsVisible = !(editor.ShowFailedColumns || editor.ShowBugColumns) || column.Tag is not int cell || cell < 1
+                || editor.ShowFailedColumns && editor.FailedColumnCells.Contains(cell) || editor.ShowBugColumns && editor.BugColumnCells.Contains(cell);
     }
 
     private void RebuildColumns()
@@ -548,16 +549,18 @@ public partial class DataEditorWindow : Window
     private static DataGridTemplateColumn CreateResultColumn() => new()
     {
         Header = CreateHeader(new GridColumn("Result", ColumnGroup.Id, -1, -1)),
-        Width = new DataGridLength(92),
+        Width = new DataGridLength(150),
         CanUserSort = false,
         CanUserResize = false,
         Tag = -1,
         CellTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<DataRowViewModel>((_, _) =>
         {
-            var text = new TextBlock { FontSize = 11.5, FontWeight = FontWeight.Bold, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Margin = new Avalonia.Thickness(12, 0) };
+            var text = new TextBlock { FontSize = 11.5, FontWeight = FontWeight.Bold, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Margin = new Avalonia.Thickness(12, 0, 6, 0), Tag = "row-result" };
             text.Bind(TextBlock.TextProperty, new Binding("ResultText"));
             text.Bind(TextBlock.ForegroundProperty, new Binding("ResultColor"));
-            return text;
+            var counts = new TextBlock { FontSize = 10.5, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Foreground = Brush.Parse("#8EA4BC"), Tag = "row-counts" };
+            counts.Bind(TextBlock.TextProperty, new Binding("CountsText"));
+            return new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Children = { text, counts } };
         })
     };
 

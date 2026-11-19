@@ -33,7 +33,7 @@ public sealed partial class DataEditorViewModel
         UpdateRunSummary();
         FinishBulk(changed, $"Tagged {changed} {(changed == 1 ? "cell" : "cells")} as known bug ({wanted})", 0, 0);
         if (ShowFailedCells) RefreshFailedCells();
-        if (ShowFailedColumns) RefreshFailedColumns();
+        if (ShowFailedColumns || ShowBugColumns) RefreshFailedColumns();
     }
 
     /// <summary>Takes the bug tag out of the expected cell of each row.</summary>

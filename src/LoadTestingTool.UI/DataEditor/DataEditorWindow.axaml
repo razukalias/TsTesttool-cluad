@@ -504,6 +504,7 @@
             <CheckBox Content="Show every column" IsChecked="{Binding ShowAllColumns, Mode=TwoWay}" />
             <CheckBox Content="Failed rows only" IsChecked="{Binding ShowFailedOnly, Mode=TwoWay}" IsEnabled="{Binding HasResults}" />
             <CheckBox Content="Failed columns only" IsChecked="{Binding ShowFailedColumns, Mode=TwoWay}" IsEnabled="{Binding HasResults}" ToolTip.Tip="Show only the expected-value columns that have a failed cell in the rows shown. Combine with Failed rows only to see just what went wrong" />
+            <CheckBox Content="Bug columns only" IsChecked="{Binding ShowBugColumns, Mode=TwoWay}" ToolTip.Tip="Show only the expected-value columns that carry a known-bug tag (&lt;bug: …&gt;) in the rows shown. Combine with Failed columns only to see both" />
             <CheckBox Content="Failed cells only" IsChecked="{Binding ShowFailedCells, Mode=TwoWay}" IsEnabled="{Binding HasResults}" ToolTip.Tip="List only the expected-value cells that failed in the latest run, each with its header, what was expected and what the run got, and a button to assign the actual value" />
             <ComboBox Tag="environment-filter" ItemsSource="{Binding EnvironmentOptions}" SelectedItem="{Binding EnvironmentChoice, Mode=TwoWay}" IsVisible="{Binding HasEnvironmentChoice}" IsEnabled="{Binding HasResults}" MinWidth="150" ToolTip.Tip="Which environment the failed rows, columns and cells and the red marks refer to. The run covers several environments; All environments mixes them" />
           </StackPanel>
