@@ -24,6 +24,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         WorkbookPath = Path.GetFullPath(workbookPath);
         InstanceName = string.IsNullOrWhiteSpace(instanceName) ? Path.GetFileNameWithoutExtension(workbookPath) : instanceName;
         _document = WorkbookDocument.Load(WorkbookPath);
+        RefreshExcelOpen();
         StepRows.CollectionChanged += (_, _) => { for (var i = 0; i < StepRows.Count; i++) StepRows[i].Position = i + 1; };
         LoadTestcases(null);
         InitSheets();
@@ -543,6 +544,23 @@ public sealed partial class DataEditorViewModel : ObservableObject
     [RelayCommand]
     private void Save() => SaveCore(new WorkbookSaveOptions());
 
+    /// <summary>True while Excel (or another program) holds the workbook open: saving would fail until it is closed.</summary>
+    [ObservableProperty] private bool _excelOpen;
+
+    /// <summary>Excel keeps a "~$name.xlsx" owner file next to a workbook it has open; a file we cannot open for writing counts too.</summary>
+    public void RefreshExcelOpen()
+    {
+        var owner = Path.Combine(Path.GetDirectoryName(WorkbookPath) ?? string.Empty, "~$" + Path.GetFileName(WorkbookPath));
+        var locked = File.Exists(owner);
+        if (!locked)
+        {
+            try { using var _ = new FileStream(WorkbookPath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read); }
+            catch (IOException) { locked = true; }
+            catch (UnauthorizedAccessException) { locked = true; }
+        }
+        ExcelOpen = locked;
+    }
+
     [RelayCommand]
     private void OverwriteAndSave() => SaveCore(new WorkbookSaveOptions { OverwriteExternalChanges = true });
 
@@ -585,9 +603,10 @@ public sealed partial class DataEditorViewModel : ObservableObject
         {
             ShowStatus($"Not saved: {ex.Message}", isError: true);
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            ShowStatus($"Could not save: {ex.Message} If the workbook is open in Excel, close it and try again.", isError: true);
+            RefreshExcelOpen();
+            ShowStatus($"Not saved: {FileName} is open in Excel (or locked by another program). Your edits are still here. Close it there and press Save again.", isError: true);
         }
         return false;
     }

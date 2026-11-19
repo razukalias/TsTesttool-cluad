@@ -21,6 +21,8 @@ public sealed partial class DataEditorWindow
         grid.AddHandler(PointerMovedEvent, OnGridPointerMoved, RoutingStrategies.Tunnel);
         grid.RemoveHandler(PointerReleasedEvent, OnGridPointerReleased);
         grid.AddHandler(PointerReleasedEvent, OnGridPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
+        grid.RemoveHandler(ContextRequestedEvent, OnGridContextRequested);
+        grid.AddHandler(ContextRequestedEvent, OnGridContextRequested, RoutingStrategies.Tunnel);
         grid.RemoveHandler(KeyDownEvent, OnGridCellKeyDown);
         grid.AddHandler(KeyDownEvent, OnGridCellKeyDown, RoutingStrategies.Tunnel);
     }
@@ -77,6 +79,12 @@ public sealed partial class DataEditorWindow
         var selection = editor.CellSelection;
         if (selection.Active is { } active && ReferenceEquals(active.Row, row) && active.Cell == index && selection.Count <= 1) return;   // still inside the first cell: text selection
         selection.ExtendTo(row, index);
+    }
+
+    /// <summary>A cell in edit mode has a text box with its own Cut/Copy/Paste menu; it would open on top of ours (two menus at once, and a click away from them hung the app). Ours has Cut/Copy/Paste too, so the text box menu is suppressed.</summary>
+    private void OnGridContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        if (e.Source is Avalonia.Visual v && v.GetSelfAndVisualAncestors().OfType<TextBox>().Any(t => t.Tag is null or not "set-value")) e.Handled = true;
     }
 
     private void OnGridPointerReleased(object? sender, PointerReleasedEventArgs e) => _selectingByDrag = false;

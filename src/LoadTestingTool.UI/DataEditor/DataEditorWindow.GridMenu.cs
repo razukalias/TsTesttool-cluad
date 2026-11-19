@@ -25,6 +25,7 @@ public partial class DataEditorWindow
         HandleCellSelectionPress(e, editor, grid, right);
         if (!right) { PickColumn(null); return; }
         if (e.Cell.DataContext is DataRowViewModel row && !grid.SelectedItems.Contains(row)) { grid.SelectedItem = row; editor.SelectedRow = row; }
+        CommitPendingEdit();   // close an open text edit first, so no text box menu or stale editor is left behind
         e.PointerPressedEventArgs.Handled = true;
         // On a request or expected cell the menu works on the selected cells; the tick, Data ID and Result cells open the row menu
         if (e.Column?.Tag is int cell && cell >= 1) BuildCellMenu(editor, grid, e.Cell).Open(e.Cell);

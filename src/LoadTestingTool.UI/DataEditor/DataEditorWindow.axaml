@@ -414,6 +414,9 @@
 
     <!-- Banners: file changed on disk, and unsaved changes on close -->
     <StackPanel Grid.Row="1">
+      <Border IsVisible="{Binding ExcelOpen}" Background="#3A2E14" BorderBrush="#8A6A1F" BorderThickness="0,0,0,1" Padding="20,8" Tag="excel-open">
+        <TextBlock Text="This workbook is open in Excel. You can edit here, but saving will fail until you close it there." TextWrapping="Wrap" Foreground="#F3D9A4" FontSize="12.5" />
+      </Border>
       <Border IsVisible="{Binding ConflictVisible}" Background="#3A2E14" BorderBrush="#8A6A1F" BorderThickness="0,0,0,1" Padding="20,12">
         <Grid ColumnDefinitions="*,Auto">
           <StackPanel Spacing="2">
