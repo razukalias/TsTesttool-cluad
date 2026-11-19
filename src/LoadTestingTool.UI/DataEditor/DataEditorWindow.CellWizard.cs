@@ -72,15 +72,36 @@ public sealed partial class DataEditorWindow
         var line = new RecordLineViewModel(row, cellIndex, title, expected, warn);
         var before = row.Cells[cellIndex] ?? string.Empty;
         var content = new StackPanel { Spacing = 6, MinWidth = 520, MaxWidth = 720 };
+        var flyout = new Flyout { Content = content, Placement = PlacementMode.BottomEdgeAlignedRight };
+        var cancelled = false;
         if (targets is { Count: > 0 })
-            content.Children.Add(new TextBlock { Text = $"The result is written to this cell and the {targets.Count} other selected {(targets.Count == 1 ? "cell" : "cells")}.", FontSize = 11, Foreground = Avalonia.Media.Brush.Parse("#8EA4BC"), Tag = "cell-wizard-note" });
+        {
+            // Wizard for several selected cells: a form with a title, ✕ and Apply, so it is clear what it does and how to leave it
+            content.MinWidth = 640; content.MaxWidth = 900;
+            flyout.Placement = PlacementMode.Bottom;
+            var close = new Button { Content = "✕", Tag = "cell-wizard-close", Padding = new Avalonia.Thickness(8, 2) };
+            close.Click += (_, _) => { cancelled = true; row.Cells[cellIndex] = before; flyout.Hide(); };
+            var header = new Avalonia.Controls.Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            header.Children.Add(new TextBlock { Text = $"Wizard for {targets.Count + 1} cells · {title}", FontWeight = Avalonia.Media.FontWeight.SemiBold, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center });
+            Avalonia.Controls.Grid.SetColumn(close, 1); header.Children.Add(close);
+            content.Children.Add(header);
+            content.Children.Add(new TextBlock { Text = $"Build the value once; Apply writes it to all {targets.Count + 1} selected cells.", FontSize = 11, Foreground = Avalonia.Media.Brush.Parse("#8EA4BC"), Tag = "cell-wizard-note" });
+        }
         if (others.Count > 0)
             content.Children.Add(new TextBlock { Text = $"The result is written to this {noun} and the {others.Count} other selected {(others.Count == 1 ? noun : noun + "s")}.", FontSize = 11, Foreground = Avalonia.Media.Brush.Parse("#8EA4BC"), Tag = "cell-wizard-note" });
         content.Children.Add(new RecordLineView(line, editor));
         if (extra is not null) content.Children.Add(extra);
-        var flyout = new Flyout { Content = content, Placement = PlacementMode.BottomEdgeAlignedRight };
+        if (targets is { Count: > 0 })
+        {
+            var cancel = new Button { Content = "Cancel", Tag = "cell-wizard-cancel" };
+            cancel.Click += (_, _) => { cancelled = true; row.Cells[cellIndex] = before; flyout.Hide(); };
+            var apply = new Button { Content = $"Apply to {targets.Count + 1} cells", Classes = { "primary" }, Tag = "cell-wizard-apply" };
+            apply.Click += (_, _) => flyout.Hide();
+            content.Children.Add(new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { cancel, apply } });
+        }
         flyout.Closed += (_, _) =>
         {
+            if (cancelled) return;
             var after = row.Cells[cellIndex] ?? string.Empty;
             if (after == before) return;
             foreach (var other in others) if ((other.Cells[cellIndex] ?? string.Empty) != after) other.Cells[cellIndex] = after;

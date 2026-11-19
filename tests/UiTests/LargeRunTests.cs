@@ -270,11 +270,16 @@ public class BugMenuTests
         MenuItem Bug(int cell)
         {
             editor.CellSelection.Select(editor.VisibleRows[0], cell);
+            editor.CellSelection.ExtendTo(editor.VisibleRows[1], cell);   // the bug item shows for several cells
             return window.BuildCellMenu(editor, grid, grid).Items.OfType<MenuItem>().Single(i => (i.Header as string)!.Contains("known bug"));
         }
         Assert.True(Bug(expected).IsEnabled);
         Assert.Contains(Bug(expected).Items.OfType<MenuItem>(), i => (i.Header as string) == "In all environments");
         Assert.False(Bug(request).IsEnabled);
+        editor.CellSelection.Select(editor.VisibleRows[0], expected);   // one cell: only Edit and the row actions
+        var single = window.BuildCellMenu(editor, grid, grid).Items.OfType<MenuItem>().Select(i => i.Header as string).ToList();
+        Assert.DoesNotContain(single, h => h!.Contains("known bug") || h.Contains("Wizard"));
+        Assert.Contains("Edit", single);
         window.Close();
     }
 }

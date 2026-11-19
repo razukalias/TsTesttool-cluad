@@ -143,37 +143,41 @@ public sealed partial class DataEditorWindow
         var noun = count == 1 ? "cell" : $"{count} cells";
         var expected = selection.Kind == CellKind.Expected;
         var menu = new ContextMenu();
-        menu.Items.Add(Item($"✦  Wizard for {noun}…", () => OpenSelectionWizard(editor, anchor), count > 0));
-
-        var bug = new MenuItem { Header = $"⚑  Tag {noun} as known bug", IsEnabled = expected, Tag = "menu-bug" };
-        if (!expected) ToolTip.SetTip(bug, "A bug tag only works on expected-value (response) cells");
-        else
+        if (count > 1)
         {
-            bug.Items.Add(Item("In all environments", () => editor.TagCellsAsBug(cells, "all")));
-            foreach (var environment in editor.BugEnvironmentChoices)
-                bug.Items.Add(Item($"In {environment} only", () => editor.TagCellsAsBug(cells, environment)));
-            bug.Items.Add(new Separator());
-            bug.Items.Add(Item("Remove the bug tag", () => editor.RemoveBugTags(cells)));
+            // Actions on several cells at once; for one cell the ✦ button, the red mark and typing already do these
+            menu.Items.Add(Item($"✦  Wizard for {noun}…", () => OpenSelectionWizard(editor, anchor)));
+            var bug = new MenuItem { Header = $"⚑  Tag {noun} as known bug", IsEnabled = expected, Tag = "menu-bug" };
+            if (!expected) ToolTip.SetTip(bug, "A bug tag only works on expected-value (response) cells");
+            else
+            {
+                bug.Items.Add(Item("In all environments", () => editor.TagCellsAsBug(cells, "all")));
+                foreach (var environment in editor.BugEnvironmentChoices)
+                    bug.Items.Add(Item($"In {environment} only", () => editor.TagCellsAsBug(cells, environment)));
+                bug.Items.Add(new Separator());
+                bug.Items.Add(Item("Remove the bug tag", () => editor.RemoveBugTags(cells)));
+            }
+            menu.Items.Add(bug);
+            menu.Items.Add(Item($"Set value in {noun}…", () => ShowSetValue(editor, anchor)));
+            var assignable = cells.Any(c => editor.IsExpectedCell(c.Cell) && editor.FailureAt(c.Row, c.Cell) is not null);
+            menu.Items.Add(Item("Assign actual value (failed cells)", () => editor.AssignActualToSelection(), assignable));
+            menu.Items.Add(new Separator());
         }
-        menu.Items.Add(bug);
-        var assignable = cells.Any(c => editor.IsExpectedCell(c.Cell) && editor.FailureAt(c.Row, c.Cell) is not null);
-        menu.Items.Add(Item("Assign actual value (failed cells)", () => editor.AssignActualToSelection(), assignable));
-        menu.Items.Add(new Separator());
-        menu.Items.Add(Item($"Set value in {noun}…", () => ShowSetValue(editor, anchor), count > 0));
-        menu.Items.Add(Item("Clear", () => { CommitPendingEdit(); editor.SetSelectedCells(string.Empty); }, count > 0));
-        menu.Items.Add(Item("Copy", async () => { if (Clipboard is not null) await Clipboard.SetTextAsync(editor.CopySelectionText()); }, count > 0));
-        menu.Items.Add(Item("Paste", async () =>
+        var edit = new MenuItem { Header = "Edit" };
+        edit.Items.Add(Item("Copy", async () => { if (Clipboard is not null) await Clipboard.SetTextAsync(editor.CopySelectionText()); }, count > 0));
+        edit.Items.Add(Item("Paste", async () =>
         {
             var text = Clipboard is null ? null : await Clipboard.GetTextAsync();
             if (string.IsNullOrEmpty(text)) return;
             CommitPendingEdit();
             editor.PasteIntoSelection(ClipboardTable.Parse(text));
         }, count > 0));
+        edit.Items.Add(Item("Clear", () => { CommitPendingEdit(); editor.SetSelectedCells(string.Empty); }, count > 0));
+        menu.Items.Add(edit);
         menu.Items.Add(new Separator());
-        var row = new MenuItem { Header = "Row actions" };
+        // The row actions sit in the main menu
         var rowMenu = BuildRowMenu(editor, grid);
-        foreach (var item in rowMenu.Items.Cast<object>().ToList()) { rowMenu.Items.Remove(item); row.Items.Add(item); }
-        menu.Items.Add(row);
+        foreach (var item in rowMenu.Items.Cast<object>().ToList()) { rowMenu.Items.Remove(item); menu.Items.Add(item); }
         return menu;
     }
 
