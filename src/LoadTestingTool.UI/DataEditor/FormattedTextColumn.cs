@@ -96,6 +96,9 @@ public sealed class FormattedTextColumn : DataGridTextColumn
     /// <summary>Called with the cell, the mark that was clicked, the row and the failure.</summary>
     public Action<DataGridCell, Control, DataRowViewModel, FailureDetail>? OpenFailure { get; set; }
 
+    /// <summary>How wide the text of a cell may get before it wraps; the window raises it when it fits the column to its longest value.</summary>
+    public double ContentMaxWidth { get; set; } = 300;
+
     /// <summary>Opens the popup of a ⚑ known-bug flag (environments, comment, edit and remove); set by the window.</summary>
     public Action<DataGridCell, Control>? OpenBug { get; set; }
 
@@ -166,7 +169,7 @@ public sealed class FormattedTextColumn : DataGridTextColumn
         cell.Bind(DataGridCell.BackgroundProperty, new Binding($"Formats[{_cell}].Background"));
         if (element is TextBlock text)
         {
-            text.MaxWidth = 300;
+            text.MaxWidth = ContentMaxWidth;
             text.Bind(TextBlock.TextWrappingProperty, new Binding($"Formats[{_cell}].Wrapping"));
             text.Bind(TextBlock.ForegroundProperty, new Binding($"Formats[{_cell}].Foreground"));
         }

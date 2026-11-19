@@ -475,6 +475,9 @@ public partial class DataEditorWindow : Window
         }
         grid.ItemsSource = shownRows;
         ApplyColumnVisibility();
+        AutofitColumns();
+        editor.VisibleRows.CollectionChanged -= OnRowsResetAutofit;
+        editor.VisibleRows.CollectionChanged += OnRowsResetAutofit;
         // The grid drops its selection while columns are rebuilt; keep the first row selected so Duplicate/Remove work.
         Dispatcher.UIThread.Post(() =>
         {

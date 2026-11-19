@@ -316,6 +316,26 @@ public class BugCountAndCommentTests
     }
 }
 
+public class AutofitTests
+{
+    [AvaloniaFact]
+    public void A_column_is_as_wide_as_its_longest_value()
+    {
+        using var dir = new TempDir();
+        var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 3), "Customers");
+        window.Width = 1440; window.Height = 820; window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var editor = window.ViewModel;
+        var cell = editor.Columns.First(c => c.Group == ColumnGroup.Request).CellIndex;
+        editor.VisibleRows[1].Cells[cell] = new string('W', 90);
+        window.AutofitColumns();
+        var grid = window.FindControl<DataGrid>("Grid")!;
+        var column = grid.Columns.OfType<FormattedTextColumn>().First(c => c.Tag is int t && t == cell);
+        Assert.True(column.MinWidth > 330, $"width {column.MinWidth}");
+        window.Close();
+    }
+}
+
 public class CellSelectionTests
 {
     private static (DataEditorViewModel Editor, int Request, int Expected) Open(TempDir dir)
