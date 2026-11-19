@@ -21,6 +21,17 @@ public sealed partial class DataEditorWindow
         flyout = ShowLineWizard(editor, anchor, row, others, column.CellIndex, column.Title, expected, editor.WarningsFor(expected, dontRun), "row", extra);
     }
 
+    /// <summary>The ✦ of an entry in the "Failed cells only" list: the same wizard and bug bar as on the table cell, writing to the same cell.</summary>
+    private void OpenFailedCellWizard(FailedCell failed, Control anchor)
+    {
+        if (_shell.Current is not { } editor) return;
+        var column = editor.Columns.FirstOrDefault(c => c.CellIndex == failed.CellIndex);
+        if (column is null) return;
+        Flyout? flyout = null;
+        var extra = BugTagBar(editor, [failed.Row], failed.CellIndex, () => flyout?.Hide());
+        flyout = ShowLineWizard(editor, anchor, failed.Row, [], failed.CellIndex, column.Title, expected: true, editor.WarningsFor(true, false), "row", extra);
+    }
+
     /// <summary>
     /// "Tag as known bug" for an expected-value cell, in the wizard and in the failed-cell popup, so a cell can be marked whether or not it failed.
     /// Environments: all, or one of the run's environments.

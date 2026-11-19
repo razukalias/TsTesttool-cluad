@@ -16,6 +16,9 @@ public sealed class FailedCellsView : UserControl
     private readonly TextBlock _summary = new() { Tag = "failed-cells-summary", Foreground = Brush.Parse("#8EA4BC"), FontSize = 12, Margin = new Thickness(12, 12, 12, 6) };
     private readonly ListBox _list;
 
+    /// <summary>Opens the ✦ wizard for a failed cell (set by the window, which owns the wizard).</summary>
+    public Action<FailedCell, Control>? OpenWizard { get; set; }
+
     public FailedCellsView(DataEditorViewModel editor)
     {
         _editor = editor;
@@ -49,7 +52,16 @@ public sealed class FailedCellsView : UserControl
         void Put(Control control, int column) { Grid.SetColumn(control, column); grid.Children.Add(control); }
         Put(new TextBlock { Text = cell.DataId, VerticalAlignment = VerticalAlignment.Center }, 0);
         Put(new TextBlock { Text = cell.Header, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) }, 1);
-        Put(new TextBlock { Text = $"expected {cell.Expected}", Foreground = Brush.Parse("#FF7588"), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) }, 2);
+        // The expected value is edited in place: the box writes to the same cell as the table (so Undo works), the ✦ opens the wizard
+        var value = new TextBox { Tag = "failed-cell-value", MinHeight = 28, Padding = new Thickness(6, 2), VerticalContentAlignment = VerticalAlignment.Center, DataContext = cell.Row, Foreground = Brush.Parse("#FF7588") };
+        value.Bind(TextBox.TextProperty, new Avalonia.Data.Binding($"Cells[{cell.CellIndex}]") { Mode = Avalonia.Data.BindingMode.TwoWay });
+        var wizard = new Button { Content = "✦", Tag = "failed-cell-wizard", Width = 28, Height = 28, Padding = new Thickness(0), Margin = new Thickness(4, 0, 0, 0) };
+        ToolTip.SetTip(wizard, "Open the wizard for this cell: verbs, value parts, known-bug tag");
+        wizard.Click += (_, _) => OpenWizard?.Invoke(cell, wizard);
+        var expected = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 0, 8, 0) };
+        expected.Children.Add(value);
+        Grid.SetColumn(wizard, 1); expected.Children.Add(wizard);
+        Put(expected, 2);
         Put(new TextBlock { Text = $"got {cell.Actual}", Foreground = Brush.Parse("#39D39B"), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) }, 3);
         var assign = new Button { Content = "Assign", Tag = "failed-cell-assign", IsEnabled = cell.CanAssign, MinHeight = 28, Padding = new Thickness(12, 0) };
         ToolTip.SetTip(assign, cell.CanAssign ? $"Write {cell.Actual} into this cell (can be undone)" : "Nothing to assign: the run returned no value, or the cell holds a value from another cell or a generated value");

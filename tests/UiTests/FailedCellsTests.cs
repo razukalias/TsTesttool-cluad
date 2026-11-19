@@ -190,4 +190,26 @@ public class FailedCellsTests
         editor.ShowFailedCells = true;
         Assert.Single(editor.FailedCells);
     }
+
+    [AvaloniaFact]
+    public void An_entry_of_the_failed_cells_list_edits_the_cell_in_place_and_offers_the_wizard()
+    {
+        using var dir = new TempDir();
+        var editor = Open(dir);
+        editor.ShowFailedCells = true;
+        var line = Assert.Single(editor.FailedCells);
+        FailedCell? opened = null;
+        var view = new FailedCellsView(editor) { OpenWizard = (c, _) => opened = c };
+        var window = new Window { Content = view, Width = 1200, Height = 400 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var box = view.GetVisualDescendants().OfType<TextBox>().First(t => (t.Tag as string) == "failed-cell-value");
+        box.Text = "Edited";
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("Edited", line.Row.Cells[line.CellIndex]);
+        var wizard = view.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => (b.Tag as string) == "failed-cell-wizard");
+        wizard?.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.NotNull(opened);
+        window.Close();
+    }
 }
