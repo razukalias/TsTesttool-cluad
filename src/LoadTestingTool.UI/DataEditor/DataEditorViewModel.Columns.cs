@@ -185,7 +185,7 @@ public sealed partial class DataEditorViewModel
         return true;
     }
 
-    /// <summary>Sets the assertion verb of an expected-value column, e.g. <c>{eq}Login.id</c> to <c>{contains}Login.id</c>.</summary>
+    /// <summary>Sets the assertion verb of an expected-value column, e.g. <c>{eq}Login.id</c> to <c>{contains}Login.id</c>; an empty verb removes it.</summary>
     public bool ChangeColumnVerb(int cellIndex, string verb)
     {
         if (cellIndex < 1 || cellIndex > Columns.Count || Columns[cellIndex - 1].Group != ColumnGroup.Response) return false;
@@ -193,7 +193,7 @@ public sealed partial class DataEditorViewModel
         var header = TableOf(column).Headers[column.SheetColumn];
         var current = header.Trim().StartsWith('{') && header.IndexOf('}') is var close and > 0 ? header.Trim()[1..close] : string.Empty;
         if (current.Equals(verb, StringComparison.OrdinalIgnoreCase)) return false;
-        return RenameColumnTo(cellIndex, $"{{{verb}}}{StripVerb(header)}");
+        return RenameColumnTo(cellIndex, verb.Length == 0 ? StripVerb(header) : $"{{{verb}}}{StripVerb(header)}");   // an empty verb takes the {verb} off the header
     }
 
     /// <summary>The verb in braces at the start of an expected column's header, or empty.</summary>

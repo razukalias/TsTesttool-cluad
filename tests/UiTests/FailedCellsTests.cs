@@ -173,4 +173,21 @@ public class FailedCellsTests
         Assert.Contains("test", line.Environment);
         Assert.Contains("dev", line.Environment);
     }
+
+    [Fact]
+    public void A_notexists_failure_on_an_empty_value_still_shows_the_cell_and_its_column()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 2);
+        FakeRun.Write(FakeRun.Folder(path), $"events_{FakeRun.RunId}.ndjson",
+            FakeRun.Assertion(1, "CUST001", "CreateCustomer", "name", "notexists", "", "", env: "test"));
+        var editor = new DataEditorViewModel(path, "Customers");
+        var cell = editor.Columns.First(c => c.Group == ColumnGroup.Response && c.Title.EndsWith("CreateCustomer.name")).CellIndex;
+        editor.VisibleRows.First(r => r.CurrentDataId == "CUST001").Cells[cell] = "";
+        editor.ApplyResults(RunResultsReader.ReadLatest(editor.ResultsFolder));
+        editor.ShowFailedColumns = true;
+        Assert.Contains(cell, editor.FailedColumnCells);
+        editor.ShowFailedCells = true;
+        Assert.Single(editor.FailedCells);
+    }
 }

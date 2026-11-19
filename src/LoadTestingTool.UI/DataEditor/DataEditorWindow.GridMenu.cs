@@ -160,6 +160,7 @@ public partial class DataEditorWindow
         var menu = new ContextMenu();
         menu.Items.Add(new MenuItem { Header = $"Assertion verb for {column.Title}", IsEnabled = false });
         menu.Items.Add(new Separator());
+        menu.Items.Add(Item((current.Length == 0 ? "✓  " : "    ") + "No verb (plain equals)", () => { CommitPendingEdit(); editor.ChangeColumnVerb(cell, string.Empty); }, current.Length > 0));
         foreach (var verb in DataEditorViewModel.AssertionVerbs)
         {
             var chosen = verb;

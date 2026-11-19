@@ -462,13 +462,13 @@
     <!-- Testcases | data grid | problems -->
     <Grid Grid.Row="2" Margin="16,16,16,8">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="*" MinWidth="300" />
+        <ColumnDefinition Width="*" MinWidth="420" />
         <ColumnDefinition Width="Auto" />
-        <ColumnDefinition Width="460" MinWidth="240" />
+        <ColumnDefinition Width="460" MinWidth="300" />
       </Grid.ColumnDefinitions>
       <GridSplitter Grid.Column="1" Width="6" Background="Transparent" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Cursor="SizeWestEast" ToolTip.Tip="Drag to resize" />
 
-      <Grid Grid.Column="0" RowDefinitions="Auto,Auto,*" Margin="0,0,6,0">
+      <Grid Grid.Column="0" RowDefinitions="Auto,Auto,*" Margin="0,0,6,0" ClipToBounds="True">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
           <StackPanel Orientation="Horizontal" Spacing="6">
             <Button Content="▦  Table view" Classes="tab" Classes.active="{Binding ShowData}" Command="{Binding OpenDataTabCommand}" ToolTip.Tip="Table view: the rows of the request and response sheets, one row per data row" />
@@ -741,7 +741,7 @@
         </Border>
       </Grid>
 
-      <Border x:Name="RightHost" Grid.Column="2">
+      <Border x:Name="RightHost" Grid.Column="2" ClipToBounds="True">
       <Grid x:Name="WorkbookSide" RowDefinitions="*,Auto">
       <Border Classes="panel" Padding="14" IsVisible="{Binding PreviewVisible}">
         <DockPanel>

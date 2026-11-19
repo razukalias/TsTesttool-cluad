@@ -109,8 +109,9 @@ public sealed partial class DataEditorViewModel
         => text is { Length: > 0 } && text.IndexOf("<bug", StringComparison.OrdinalIgnoreCase) >= 0
            && LoadTestingTool.Execution.BugTag.Parse(text).Tag is { } tag && tag.AppliesTo(failure.Environment);
 
+    /// <summary>The cell already holds the value the run got (after "Assign actual value"). Only an equality check can be settled that way: with notexists, ne, empty and the like the same text still fails.</summary>
     private static bool Assigned(DataRowViewModel row, int cell, FailureDetail failure)
-        => cell >= 0 && cell < row.Cells.Count && ValueParts.SplitCell(row.Cells[cell] ?? string.Empty).Expected.Trim() == (failure.Actual ?? string.Empty).Trim();
+        => (string.IsNullOrEmpty(failure.Verb) || failure.Verb.Equals("eq", StringComparison.OrdinalIgnoreCase)) && cell >= 0 && cell < row.Cells.Count && ValueParts.SplitCell(row.Cells[cell] ?? string.Empty).Expected.Trim() == (failure.Actual ?? string.Empty).Trim();
 
     /// <summary>The failed assertion behind this cell in the latest run, or null when the cell did not fail, or already holds the value the run got.</summary>
     public FailureDetail? FailureAt(DataRowViewModel row, int cellIndex)

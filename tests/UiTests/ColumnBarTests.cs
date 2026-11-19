@@ -67,6 +67,9 @@ public class ColumnBarTests
         var changed = vm.Columns.First(c => c.Title == "{contains}CreateCustomer.id").CellIndex;
         Assert.Equal("{contains}CreateCustomer.id", vm.HeaderText(changed));
         Assert.False(vm.ChangeColumnVerb(changed, "contains"));   // already that verb
+        Assert.True(vm.ChangeColumnVerb(changed, string.Empty));  // "No verb" takes it off again
+        Assert.Equal("CreateCustomer.id", vm.HeaderText(vm.Columns.First(c => c.Title == "CreateCustomer.id").CellIndex));
+        vm.UndoCommand.Execute(null);
         Assert.False(vm.ChangeColumnVerb(CellOf(vm, "CreateCustomer.email"), "eq"));      // request columns have no verb
         vm.UndoCommand.Execute(null);
         Assert.Equal("{notempty}CreateCustomer.id", vm.HeaderText(CellOf(vm, "{notempty}CreateCustomer.id")));
