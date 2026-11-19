@@ -16,7 +16,30 @@ public sealed partial class DataEditorWindow
         var expected = column.Group == ColumnGroup.Response;
         var dontRun = !expected && column.Title.Equals("dontrun", StringComparison.OrdinalIgnoreCase);
         var others = this.FindControl<DataGrid>("Grid")?.SelectedItems.OfType<DataRowViewModel>().Where(r => !ReferenceEquals(r, row)).Cast<ICellRow>().ToList() ?? [];
-        ShowLineWizard(editor, anchor, row, others, column.CellIndex, column.Title, expected, editor.WarningsFor(expected, dontRun), "row", extra: null);
+        Flyout? flyout = null;
+        var extra = expected ? BugTagBar(editor, [row, .. others.OfType<DataRowViewModel>()], column.CellIndex, () => flyout?.Hide()) : null;
+        flyout = ShowLineWizard(editor, anchor, row, others, column.CellIndex, column.Title, expected, editor.WarningsFor(expected, dontRun), "row", extra);
+    }
+
+    /// <summary>
+    /// "Tag as known bug" for an expected-value cell, in the wizard and in the failed-cell popup, so a cell can be marked whether or not it failed.
+    /// Environments: all, or one of the run's environments.
+    /// </summary>
+    private static Control BugTagBar(DataEditorViewModel editor, IReadOnlyList<DataRowViewModel> rows, int cell, Action close)
+    {
+        var choices = new List<string> { "all" };
+        choices.AddRange(editor.BugEnvironmentChoices);
+        var environment = new ComboBox { ItemsSource = choices, SelectedIndex = 0, MinWidth = 110, Tag = "bug-environment" };
+        var tag = new Button { Content = "⚑  Tag as known bug", Tag = "bug-tag" };
+        ToolTip.SetTip(tag, "Writes <bug: environment; description> into this cell (and the other selected rows). A failing assertion of the cell then counts as a known bug in that environment, not as a failure");
+        tag.Click += (_, _) => { close(); editor.TagAsBug(rows, cell, environment.SelectedItem as string ?? "all"); };
+        var remove = new Button { Content = "Remove tag", Tag = "bug-untag", IsEnabled = rows.Any(r => (r.Cells[cell] ?? string.Empty).Contains("<bug", StringComparison.OrdinalIgnoreCase)) };
+        remove.Click += (_, _) => { close(); editor.RemoveBugTag(rows, cell); };
+        return new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, Tag = "bug-bar",
+            Children = { new TextBlock { Text = "Known bug in", VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Foreground = Avalonia.Media.Brush.Parse("#8EA4BC") }, environment, tag, remove },
+        };
     }
 
     /// <summary>The same popup for a cell of one of the other sheets: the value as chips, and which request cells refer to it.</summary>
@@ -42,7 +65,7 @@ public sealed partial class DataEditorWindow
         ShowLineWizard(editor, anchor, row, others, column.CellIndex, column.Title, expected: false, editor.LineWarnings, "step", extra: null);
     }
 
-    private static void ShowLineWizard(DataEditorViewModel editor, Control anchor, ICellRow row, List<ICellRow> others, int cellIndex, string title, bool expected,
+    private static Flyout ShowLineWizard(DataEditorViewModel editor, Control anchor, ICellRow row, List<ICellRow> others, int cellIndex, string title, bool expected,
         Func<IEnumerable<LoadTestingTool.Editing.ValuePart>, string?, List<string>>? warn, string noun, Control? extra)
     {
         var line = new RecordLineViewModel(row, cellIndex, title, expected, warn);
@@ -60,6 +83,7 @@ public sealed partial class DataEditorWindow
             foreach (var other in others) if ((other.Cells[cellIndex] ?? string.Empty) != after) other.Cells[cellIndex] = after;
         };
         flyout.ShowAt(anchor);
+        return flyout;
     }
 
     /// <summary>The red mark on a failed expected-value cell: what the run expected and got, and a button that writes the actual value into the cell.</summary>
@@ -81,6 +105,7 @@ public sealed partial class DataEditorWindow
         assign.Click += (_, _) => { flyout.Hide(); editor.AssignActual(row, column.CellIndex, failure); };
         var close = new Button { Content = "Close", Tag = "failure-close" };
         close.Click += (_, _) => flyout.Hide();
+        content.Children.Add(BugTagBar(editor, [row], column.CellIndex, flyout.Hide));
         content.Children.Add(new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { close, assign } });
         flyout.ShowAt(anchor);
     }

@@ -674,3 +674,4 @@ The automated suites pass, but none of the items below has been tried on screen 
 ## Done: environment drop-down and "Tag cell as known bug" (2026-11-19)
 - Results of a run cover all environments mixed. A drop-down next to the failed-view checkboxes (shown when the run has more than one environment) picks which environment the failed rows, columns, cells and red marks refer to; "All environments" is the default.
 - Right-click an expected-value cell: **⚑ Tag cell as known bug** (all environments, or one environment) and **Remove the bug tag**. Works whether or not the cell failed, on every selected row, one undo step. A failed cell gets "got <actual>" as description. Request cells are refused.
+- (2026-11-19) The ✦ wizard of an expected-value cell and the red "!" popup of a failed cell now have a "Known bug in <all|environment> · Tag as known bug · Remove tag" bar, so the tag does not depend on the right-click menu.

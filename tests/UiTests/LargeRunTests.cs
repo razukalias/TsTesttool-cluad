@@ -275,3 +275,38 @@ public class BugMenuTests
         window.Close();
     }
 }
+
+public class WizardBugTagTests
+{
+    // The bar that the wizard and the failed-cell popup show: environment choice, "Tag as known bug" and "Remove tag".
+    private static Avalonia.Controls.StackPanel Bar(DataEditorViewModel editor, IReadOnlyList<DataRowViewModel> rows, int cell, Action close)
+        => (Avalonia.Controls.StackPanel)typeof(DataEditorWindow).GetMethod("BugTagBar", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+            .Invoke(null, [editor, rows, cell, close])!;
+
+    [AvaloniaFact]
+    public void The_bug_bar_of_the_wizard_tags_and_untags_the_cell_of_every_given_row()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        FakeRun.Write(FakeRun.Folder(path), $"events_{FakeRun.RunId}.ndjson",
+            FakeRun.Assertion(1, "CUST002", "CreateCustomer", "name", "eq", "Customer 2", "Kund 2", env: "test"),
+            FakeRun.Assertion(1, "CUST003", "CreateCustomer", "name", "eq", "Customer 3", "Kund 3", env: "dev"));
+        var vm = new DataEditorViewModel(path, "Customers");
+        vm.ApplyResults(RunResultsReader.ReadLatest(vm.ResultsFolder));
+        var cell = vm.Columns.First(c => c.Group == ColumnGroup.Response && c.Title.EndsWith("CreateCustomer.name")).CellIndex;
+        var rows = vm.VisibleRows.Take(2).ToList();
+        var closed = 0;
+
+        var bar = Bar(vm, rows, cell, () => closed++);
+        var environment = bar.Children.OfType<Avalonia.Controls.ComboBox>().Single();
+        Assert.Equal(["all", "dev", "test"], environment.Items.OfType<string>().ToArray());
+        var untag = bar.Children.OfType<Avalonia.Controls.Button>().Single(b => b.Tag as string == "bug-untag");
+        Assert.False(untag.IsEnabled);                                   // nothing to remove yet
+
+        environment.SelectedItem = "test";
+        bar.Children.OfType<Avalonia.Controls.Button>().Single(b => b.Tag as string == "bug-tag").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+        Assert.Equal(1, closed);
+        Assert.All(vm.VisibleRows.Take(2), r => Assert.Contains("<bug: test", r.Cells[cell]));
+        Assert.True(Bar(vm, vm.VisibleRows.Take(2).ToList(), cell, () => { }).Children.OfType<Avalonia.Controls.Button>().Single(b => b.Tag as string == "bug-untag").IsEnabled);
+    }
+}
