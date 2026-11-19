@@ -250,7 +250,7 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
     }
 
     /// <summary>How this row fared in the latest run, or null when there are no results for it.</summary>
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ResultText), nameof(ResultColor), nameof(CountsText))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ResultText), nameof(ResultColor), nameof(CountsText), nameof(CountsDetail))]
     private RowOutcome? _outcome;
 
     /// <summary>Whether a failure of this row is a known bug (its expected cell carries a bug tag for the failure's environment); set by the editor.</summary>
@@ -291,13 +291,17 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
         }
     }
 
+    /// <summary>One line per failure for the tooltip of the counts: whether it counts as failed or as a known bug, and which field.</summary>
+    public string CountsDetail => Outcome is not { Passed: false } outcome ? string.Empty
+        : string.Join("\n", outcome.Failures.Select(f => (KnownBugCheck?.Invoke(this, f) ?? false ? "BUG    " : "FAILED ") + (f.IsAssertion ? $"{f.StepName}.{f.ResponsePath}" : $"{f.StepName} (step)") + (f.Environment.Length > 0 ? $" [{f.Environment}]" : string.Empty)));
+
     /// <summary>True when the row's latest run failed for something other than a known bug.</summary>
     public bool FailedForReal => Outcome is not null && Standing == "FAIL";
 
     /// <summary>True when everything that failed in the latest run is a known bug.</summary>
     public bool OnlyKnownBugs => Outcome is not null && Standing == "BUG";
 
-    internal void RefreshStanding() { if (Outcome is not null) OnPropertyChanged(nameof(ResultText)); OnPropertyChanged(nameof(ResultColor)); OnPropertyChanged(nameof(CountsText)); }
+    internal void RefreshStanding() { if (Outcome is not null) OnPropertyChanged(nameof(ResultText)); OnPropertyChanged(nameof(ResultColor)); OnPropertyChanged(nameof(CountsText)); OnPropertyChanged(nameof(CountsDetail)); }
 
     public int TestcaseIndex { get; }
     public TableRow Request { get; }

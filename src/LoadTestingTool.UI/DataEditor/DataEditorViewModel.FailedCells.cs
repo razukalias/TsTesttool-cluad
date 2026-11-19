@@ -97,13 +97,17 @@ public sealed partial class DataEditorViewModel
     /// </summary>
     internal bool IsKnownBug(DataRowViewModel row, FailureDetail failure)
     {
-        if (!failure.IsAssertion || row.Response is not { } response) return false;
-        CellOfFailure(failure);   // makes sure the column maps are current
-        if (!_responseColumnOf.TryGetValue($"{failure.StepName}.{failure.ResponsePath}", out var column)) return false;
-        var text = response.GetAt(column);
-        if (text.IndexOf("<bug", StringComparison.OrdinalIgnoreCase) < 0) return false;
-        return LoadTestingTool.Execution.BugTag.Parse(text).Tag is { } tag && tag.AppliesTo(failure.Environment);
+        if (!failure.IsAssertion) return false;
+        var cell = CellOfFailure(failure);   // also makes sure the column maps are current
+        // The cell the table shows for this failure, and the workbook column with the same "Step.path" header (they can differ when a header occurs twice)
+        if (cell >= 1 && cell < row.Cells.Count && Tagged(row.Cells[cell], failure)) return true;
+        if (row.Response is not { } response || !_responseColumnOf.TryGetValue($"{failure.StepName}.{failure.ResponsePath}", out var column)) return false;
+        return Tagged(response.GetAt(column), failure);
     }
+
+    private static bool Tagged(string? text, FailureDetail failure)
+        => text is { Length: > 0 } && text.IndexOf("<bug", StringComparison.OrdinalIgnoreCase) >= 0
+           && LoadTestingTool.Execution.BugTag.Parse(text).Tag is { } tag && tag.AppliesTo(failure.Environment);
 
     private static bool Assigned(DataRowViewModel row, int cell, FailureDetail failure)
         => cell >= 0 && cell < row.Cells.Count && ValueParts.SplitCell(row.Cells[cell] ?? string.Empty).Expected.Trim() == (failure.Actual ?? string.Empty).Trim();

@@ -134,7 +134,8 @@ public static class RunResultsReader
         var status = Int(root, "httpStatus");
         var parts = new[] { status > 0 ? $"HTTP {status}" : "", Text(root, "failureCategory"), Text(root, "errorMessage") }.Where(p => p.Length > 0);
         var message = string.Join(" — ", parts);
-        var bare = Text(root, "errorMessage").Length == 0 && Text(root, "failureCategory").Length == 0;
+        // a step the runner marked failed only because its assertions failed carries the category "Assertion" and no error of its own
+        var bare = Text(root, "errorMessage").Length == 0 && Text(root, "failureCategory") is "" or "Assertion";
         outcome.Failures.Add(new FailureDetail(Text(root, "stepName"), null, null, null, null, message.Length > 0 ? message : "The step failed.", environment, bare));
     }
 

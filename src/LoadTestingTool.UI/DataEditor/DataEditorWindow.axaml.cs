@@ -560,7 +560,9 @@ public partial class DataEditorWindow : Window
             text.Bind(TextBlock.ForegroundProperty, new Binding("ResultColor"));
             var counts = new TextBlock { FontSize = 10.5, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Foreground = Brush.Parse("#8EA4BC"), Tag = "row-counts" };
             counts.Bind(TextBlock.TextProperty, new Binding("CountsText"));
-            return new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Children = { text, counts } };
+            var panel = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Children = { text, counts } };
+            panel.Bind(ToolTip.TipProperty, new Binding("CountsDetail"));   // which failures count as failed and which as known bugs
+            return panel;
         })
     };
 

@@ -445,3 +445,25 @@ public class BugColumnsOnlyTests
         window.Close();
     }
 }
+
+public class AssertionCategoryTests
+{
+    [Fact]
+    public void A_step_that_failed_only_because_of_its_assertions_is_not_a_second_failure_and_the_tooltip_lists_each_failure()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 2);
+        FakeRun.Write(FakeRun.Folder(path), $"events_{FakeRun.RunId}.ndjson",
+            FakeRun.Request(1, "CUST002", "CreateCustomer", result: "FAIL", status: 200, category: "Assertion", env: "dev"),
+            FakeRun.Assertion(1, "CUST002", "CreateCustomer", "name", "eq", "Customer 2", "Kund 2", env: "dev"));
+        var editor = new DataEditorViewModel(path, "Customers");
+        editor.ApplyResults(RunResultsReader.ReadLatest(editor.ResultsFolder));
+        var row = editor.VisibleRows.First(r => r.CurrentDataId == "CUST002");
+        Assert.Equal("1 failed", row.CountsText);                       // the assertion; the step is explained by it
+        Assert.Contains("FAILED CreateCustomer.name [dev]", row.CountsDetail);
+        var cell = editor.Columns.First(c => c.Group == ColumnGroup.Response && c.Title.EndsWith("CreateCustomer.name")).CellIndex;
+        editor.TagAsBug([row], cell, "all");
+        Assert.Equal("BUG", row.ResultText);
+        Assert.Contains("BUG    CreateCustomer.name [dev]", row.CountsDetail);
+    }
+}
