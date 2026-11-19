@@ -20,4 +20,7 @@
     <PackageReference Include="ClosedXML" Version="0.104.2" />
     <PackageReference Include="Spreadalonia" Version="1.1.0" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="UiTests" />
+  </ItemGroup>
 </Project>

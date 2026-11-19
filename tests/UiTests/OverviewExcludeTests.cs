@@ -56,11 +56,39 @@ public class OverviewExcludeTests
     {
         var (dashboard, exclude, shown, ignoring) = Open();
         var include = (TextBox)Window.GetField("_overviewStepFilter", Flags)!.GetValue(dashboard)!;
-        Assert.Contains("Hide steps", exclude.Watermark);
+        Assert.Contains("Exclude", exclude.Watermark);
         include.Text = "login";
         exclude.Text = "row_a";
         Assert.False(shown(Step("Login")));                // matches include, but excluded
         Assert.True(ignoring(Step("Login")));              // without the exclude box it would be shown
         Assert.False(ignoring(Step("Ping")));              // not in the include filter either way
+    }
+
+    [AvaloniaFact]
+    public void Several_steps_or_environments_can_be_ticked_and_nothing_ticked_shows_all()
+    {
+        var (dashboard, _, shown, _) = Open();
+        var step = (LoadTestingTool.UI.MultiFilter)Window.GetField("_overviewStepName", Flags)!.GetValue(dashboard)!;
+        step.SetOptions(["Login", "Ping", "Health check"]);
+        Assert.True(shown(Step("Ping")));
+        step.Set(["Login", "Ping"]);
+        Assert.True(shown(Step("Login")));
+        Assert.True(shown(Step("Ping")));
+        Assert.False(shown(Step("Health check")));
+        step.Clear();
+        Assert.True(shown(Step("Health check")));
+    }
+
+    [AvaloniaFact]
+    public void A_multi_filter_keeps_only_offered_values_and_reports_its_choice()
+    {
+        var filter = new LoadTestingTool.UI.MultiFilter("Environment");
+        filter.SetOptions(["dev", "test", "prod"]);
+        filter.Set(["dev", "gone"]);
+        filter.SetOptions(["dev", "test"]);
+        Assert.Equal(["dev"], filter.Selected);
+        Assert.True(filter.Matches("DEV"));
+        Assert.False(filter.Matches("test"));
+        Assert.Equal("Environment: dev", filter.Summary);
     }
 }

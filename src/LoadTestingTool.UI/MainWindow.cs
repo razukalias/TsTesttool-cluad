@@ -173,14 +173,20 @@ public sealed partial class MainWindow : Window
     private readonly TextBlock _details = new();
     private readonly StackPanel _assertionItems = new() { Orientation = Orientation.Vertical };
     private readonly CheckBox _failedOnly = new() { Content = "Show failed only", IsChecked = true };
-    private readonly ComboBox _environmentFilter = new() { Width = 150, Margin = new Thickness(8, 6, 6, 0) };
+    private readonly MultiFilter _environmentFilter = new("Environment");
+    private readonly MultiFilter _assertionTestcaseFilter = new("Testcase");
+    private readonly MultiFilter _assertionStepFilter = new("Step");
+    private readonly MultiFilter _assertionResultFilter = new("Result");
+    private readonly MultiFilter _assertionVerbFilter = new("Verb");
+    private readonly TextBox _assertionExclude = new() { Watermark = "Exclude: term1 & term2…", Width = 230, Tag = "assertion-exclude" };
     private readonly ComboBox _internalLogTestcase = new() { Width = 220 };
     private readonly ComboBox _internalLogEnvironment = new() { Width = 220 };
-    private readonly ComboBox _overviewStepStatus = new() { Width = 145, ItemsSource = new[] { "All statuses", "Passed", "Failed", "Unexpected error", "Skipped" }, SelectedIndex = 0 };
-    private readonly ComboBox _overviewStepEnvironment = new() { Width = 170 };
-    private readonly ComboBox _overviewStepTestcase = new() { Width = 190 };
-    private readonly TextBox _overviewStepFilter = new() { Width = 280, Watermark = "Filter steps: term1 & term2…" };
-    private readonly TextBox _overviewStepExclude = new() { Width = 280, Watermark = "Hide steps: term1 & term2…", Tag = "overview-exclude" };
+    private readonly MultiFilter _overviewStepStatus = new("Status");
+    private readonly MultiFilter _overviewStepEnvironment = new("Environment");
+    private readonly MultiFilter _overviewStepTestcase = new("Testcase");
+    private readonly MultiFilter _overviewStepName = new("Step");
+    private readonly TextBox _overviewStepFilter = new() { Width = 230, Watermark = "Show: assertion text, term1 & term2…", Tag = "overview-include" };
+    private readonly TextBox _overviewStepExclude = new() { Width = 230, Watermark = "Exclude: term1 & term2…", Tag = "overview-exclude" };
     private bool _overviewStepFilterRefreshing;
     private readonly TextBlock _readyValue = new();
     private readonly TextBlock _runningValue = new();
@@ -231,12 +237,15 @@ public sealed partial class MainWindow : Window
 
     private void RefreshAssertionList()
     {
-        var selectedEnvironment = _environmentFilter.SelectedItem?.ToString();
+        var selectedEnvironment = string.Join(",", _environmentFilter.Selected);
         var values = (_selectedInstance is null ? [] : ScopedAssertions(_selectedInstance))
-            .Where(a => string.IsNullOrWhiteSpace(selectedEnvironment) || selectedEnvironment == "All environments" || a.Environment.Equals(selectedEnvironment, StringComparison.OrdinalIgnoreCase))
+            .Where(a => _environmentFilter.Matches(a.Environment) && _assertionTestcaseFilter.Matches(a.Testcase) && _assertionStepFilter.Matches(a.StepName)
+                && _assertionResultFilter.Matches(a.Result) && _assertionVerbFilter.Matches(a.AssertionVerb))
             .Where(a => !_failedOnly.IsChecked.GetValueOrDefault() || a.Result == "FAIL")
-            .Where(a => MatchesTerms($"{a.Environment} {a.Testcase} {a.DataId} {a.StepName} {a.ResponsePath} {a.AssertionVerb} {a.ExpectedValue} {a.ActualValue} {a.Result}", _assertionSearch.Text))
+            .Where(a => MatchesTerms(AssertionSearchText(a), _assertionSearch.Text))
+            .Where(a => string.IsNullOrWhiteSpace(_assertionExclude.Text) || !MatchesTerms(AssertionSearchText(a), _assertionExclude.Text))
             .ToList();
+        RefreshAssertionChips();
         var totalPages = Math.Max(1, (int)Math.Ceiling(values.Count / (double)DashboardPageSize));
         _assertionPage = Math.Clamp(_assertionPage, 1, totalPages);
         var pageValues = values.Skip((_assertionPage - 1) * DashboardPageSize).Take(DashboardPageSize);
@@ -247,24 +256,52 @@ public sealed partial class MainWindow : Window
         RefreshBugList();
         UiLog($"Assertion list refreshed. instance={_selectedInstance?.Name ?? "<none>"}; environment={selectedEnvironment ?? "<none>"}; failedOnly={_failedOnly.IsChecked == true}; page={_assertionPage}; pageSize={DashboardPageSize}; visible={values.Count}; total={_selectedInstance?.Assertions.Count ?? 0}");
     }
+    private readonly StackPanel _assertionChips = new();
+
+    private static IEnumerable<(string, Action)> FilterChipsOf(IEnumerable<MultiFilter> filters, params (string Text, TextBox Box)[] boxes)
+    {
+        foreach (var filter in filters) if (filter.Selected.Count > 0) { var f = filter; yield return (f.Summary, () => f.Clear()); }
+        foreach (var (label, box) in boxes) if (!string.IsNullOrWhiteSpace(box.Text)) { var b = box; yield return ($"{label}: {b.Text}", () => b.Text = string.Empty); }
+    }
+
+    private void RefreshAssertionChips()
+    {
+        _assertionChips.Children.Clear();
+        var filters = new[] { _environmentFilter, _assertionTestcaseFilter, _assertionStepFilter, _assertionResultFilter, _assertionVerbFilter };
+        var chips = FilterChips.Build(FilterChipsOf(filters, ("Show", _assertionSearch), ("Exclude", _assertionExclude)), () =>
+        {
+            foreach (var filter in filters) filter.Clear(raise: false);
+            _assertionSearch.Text = string.Empty; _assertionExclude.Text = string.Empty; RefreshAssertionList();
+        });
+        if (chips is not null) _assertionChips.Children.Add(chips);
+    }
+
+    private Control? OverviewChips()
+    {
+        var filters = new[] { _overviewStepStatus, _overviewStepEnvironment, _overviewStepTestcase, _overviewStepName };
+        return FilterChips.Build(FilterChipsOf(filters, ("Show", _overviewStepFilter), ("Exclude", _overviewStepExclude)), () =>
+        {
+            foreach (var filter in filters) filter.Clear(raise: false);
+            _overviewStepFilter.Text = string.Empty; _overviewStepExclude.Text = string.Empty; RefreshDashboardDetails(true);
+        });
+    }
+
+    /// <summary>The text the show / exclude boxes of the Assertions tab look in: where it is, what was expected and what the run got.</summary>
+    internal static string AssertionSearchText(AssertionInfo a)
+        => $"{a.Environment} {a.Testcase} {a.DataId} {a.StepName} {a.ResponsePath} {a.AssertionVerb} {a.ExpectedValue} {a.ActualValue} {a.Result} {a.FailureMessage}";
+
     private static bool MatchesTerms(string value, string? filter) => (filter ?? string.Empty).Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).All(term => value.Contains(term, StringComparison.OrdinalIgnoreCase));
 
     private void UpdateEnvironmentFilterOptions()
     {
-        var current = _environmentFilter.SelectedItem?.ToString() ?? "All environments";
-        var environments = (_selectedInstance?.EnvironmentOptions ?? [])
-            .Concat(_selectedInstance?.Assertions.Select(a => a.Environment) ?? [])
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-            .ToList() ?? [];
-        var options = new[] { "All environments" }.Concat(environments).ToList();
-        var existing = (_environmentFilter.ItemsSource as IEnumerable<string>)?.ToList() ?? [];
-        if (options.SequenceEqual(existing, StringComparer.OrdinalIgnoreCase)
-            && options.Any(option => option.Equals(current, StringComparison.OrdinalIgnoreCase))) return;
-        _environmentFilter.ItemsSource = options;
-        _environmentFilter.SelectedItem = options.FirstOrDefault(option => option.Equals(current, StringComparison.OrdinalIgnoreCase)) ?? "All environments";
-        UiLog($"Assertion environment options updated. instance={_selectedInstance?.Name ?? "<none>"}; options={string.Join(",", options)}; selected={_environmentFilter.SelectedItem}");
+        var instance = _selectedInstance;
+        var environments = (instance?.EnvironmentOptions ?? []).Concat(instance?.Assertions.Select(a => a.Environment) ?? []).Where(value => !string.IsNullOrWhiteSpace(value));
+        _environmentFilter.SetOptions(environments);
+        var assertions = instance?.Assertions ?? [];
+        _assertionTestcaseFilter.SetOptions(assertions.Select(a => a.Testcase));
+        _assertionStepFilter.SetOptions(assertions.Select(a => a.StepName));
+        _assertionResultFilter.SetOptions(assertions.Select(a => a.Result));
+        _assertionVerbFilter.SetOptions(assertions.Select(a => a.AssertionVerb));
     }
 
     private void OpenAssertionEditor(AssertionInfo assertion)

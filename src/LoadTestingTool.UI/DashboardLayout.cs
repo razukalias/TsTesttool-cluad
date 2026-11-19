@@ -444,9 +444,9 @@ public sealed partial class MainWindow
         left.Children.Add(tableCard); Grid.SetRow(eventCard, 1); left.Children.Add(eventCard);
 
         _failedOnly.IsCheckedChanged += (_, _) => RefreshAssertionList();
-        _environmentFilter.Width = 175; _environmentFilter.Margin = new Thickness(0);
-        _environmentFilter.SelectionChanged += (_, _) => RefreshAssertionList();
-        _environmentFilter.ItemsSource = new[] { "All environments" }; _environmentFilter.SelectedIndex = 0;
+        foreach (var filter in new[] { _environmentFilter, _assertionTestcaseFilter, _assertionStepFilter, _assertionResultFilter, _assertionVerbFilter })
+            filter.Changed += (_, _) => RefreshAssertionList();
+        _assertionExclude.TextChanged += (_, _) => RefreshAssertionList();
         _overviewFilter.TextChanged += (_, _) => RefreshDashboardDetails(true);
         _overviewStepFilter.TextChanged += (_, _) =>
         {
@@ -471,15 +471,18 @@ public sealed partial class MainWindow
                 _overviewStepExclude.CaretIndex = Math.Min(caret, _overviewStepExclude.Text?.Length ?? 0);
             });
         };
-        _overviewStepStatus.SelectionChanged += (_, _) => { if (!_overviewStepFilterRefreshing) RefreshDashboardDetails(true); };
-        _overviewStepEnvironment.SelectionChanged += (_, _) => { if (!_overviewStepFilterRefreshing) RefreshDashboardDetails(true); };
-        _overviewStepTestcase.SelectionChanged += (_, _) => { if (!_overviewStepFilterRefreshing) RefreshDashboardDetails(true); };
+        _overviewStepStatus.SetOptions(["Passed", "Failed", "Unexpected error", "Skipped"]);
+        foreach (var filter in new[] { _overviewStepStatus, _overviewStepEnvironment, _overviewStepTestcase, _overviewStepName })
+            filter.Changed += (_, _) => { if (!_overviewStepFilterRefreshing) RefreshDashboardDetails(true); };
         _assertionSearch.TextChanged += (_, _) => RefreshAssertionList();
-        var assertionActions = new WrapPanel { Children = { _assertionSearch, DashboardStyle.Action("Open Assertion Workbench", OpenAssertionWorkbench, "primary"), DashboardStyle.Action("Copy assertions", () => _ = CopyAssertionsAsync()), DashboardStyle.Action("Select failed", () => { if (_selectedInstance is not null) foreach (var a in _selectedInstance.Assertions.Where(a => a.Result == "FAIL")) a.Selected = true; RefreshAssertionList(); }),
+        var assertionActions = new WrapPanel { Children = { DashboardStyle.Action("Open Assertion Workbench", OpenAssertionWorkbench, "primary"), DashboardStyle.Action("Copy assertions", () => _ = CopyAssertionsAsync()), DashboardStyle.Action("Select failed", () => { if (_selectedInstance is not null) foreach (var a in _selectedInstance.Assertions.Where(a => a.Result == "FAIL")) a.Selected = true; RefreshAssertionList(); }),
             DashboardStyle.Action("Clear", () => { if (_selectedInstance is not null) foreach (var a in _selectedInstance.Assertions) a.Selected = false; RefreshAssertionList(); }),
             DashboardStyle.Action("Apply actual values", ApplySelectedFixes), DashboardStyle.Action("Export comparison", () => _ = GenerateAssertionComparisonAsync()), DashboardStyle.Action("Open comparison", OpenLatestAssertionComparison) } };
         var assertionPanel = new DockPanel { Margin = new Thickness(12) };
-        var filters = new StackPanel { Spacing = 10, Children = { _failedOnly, _environmentFilter, assertionActions } };
+        var assertionFilterBar = new WrapPanel { Children = { _environmentFilter, _assertionTestcaseFilter, _assertionStepFilter, _assertionResultFilter, _assertionVerbFilter, _assertionSearch, _assertionExclude } };
+        foreach (var control in assertionFilterBar.Children) control.Margin = new Thickness(0, 0, 8, 6);
+        _assertionSearch.Watermark = "Show: assertion text, term1 & term2…"; _assertionSearch.Width = 230; _assertionSearch.Tag = "assertion-include";
+        var filters = new StackPanel { Spacing = 6, Children = { _failedOnly, assertionFilterBar, _assertionChips, assertionActions } };
         DockPanel.SetDock(filters, Dock.Top); assertionPanel.Children.Add(filters);
         assertionPanel.Children.Add(new ScrollViewer { Content = _assertionItems, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         var assertionPaging = CreatePaginationBar(false);
@@ -1437,15 +1440,9 @@ public sealed partial class MainWindow
         _overviewStepFilterRefreshing = true;
         try
         {
-        static void Preserve(ComboBox combo, IEnumerable<string> values)
-        {
-            var previous = combo.SelectedItem?.ToString();
-            var options = values.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
-            combo.ItemsSource = options;
-            combo.SelectedItem = options.FirstOrDefault(x => x.Equals(previous, StringComparison.OrdinalIgnoreCase)) ?? options.FirstOrDefault();
-        }
-        Preserve(_overviewStepEnvironment, new[] { "All environments" }.Concat(item.Requests.Select(x => string.IsNullOrWhiteSpace(x.Environment) ? "default" : x.Environment)));
-        Preserve(_overviewStepTestcase, new[] { "All testcases" }.Concat(item.Requests.Select(x => x.Testcase)));
+            _overviewStepEnvironment.SetOptions(item.Requests.Select(x => string.IsNullOrWhiteSpace(x.Environment) ? "default" : x.Environment));
+            _overviewStepTestcase.SetOptions(item.Requests.Select(x => x.Testcase));
+            _overviewStepName.SetOptions(item.Requests.Select(x => x.StepName));
         }
         finally { _overviewStepFilterRefreshing = false; }
     }
@@ -1505,8 +1502,27 @@ public sealed partial class MainWindow
         if (LoadSavedRun(item, run)) RefreshDashboardDetails(true);
     }
 
-    private static string StepSearchText(DashboardRequest request)
-        => $"{request.StepType} {request.StepName} {request.Testcase} {request.DataId} {request.Environment} {request.Result} {request.FailureCategory} {request.Error}";
+    private string StepSearchText(DashboardRequest request)
+        => $"{request.StepType} {request.StepName} {request.Testcase} {request.DataId} {request.Environment} {request.Result} {request.FailureCategory} {request.Error} {AssertionTextOf(request)}";
+
+    // What the step's assertions say (path, verb, expected, actual, message), so the show / exclude boxes can look for a value
+    private Dictionary<string, string> _assertionTextByStep = new(StringComparer.OrdinalIgnoreCase);
+    private object? _assertionTextFor;
+    private int _assertionTextCount = -1;
+
+    private static string StepTextKey(string testcase, string dataId, string environment, string step) => $"{testcase}\u001F{dataId}\u001F{environment}\u001F{step}";
+
+    private string AssertionTextOf(DashboardRequest request)
+    {
+        if (_selectedInstance is not { } item) return string.Empty;
+        if (!ReferenceEquals(_assertionTextFor, item.Assertions) || _assertionTextCount != item.Assertions.Count)
+        {
+            _assertionTextByStep = item.Assertions.GroupBy(a => StepTextKey(a.Testcase, a.DataId, a.Environment, a.StepName), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => string.Join(" ", g.Select(a => $"{a.ResponsePath} {a.AssertionVerb} {a.ExpectedValue} {a.ActualValue} {a.FailureMessage}")), StringComparer.OrdinalIgnoreCase);
+            _assertionTextFor = item.Assertions; _assertionTextCount = item.Assertions.Count;
+        }
+        return _assertionTextByStep.GetValueOrDefault(StepTextKey(request.Testcase, request.DataId, request.Environment, request.StepName), string.Empty);
+    }
 
     /// <summary>True when the step is hidden by the exclude box: it contains every term written there.</summary>
     private bool IsExcludedStep(DashboardRequest request)
@@ -1517,14 +1533,12 @@ public sealed partial class MainWindow
         if (applyExclude && IsExcludedStep(request)) return false;
         if (!forComparison)
         {
-            var status = _overviewStepStatus.SelectedItem?.ToString() ?? "All statuses";
             var actualStatus = IsUnexpectedRequest(request) ? "Unexpected error" : request.Result.Equals("PASS", StringComparison.OrdinalIgnoreCase) ? "Passed" : request.Result.Equals("SKIPPED", StringComparison.OrdinalIgnoreCase) ? "Skipped" : "Failed";
-            if (!status.Equals("All statuses", StringComparison.OrdinalIgnoreCase) && !actualStatus.Equals(status, StringComparison.OrdinalIgnoreCase)) return false;
-            var environment = _overviewStepEnvironment.SelectedItem?.ToString();
-            if (!string.IsNullOrWhiteSpace(environment) && !environment.Equals("All environments", StringComparison.OrdinalIgnoreCase) && !environment.Equals(string.IsNullOrWhiteSpace(request.Environment) ? "default" : request.Environment, StringComparison.OrdinalIgnoreCase)) return false;
+            if (!_overviewStepStatus.Matches(actualStatus)) return false;
+            if (!_overviewStepEnvironment.Matches(string.IsNullOrWhiteSpace(request.Environment) ? "default" : request.Environment)) return false;
+            if (!_overviewStepName.Matches(request.StepName)) return false;
         }
-        var testcase = _overviewStepTestcase.SelectedItem?.ToString();
-        if (!string.IsNullOrWhiteSpace(testcase) && !testcase.Equals("All testcases", StringComparison.OrdinalIgnoreCase) && !testcase.Equals(request.Testcase, StringComparison.OrdinalIgnoreCase)) return false;
+        if (!_overviewStepTestcase.Matches(request.Testcase)) return false;
         return MatchesTerms(StepSearchText(request), _overviewStepFilter.Text);
     }
 
@@ -1572,6 +1586,7 @@ public sealed partial class MainWindow
         Detach(_overviewStepStatus);
         Detach(_overviewStepEnvironment);
         Detach(_overviewStepTestcase);
+        Detach(_overviewStepName);
         Detach(_overviewStepFilter);
         Detach(_overviewStepExclude);
         _overviewPanel.Children.Clear();
@@ -1629,10 +1644,11 @@ public sealed partial class MainWindow
         _overviewPanel.Children.Add(DashboardStyle.Text($"Step execution timeline  ·  Total duration: {FormatRunDuration(item)}", 13, true));
         var stepFilterBar = new WrapPanel { Orientation = Orientation.Horizontal, ItemWidth = double.NaN, ItemHeight = double.NaN, Children =
         {
-            _overviewStepStatus, _overviewStepEnvironment, _overviewStepTestcase, _overviewStepFilter, _overviewStepExclude
+            _overviewStepStatus, _overviewStepEnvironment, _overviewStepTestcase, _overviewStepName, _overviewStepFilter, _overviewStepExclude
         }};
         foreach (var control in stepFilterBar.Children) control.Margin = new Thickness(0, 0, 8, 6);
         _overviewPanel.Children.Add(stepFilterBar);
+        if (OverviewChips() is { } overviewChips) _overviewPanel.Children.Add(overviewChips);
         var hiddenByExclude = string.IsNullOrWhiteSpace(_overviewStepExclude.Text) ? 0 : requests.Count(r => IsExcludedStep(r) && MatchesOverviewStep(r, applyExclude: false));
         if (hiddenByExclude > 0) _overviewPanel.Children.Add(DashboardStyle.Text($"{hiddenByExclude} {(hiddenByExclude == 1 ? "step is" : "steps are")} hidden by the exclude box. Clear it to see {(hiddenByExclude == 1 ? "it" : "them")} again.", 11, false, DashboardStyle.Muted));
         _overviewPanel.Children.Add(DashboardStyle.Text("Filters apply to completed steps only. Use & between terms to require all terms; matching text remains visible in the details viewer.", 10, false, DashboardStyle.Muted));
