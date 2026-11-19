@@ -107,9 +107,15 @@ public sealed partial class DataEditorWindow
             foreach (var other in others) if ((other.Cells[cellIndex] ?? string.Empty) != after) other.Cells[cellIndex] = after;
             if (targets is not null) foreach (var (target, cell) in targets) if ((target.Cells[cell] ?? string.Empty) != after) target.Cells[cell] = after;
         };
+        _openWizard?.Hide();
+        _openWizard = flyout;
+        flyout.Closed += (_, _) => { if (ReferenceEquals(_openWizard, flyout)) _openWizard = null; };
         flyout.ShowAt(anchor);
         return flyout;
     }
+
+    /// <summary>The wizard that is open now. Moving to another cell closes it, and closing applies what it built (the same as clicking away).</summary>
+    private static Flyout? _openWizard;
 
     /// <summary>The red mark on a failed expected-value cell: what the run expected and got, and a button that writes the actual value into the cell.</summary>
     private void ShowFailurePopup(DataGridCell cell, Control anchor, DataRowViewModel row, FailureDetail failure)

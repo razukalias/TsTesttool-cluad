@@ -147,12 +147,22 @@ public sealed partial class DataEditorViewModel
         foreach (var row in VisibleRows)
         {
             if (row.Outcome is not { } outcome) continue;
+            // A cell that failed in several environments is one entry that names all of them
+            var failures = new Dictionary<int, List<FailureDetail>>();
             foreach (var failure in FailuresOf(outcome).Where(f => f.IsAssertion))
             {
                 var cell = CellOfFailure(failure);
                 if (cell < 1 || Assigned(row, cell, failure) || IsKnownBug(row, failure)) continue;
-                found.Add(new FailedCell(row, cell, titles[cell], row.CurrentDataId, ValueParts.SplitCell(row.Cells[cell] ?? string.Empty).Expected, failure.Actual ?? string.Empty,
-                    failure.Verb ?? string.Empty, failure.Environment, CanAssign(row, cell, failure)));
+                if (!failures.TryGetValue(cell, out var list)) failures[cell] = list = [];
+                list.Add(failure);
+            }
+            foreach (var (cell, list) in failures.OrderBy(f => f.Key))
+            {
+                var first = list[0];
+                var environments = string.Join(", ", list.Select(f => f.Environment).Where(e => e.Length > 0).Distinct());
+                var actuals = list.Select(f => f.Actual ?? string.Empty).Distinct().ToList();
+                found.Add(new FailedCell(row, cell, titles[cell], row.CurrentDataId, ValueParts.SplitCell(row.Cells[cell] ?? string.Empty).Expected,
+                    actuals.Count == 1 ? actuals[0] : string.Join(" / ", actuals), first.Verb ?? string.Empty, environments, CanAssign(row, cell, first) && actuals.Count == 1));
             }
         }
         FailedCells.ReplaceAll(found);   // one notification: the list is drawn once, however many cells failed

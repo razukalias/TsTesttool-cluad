@@ -157,4 +157,20 @@ public class FailedCellsTests
         Avalonia.Headless.HeadlessWindowExtensions.CaptureRenderedFrame(window)!.Save(Path.Combine(shots, "failed-cells-list.png"));
         window.Close();
     }
+
+    [Fact]
+    public void A_cell_that_failed_in_several_environments_is_listed_once_with_all_of_them()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 2);
+        FakeRun.Write(FakeRun.Folder(path), $"events_{FakeRun.RunId}.ndjson",
+            FakeRun.Assertion(1, "CUST001", "CreateCustomer", "name", "eq", "Customer 1", "Kund 1", env: "test"),
+            FakeRun.Assertion(1, "CUST001", "CreateCustomer", "name", "eq", "Customer 1", "Kund 1", env: "dev"));
+        var editor = new DataEditorViewModel(path, "Customers");
+        editor.ApplyResults(RunResultsReader.ReadLatest(editor.ResultsFolder));
+        editor.ShowFailedCells = true;
+        var line = Assert.Single(editor.FailedCells);
+        Assert.Contains("test", line.Environment);
+        Assert.Contains("dev", line.Environment);
+    }
 }
