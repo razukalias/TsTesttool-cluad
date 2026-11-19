@@ -472,7 +472,7 @@
             <Button Content="⚙  Config edit mode" Classes="tab" Classes.active="{Binding ShowSteps}" Command="{Binding OpenStepsTabCommand}" ToolTip.Tip="Config edit mode: the steps of the testcase as forms (type, URL, template, timeouts, ...)" />
             <Button Content="☰  Record view" Classes="tab" Classes.active="{Binding ShowRecord}" Command="{Binding OpenRecordTabCommand}" ToolTip.Tip="Record view: one data row as a list. Build each value from parts (text, values from other cells, random numbers, GUIDs, dates, files) and pick conditions in plain words" />
           </StackPanel>
-          <TextBlock Grid.Column="2" Text="{Binding RowCountText}" IsVisible="{Binding ShowData}" Foreground="#8EA4BC" VerticalAlignment="Center" />
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" IsVisible="{Binding ShowData}" VerticalAlignment="Center"><TextBlock Text="{Binding RowCountText}" Foreground="#8EA4BC" VerticalAlignment="Center" /><TextBlock Text="{Binding SelectionText}" Foreground="#8CC1FF" FontWeight="SemiBold" VerticalAlignment="Center" /></StackPanel>
         </Grid>
         <StackPanel Grid.Row="1" Spacing="10" Margin="0,0,0,10">
         <WrapPanel IsVisible="{Binding ShowData}">

@@ -66,11 +66,14 @@ public sealed partial class DataEditorWindow
     }
 
     private static Flyout ShowLineWizard(DataEditorViewModel editor, Control anchor, ICellRow row, List<ICellRow> others, int cellIndex, string title, bool expected,
-        Func<IEnumerable<LoadTestingTool.Editing.ValuePart>, string?, List<string>>? warn, string noun, Control? extra)
+        Func<IEnumerable<LoadTestingTool.Editing.ValuePart>, string?, List<string>>? warn, string noun, Control? extra,
+        IReadOnlyList<(ICellRow Row, int Cell)>? targets = null)
     {
         var line = new RecordLineViewModel(row, cellIndex, title, expected, warn);
         var before = row.Cells[cellIndex] ?? string.Empty;
         var content = new StackPanel { Spacing = 6, MinWidth = 520, MaxWidth = 720 };
+        if (targets is { Count: > 0 })
+            content.Children.Add(new TextBlock { Text = $"The result is written to this cell and the {targets.Count} other selected {(targets.Count == 1 ? "cell" : "cells")}.", FontSize = 11, Foreground = Avalonia.Media.Brush.Parse("#8EA4BC"), Tag = "cell-wizard-note" });
         if (others.Count > 0)
             content.Children.Add(new TextBlock { Text = $"The result is written to this {noun} and the {others.Count} other selected {(others.Count == 1 ? noun : noun + "s")}.", FontSize = 11, Foreground = Avalonia.Media.Brush.Parse("#8EA4BC"), Tag = "cell-wizard-note" });
         content.Children.Add(new RecordLineView(line, editor));
@@ -81,6 +84,7 @@ public sealed partial class DataEditorWindow
             var after = row.Cells[cellIndex] ?? string.Empty;
             if (after == before) return;
             foreach (var other in others) if ((other.Cells[cellIndex] ?? string.Empty) != after) other.Cells[cellIndex] = after;
+            if (targets is not null) foreach (var (target, cell) in targets) if ((target.Cells[cell] ?? string.Empty) != after) target.Cells[cell] = after;
         };
         flyout.ShowAt(anchor);
         return flyout;

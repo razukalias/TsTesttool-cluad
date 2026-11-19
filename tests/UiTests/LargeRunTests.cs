@@ -256,7 +256,7 @@ public class TagAsBugTests
 public class BugMenuTests
 {
     [AvaloniaFact]
-    public void The_row_menu_offers_the_bug_tag_on_an_expected_cell_and_not_on_a_request_cell()
+    public void The_cell_menu_offers_the_bug_tag_on_expected_cells_and_not_on_request_cells()
     {
         using var dir = new TempDir();
         var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 3), "Customers");
@@ -267,12 +267,73 @@ public class BugMenuTests
         var expected = editor.Columns.First(c => c.Group == ColumnGroup.Response).CellIndex;
         var request = editor.Columns.First(c => c.Group == ColumnGroup.Request).CellIndex;
 
-        MenuItem Bug(int cell) => window.BuildRowMenu(editor, grid, cell).Items.OfType<MenuItem>().Single(i => (i.Header as string)!.Contains("known bug"));
+        MenuItem Bug(int cell)
+        {
+            editor.CellSelection.Select(editor.VisibleRows[0], cell);
+            return window.BuildCellMenu(editor, grid, grid).Items.OfType<MenuItem>().Single(i => (i.Header as string)!.Contains("known bug"));
+        }
         Assert.True(Bug(expected).IsEnabled);
         Assert.Contains(Bug(expected).Items.OfType<MenuItem>(), i => (i.Header as string) == "In all environments");
         Assert.False(Bug(request).IsEnabled);
-        Assert.False(Bug(-1).IsEnabled);
         window.Close();
+    }
+}
+
+public class CellSelectionTests
+{
+    private static (DataEditorViewModel Editor, int Request, int Expected) Open(TempDir dir)
+    {
+        var editor = new DataEditorViewModel(Samples.CreateLarge(dir, rows: 4), "Customers");
+        return (editor, editor.Columns.First(c => c.Group == ColumnGroup.Request).CellIndex, editor.Columns.First(c => c.Group == ColumnGroup.Response).CellIndex);
+    }
+
+    [Fact]
+    public void Ctrl_click_adds_and_a_block_extends_but_only_within_one_kind()
+    {
+        using var dir = new TempDir();
+        var (editor, request, expected) = Open(dir);
+        var s = editor.CellSelection;
+        s.Select(editor.VisibleRows[0], request);
+        Assert.True(s.Toggle(editor.VisibleRows[2], request));
+        Assert.Equal(2, s.Count);
+        Assert.False(s.Toggle(editor.VisibleRows[1], expected));   // other kind refused
+        Assert.Equal(2, s.Count);
+        s.Select(editor.VisibleRows[0], request);
+        s.ExtendTo(editor.VisibleRows[3], request);   // a block runs from the anchor, as in Excel
+        Assert.Equal(4, s.Count);
+        Assert.Equal("4 cells selected", editor.SelectionText);
+        s.Clear();
+        Assert.Equal(0, s.Count);
+    }
+
+    [Fact]
+    public void Set_clear_and_paste_work_on_every_selected_cell_and_undo_in_one_step()
+    {
+        using var dir = new TempDir();
+        var (editor, request, _) = Open(dir);
+        var s = editor.CellSelection;
+        s.Select(editor.VisibleRows[0], request);
+        s.ExtendTo(editor.VisibleRows[2], request);
+        editor.SetSelectedCells("X");
+        Assert.All(editor.VisibleRows.Take(3), r => Assert.Equal("X", r.Cells[request]));
+        editor.PasteIntoSelection([["Y"]]);
+        Assert.All(editor.VisibleRows.Take(3), r => Assert.Equal("Y", r.Cells[request]));
+        editor.SetSelectedCells("");
+        Assert.All(editor.VisibleRows.Take(3), r => Assert.Equal("", r.Cells[request]));
+        editor.UndoCommand.Execute(null);
+        Assert.All(editor.VisibleRows.Take(3), r => Assert.Equal("Y", r.Cells[request]));
+    }
+
+    [Fact]
+    public void Tagging_selected_expected_cells_writes_a_bug_tag_into_each()
+    {
+        using var dir = new TempDir();
+        var (editor, _, expected) = Open(dir);
+        var s = editor.CellSelection;
+        s.Select(editor.VisibleRows[0], expected);
+        s.ExtendTo(editor.VisibleRows[1], expected);
+        editor.TagCellsAsBug(s.Cells, "all");
+        Assert.All(editor.VisibleRows.Take(2), r => Assert.True(LoadTestingTool.Execution.BugTag.Parse(r.Cells[expected]).Tag is not null));
     }
 }
 

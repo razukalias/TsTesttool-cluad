@@ -10,6 +10,19 @@ public sealed class FormattedTextColumn : DataGridTextColumn
     private readonly string? _rule;
     private readonly List<WeakReference<Border>> _overlays = [];
     private bool _selected;
+    private readonly List<(WeakReference<DataGridCell> Cell, Border Mark)> _selectionMarks = [];
+
+    /// <summary>The cell selection of the table; cells of this column that belong to it get a blue frame.</summary>
+    public CellSelection? Selection { get; set; }
+
+    /// <summary>Redraws the frame of every cell of this column that is on screen.</summary>
+    public void RefreshSelection()
+    {
+        _selectionMarks.RemoveAll(m => !m.Cell.TryGetTarget(out _));
+        foreach (var (weak, mark) in _selectionMarks) if (weak.TryGetTarget(out var cell)) mark.IsVisible = IsSelected(cell);
+    }
+
+    private bool IsSelected(DataGridCell cell) => Selection is not null && cell.DataContext is DataRowViewModel row && Selection.Contains(row, _cell);
 
     /// <summary>True while the user has this column picked by clicking its header: its cells and header are tinted.</summary>
     public bool Selected
@@ -62,6 +75,13 @@ public sealed class FormattedTextColumn : DataGridTextColumn
         Control inner = content;
         if (ExpectedColumn && FailureAt is not null && cell is not null) inner = FailureMarked(content, cell);
         var grid = new Grid { Children = { inner, overlay } };
+        if (cell is not null)
+        {
+            var frame = new Border { BorderBrush = Avalonia.Media.Brush.Parse("#3291FF"), BorderThickness = new Avalonia.Thickness(2), Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#2A3291FF")), IsHitTestVisible = false, IsVisible = IsSelected(cell), Tag = "cell-selected" };
+            _selectionMarks.Add((new WeakReference<DataGridCell>(cell), frame));
+            cell.DataContextChanged += (_, _) => frame.IsVisible = IsSelected(cell);
+            grid.Children.Add(frame);
+        }
         if (OpenWizard is not null && cell is not null) grid.Children.Add(WizardButton(cell));
         return grid;
     }
@@ -138,6 +158,7 @@ public sealed class FormattedTextColumn : DataGridTextColumn
     protected override Control GenerateElement(DataGridCell cell, object dataItem)
     {
         var element = base.GenerateElement(cell, dataItem);
+        cell.Tag = _cell;   // lets the window tell which column a cell under the mouse belongs to (drag selection)
         cell.Bind(DataGridCell.BackgroundProperty, new Binding($"Formats[{_cell}].Background"));
         if (element is TextBlock text)
         {

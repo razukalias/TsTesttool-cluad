@@ -369,6 +369,7 @@ public partial class DataEditorWindow : Window
             editor.PasteStepBlock(Math.Max(first, 0), Math.Max(editor.CurrentCellIndex, 0), ClipboardTable.Parse(text));
             return;
         }
+        if (editor.CellSelection.Count > 0) { editor.PasteIntoSelection(ClipboardTable.Parse(text)); return; }   // cells are selected: paste into them
         var start = grid.SelectedItem is DataRowViewModel row ? editor.VisibleRows.IndexOf(row) : 0;
         editor.PasteBlock(Math.Max(start, 0), Math.Max(editor.CurrentCellIndex, 0), ClipboardTable.Parse(text));
     }
@@ -432,6 +433,7 @@ public partial class DataEditorWindow : Window
         grid.CellPointerPressed += OnGridCellPointerPressed;
         grid.RemoveHandler(PointerPressedEvent, OnDataGridHeaderPressed);
         grid.AddHandler(PointerPressedEvent, OnDataGridHeaderPressed, RoutingStrategies.Tunnel);
+        WireCellSelection(grid, editor);
         editor.CurrentCellIndex = -1;
         _picked.Clear();
         _pickAnchor = null;
@@ -450,6 +452,7 @@ public partial class DataEditorWindow : Window
                 formatted.ExpectedColumn = column.Group == ColumnGroup.Response;
                 formatted.FailureAt = editor.FailureAt;
                 formatted.OpenFailure = ShowFailurePopup;
+                formatted.Selection = editor.CellSelection;
             }
             if (created is FormattedTextColumn formatted2) formatted2.OpenWizard = (cell, anchor) => ShowCellWizard(cell, anchor, column);
             grid.Columns.Add(created);

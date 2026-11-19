@@ -20,14 +20,18 @@ public partial class DataEditorWindow
     private void OnDataGridCellPressed(DataGridCellPointerPressedEventArgs e)
     {
         var point = e.PointerPressedEventArgs.GetCurrentPoint(e.Cell);
-        if (!point.Properties.IsRightButtonPressed) { PickColumn(null); return; }
+        var right = point.Properties.IsRightButtonPressed;
         if (_shell.Current is not { } editor || this.FindControl<DataGrid>("Grid") is not { } grid) return;
+        HandleCellSelectionPress(e, editor, grid, right);
+        if (!right) { PickColumn(null); return; }
         if (e.Cell.DataContext is DataRowViewModel row && !grid.SelectedItems.Contains(row)) { grid.SelectedItem = row; editor.SelectedRow = row; }
         e.PointerPressedEventArgs.Handled = true;
-        BuildRowMenu(editor, grid, e.Column?.Tag is int clicked ? clicked : -1).Open(e.Cell);
+        // On a request or expected cell the menu works on the selected cells; the tick, Data ID and Result cells open the row menu
+        if (e.Column?.Tag is int cell && cell >= 1) BuildCellMenu(editor, grid, e.Cell).Open(e.Cell);
+        else BuildRowMenu(editor, grid).Open(e.Cell);
     }
 
-    public ContextMenu BuildRowMenu(DataEditorViewModel editor, DataGrid grid, int cell = -1)
+    public ContextMenu BuildRowMenu(DataEditorViewModel editor, DataGrid grid)
     {
         var selected = () => editor.VisibleRows.Where(grid.SelectedItems.OfType<DataRowViewModel>().ToHashSet().Contains).ToList();
         var haveRow = editor.SelectedRow is not null;
@@ -52,23 +56,8 @@ public partial class DataEditorWindow
             hex => editor.FormatCells(RowCells(editor, selected()), f => f with { Fill = hex }, "Highlighted row"),
             () => editor.FormatCells(RowCells(editor, selected()), f => f with { Fill = null }, "Cleared highlight")));
         menu.Items.Add(new Separator());
-        menu.Items.Add(BugItem(editor, selected, cell));
-        menu.Items.Add(new Separator());
         menu.Items.Add(Item("Remove row", () => editor.RemoveRowCommand.Execute(null), haveRow, danger: true));
         return menu;
-    }
-
-    /// <summary>"Tag as known bug" for the clicked expected-value cell (of every selected row), whether or not it failed.</summary>
-    private static MenuItem BugItem(DataEditorViewModel editor, Func<List<DataRowViewModel>> selected, int cell)
-    {
-        var parent = new MenuItem { Header = "⚑  Tag cell as known bug", IsEnabled = editor.IsExpectedCell(cell) };
-        if (!parent.IsEnabled) { ToolTip.SetTip(parent, "Right-click a cell in an expected-value (response) column"); return parent; }
-        parent.Items.Add(Item("In all environments", () => editor.TagAsBug(selected(), cell, "all")));
-        foreach (var environment in editor.BugEnvironmentChoices)
-            parent.Items.Add(Item($"In {environment} only", () => editor.TagAsBug(selected(), cell, environment)));
-        parent.Items.Add(new Separator());
-        parent.Items.Add(Item("Remove the bug tag", () => editor.RemoveBugTag(selected(), cell)));
-        return parent;
     }
 
     private static List<(IFormattedRow Row, int Cell)> RowCells(DataEditorViewModel editor, IEnumerable<DataRowViewModel> rows)
