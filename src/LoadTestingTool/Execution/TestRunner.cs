@@ -326,7 +326,7 @@ public sealed class TestRunner
             }
             result.RequestHeaders = InternalLogger.RedactVariableValues(string.Join("; ", resolvedHeaders.Select(h => $"{h.Key}={h.Value}")), redactedVariables, variables); foreach (var h in resolvedHeaders) if (!h.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase) && !request.Headers.TryAddWithoutValidation(h.Key, h.Value)) request.Content?.Headers.TryAddWithoutValidation(h.Key, h.Value);
             _logger.Info($"STEP REQUEST [{requestId}]\nTYPE: HTTP\nSTEP: {step.StepName}\nENVIRONMENT: {environment}\nTARGET: {result.TargetUrl}\nMETHOD: {step.Verb}\nTEMPLATE: {step.TemplateSource}\nHEADERS:\n{result.RequestHeaders}\nDETAILS:\ncontentType={result.ContentType}\nBODY:\n{result.RequestBody}");
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); timeout.CancelAfter(TimeSpan.FromSeconds(step.TimeoutSeconds > 0 ? step.TimeoutSeconds : _timeoutSeconds)); using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseContentRead, timeout.Token);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); timeout.CancelAfter(StepTimeout(step)); using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseContentRead, timeout.Token);
             result.HttpStatus = (int)response.StatusCode; result.ResponseHeaders = string.Join("; ", response.Headers.Concat(response.Content.Headers).Select(h => $"{h.Key}={string.Join(",", h.Value)}")); result.ResponseBody = await response.Content.ReadAsStringAsync(timeout.Token);
             PublishResponseValues(step.StepName, result.ResponseBody, result.ContentType, correlation);
             _logger.Info($"STEP RESPONSE [{requestId}]\nSTATUS: {result.HttpStatus}\nHEADERS:\n{result.ResponseHeaders}\nBODY:\n{result.ResponseBody}");
@@ -360,7 +360,7 @@ public sealed class TestRunner
         }
         catch (Exception ex)
         {
-            result.ErrorMessage = FormatException("HTTP request preparation/execution failed", ex);
+            result.ErrorMessage = TimedOut(ex, step, cancellationToken) ?? FormatException("HTTP request preparation/execution failed", ex);
             if (ex is RuntimeReferenceException referenceException)
             {
                 result.FailureCategory = FailureCategories.RuntimeReference;
@@ -387,7 +387,7 @@ public sealed class TestRunner
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(step.TimeoutSeconds > 0 ? step.TimeoutSeconds : _timeoutSeconds));
+            timeout.CancelAfter(StepTimeout(step));
             var templateText = string.Empty;
             var originalTemplate = string.Empty;
             result.TargetUrl = context.ResolveUrl(step.TargetUrl);
@@ -428,7 +428,7 @@ public sealed class TestRunner
         }
         catch (Exception ex)
         {
-            result.ErrorMessage = FormatException("Step preparation/execution failed", ex);
+            result.ErrorMessage = TimedOut(ex, step, cancellationToken) ?? FormatException("Step preparation/execution failed", ex);
             if (ex is RuntimeReferenceException referenceException)
             {
                 result.FailureCategory = FailureCategories.RuntimeReference;
@@ -451,6 +451,17 @@ public sealed class TestRunner
         }
         Publish(result); return result;
     }
+    /// <summary>How long a step may wait: its <c>timeoutms</c>, else its <c>timeout</c> seconds, else the application default.</summary>
+    internal TimeSpan StepTimeout(RequestStep step)
+        => step.TimeoutMs > 0 ? TimeSpan.FromMilliseconds(step.TimeoutMs)
+         : TimeSpan.FromSeconds(step.TimeoutSeconds > 0 ? step.TimeoutSeconds : _timeoutSeconds);
+
+    /// <summary>The message for a step that stopped waiting; the run goes on with the next step while the server may still be working.</summary>
+    private string? TimedOut(Exception ex, RequestStep step, CancellationToken runToken)
+        => ex is OperationCanceledException && !runToken.IsCancellationRequested
+            ? $"Timed out after {(long)StepTimeout(step).TotalMilliseconds} ms waiting for the response; the next step runs, the server may still be processing the request."
+            : null;
+
     private static string SafeManualId(string value)
         => string.Concat(value.Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' ? ch : '_'));
 

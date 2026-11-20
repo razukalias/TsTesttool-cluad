@@ -36,7 +36,7 @@ public sealed class WorkbookReader
             steps.Add(new RequestStep
             {
                 TestcaseIndex = index, Testcase = testcase, StepName = stepName, Sequence = row.RowNumber(), TemplateSource = template, TargetUrl = url,
-                StepType = stepType, Stage = ExecutionStageParser.Parse(Text(configHeaders, row, "stage", "Test")), Enabled = Bool(configHeaders, row, "enabled", true), TimeoutSeconds = Math.Max(0, Int(configHeaders, row, "timeout", 0)), ManualTimeoutMinutes = Math.Max(0, Int(configHeaders, row, "manualtimeoutminutes", 15)), StepConfig = Compile(Text(configHeaders, row, "stepconfig", "{}"), workbook, config, compiledCellCache, row.RowNumber()),
+                StepType = stepType, Stage = ExecutionStageParser.Parse(Text(configHeaders, row, "stage", "Test")), Enabled = Bool(configHeaders, row, "enabled", true), TimeoutSeconds = Math.Max(0, Int(configHeaders, row, "timeout", 0)), TimeoutMs = Math.Max(0, Int(configHeaders, row, "timeoutms", 0)), ManualTimeoutMinutes = Math.Max(0, Int(configHeaders, row, "manualtimeoutminutes", 15)), StepConfig = Compile(Text(configHeaders, row, "stepconfig", "{}"), workbook, config, compiledCellCache, row.RowNumber()),
                 Verb = Text(configHeaders, row, "verb", "POST").ToUpperInvariant(), ContentType = Text(configHeaders, row, "contenttype"),
                 WaitExpression = Compile(Text(configHeaders, row, "wait", "0"), workbook, config, compiledCellCache, row.RowNumber()),
                 WaitMs = ParseWaitMilliseconds(Text(configHeaders, row, "wait", "0")), ExpectedStatus = Compile(Text(configHeaders, row, "expectedstatus"), workbook, config, compiledCellCache, row.RowNumber()),

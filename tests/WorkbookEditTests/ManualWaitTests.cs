@@ -45,3 +45,22 @@ public class CentralBackupTests
         Assert.DoesNotContain(Directory.GetFiles(Path.GetDirectoryName(path)!), f => f.Contains(".backup."));
     }
 }
+
+public class StepTimeoutMsTests
+{
+    [Fact]
+    public void The_timeoutms_column_is_read_in_milliseconds_next_to_the_seconds_timeout()
+    {
+        using var dir = new TempDir();
+        var path = Workbooks.CreateSmall(dir);
+        var document = WorkbookDocument.Load(path);
+        document.Config.EnsureColumn("timeoutms");
+        document.Config.Rows[0]["timeout"] = "30";
+        document.Config.Rows[0]["timeoutms"] = "1500";
+        document.Save(new WorkbookSaveOptions());
+
+        var step = new LoadTestingTool.Excel.WorkbookReader().Read(path).Testcases.SelectMany(t => t.Steps).First();
+        Assert.Equal(1500, step.TimeoutMs);
+        Assert.Equal(30, step.TimeoutSeconds);
+    }
+}

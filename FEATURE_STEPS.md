@@ -8,6 +8,7 @@ Existing `config` rows remain HTTP rows when `steptype` is omitted. New rows may
 | `stage` | `Test` | `Setup`, `Test`, or `Teardown` |
 | `enabled` | `true` | Skip the step when false |
 | `timeout` | application timeout | Per-step timeout in seconds |
+| `timeoutms` | empty | Per-step wait limit in milliseconds for `http`, `graphql` and `caseql` (also honoured by other types); wins over `timeout`. When the response takes longer the runner stops waiting, closes the connection, fails the step with `Timed out after N ms…` (failure category Timeout) and runs the next step; the server may still be processing the request, as with JMeter's response timeout. Good for load tests. |
 | `stepconfig` | `{}` | JSON configuration; `key=value;key=value` is also accepted |
 
 ## GraphQL

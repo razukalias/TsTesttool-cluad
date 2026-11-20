@@ -118,6 +118,8 @@ public sealed class RequestStep
     public ExecutionStage Stage { get; init; } = ExecutionStage.Test;
     public bool Enabled { get; init; } = true;
     public int TimeoutSeconds { get; init; }
+    /// <summary>The wait limit in milliseconds (config column <c>timeoutms</c>); when set it wins over <see cref="TimeoutSeconds"/>.</summary>
+    public int TimeoutMs { get; init; }
     public int ManualTimeoutMinutes { get; init; }
     public string StepConfig { get; init; } = "{}";
     public int Sequence { get; init; }
