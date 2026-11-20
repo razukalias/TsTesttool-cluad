@@ -79,4 +79,29 @@ public class StepFormTests
         window.CaptureRenderedFrame()!.Save(System.IO.Path.Combine(shots, "step-form.png"));
         window.Close();
     }
+
+    [Avalonia.Headless.XUnit.AvaloniaFact]
+    public void A_long_template_scrolls_inside_its_editor_and_typing_at_the_bottom_keeps_the_caret_and_selection()
+    {
+        using var dir = new TempDir();
+        var (window, shell) = Open(dir);
+        var testcase = shell.Instances[0].Testcases[0];
+        shell.Current!.ShowSteps = true;
+        shell.SelectedNode = testcase.StepNodes[0];
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var form = Assert.Single(window.GetVisualDescendants().OfType<StepFormView>());
+        form.TemplateText = string.Join("\n", Enumerable.Range(1, 300).Select(n => "line " + n + " value"));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+        var editor = form.GetVisualDescendants().OfType<AvaloniaEdit.TextEditor>().First();
+        Assert.True(editor.Bounds.Height <= 560, $"the editor must not grow with the text (was {editor.Bounds.Height})");
+
+        editor.CaretOffset = editor.Document.TextLength;
+        foreach (var ch in "xyz") { editor.TextArea.PerformTextInput(ch.ToString()); Avalonia.Threading.Dispatcher.UIThread.RunJobs(); }
+        window.UpdateLayout();
+        Assert.Equal(0, editor.SelectionLength);
+        Assert.Equal(editor.Document.TextLength, editor.CaretOffset);
+        Assert.EndsWith("xyz", editor.Text);
+        window.Close();
+    }
 }

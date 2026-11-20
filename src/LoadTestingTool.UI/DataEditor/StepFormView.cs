@@ -455,6 +455,7 @@ public sealed class StepFormView : UserControl
         _editor.Foreground = Brush.Parse("#E3EDF9");
         _editor.Background = Brush.Parse("#08111F");
         _editor.MinHeight = 230;
+        _editor.MaxHeight = 560;   // a long template scrolls inside the editor; if it grew with the text the whole form would scroll and jump while typing
         _editor.HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto;
         _editor.VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto;
         _editor.TextArea.SelectionBrush = Brush.Parse("#C98A1B");
