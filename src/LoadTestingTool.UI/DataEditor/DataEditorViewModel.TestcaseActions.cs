@@ -188,7 +188,7 @@ public sealed partial class DataEditorViewModel
                 case TestcaseAction.Delete:
                     var next = Testcases.Where(t => t.Index != index).OrderBy(t => Math.Abs(t.Index - index)).FirstOrDefault()?.Index;
                     var removed = _document.DeleteTestcase(index);
-                    FinishTestcaseAction(next, $"Deleted testcase {index}: {removed.Steps} {(removed.Steps == 1 ? "step" : "steps")} and {removed.DataRows} data {(removed.DataRows == 1 ? "row" : "rows")}." + (removed.LeftoverColumns > 0 ? $" {removed.LeftoverColumns} data {(removed.LeftoverColumns == 1 ? "column" : "columns")} of its steps remain in the sheets." : string.Empty));
+                    FinishTestcaseAction(next, $"Deleted testcase {index}: {removed.Steps} {(removed.Steps == 1 ? "step" : "steps")} and {removed.DataRows} data {(removed.DataRows == 1 ? "row" : "rows")}." + (removed.ColumnsRemoved > 0 ? $" Removed {removed.ColumnsRemoved} data {(removed.ColumnsRemoved == 1 ? "column" : "columns")} of its steps from the request and response sheets." : string.Empty) + (removed.LeftoverColumns > 0 ? $" {removed.LeftoverColumns} data {(removed.LeftoverColumns == 1 ? "column" : "columns")} stay because another testcase has a step with the same name." : string.Empty));
                     break;
             }
         }

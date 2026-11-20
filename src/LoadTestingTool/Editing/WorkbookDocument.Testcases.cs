@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace LoadTestingTool.Editing;
 
 public sealed record TestcaseCopyResult(int NewIndex, int Steps, int DataRows, int ColumnsAdded, int AbsoluteReferences);
-public sealed record TestcaseDeleteResult(int Steps, int DataRows, int LeftoverColumns);
+public sealed record TestcaseDeleteResult(int Steps, int DataRows, int LeftoverColumns, int ColumnsRemoved = 0);
 
 // Testcase-level operations: rename, run order, copy and delete. They only edit the in-memory tables (so they undo),
 // and refuse, changing nothing, when they cannot be done safely.
@@ -173,7 +173,7 @@ public sealed partial class WorkbookDocument
 
     /// <summary>
     /// Removes a testcase's steps and data rows (their sheet rows are cleared on save). Refuses when another testcase
-    /// refers to its rows by number, or to its steps' responses at run time; the data columns of its steps stay.
+    /// refers to its rows by number, or to its steps' responses at run time; the data columns of its steps are removed too, unless another testcase still has a step of the same name.
     /// </summary>
     public TestcaseDeleteResult DeleteTestcase(int testcaseIndex)
     {
@@ -210,7 +210,13 @@ public sealed partial class WorkbookDocument
         foreach (var row in requestRows) Request.RemoveRow(row);
         foreach (var row in responseRows) Response.RemoveRow(row);
 
+        var usedNames = Config.Rows.Where(r => !r.IsBlank).Select(r => r.Get("stepname").Trim()).Where(n => n.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var removed = 0;
+        foreach (var step in info.Steps.Where(s => !usedNames.Contains(s)))
+            foreach (var table in new[] { Request, Response })
+                for (var i = table.ColumnCount - 1; i >= 0; i--)
+                    if (TryRenameHeader(table.Headers[i], step, "x", out _)) { table.RemoveColumn(i); removed++; }
         var leftovers = Request.Headers.Concat(Response.Headers).Count(h => info.Steps.Any(s => TryRenameHeader(h, s, "x", out _)));
-        return new TestcaseDeleteResult(stepRows.Count, requestRows.Count, leftovers);
+        return new TestcaseDeleteResult(stepRows.Count, requestRows.Count, leftovers, removed);
     }
 }

@@ -106,6 +106,25 @@ public class TestcaseActionTests
     }
 
     [Fact]
+    public void Deleting_a_testcase_removes_the_data_columns_of_its_steps()
+    {
+        using var dir = new TempDir();
+        var path = Samples.Copy(dir, Samples.IntegrationScenarios);
+        var vm = new DataEditorViewModel(path);
+        var doomed = vm.Testcases[0];
+        var steps = vm.Document.Config.Rows.Where(r => !r.IsBlank && LoadTestingTool.Editing.WorkbookDocument.EffectiveIndex(r) == doomed.Index).Select(r => r.Get("stepname")).ToList();
+        vm.Document.Request.EnsureColumn(steps[0] + ".field");
+        vm.Document.Response.EnsureColumn(steps[0] + ".status");
+        vm.SelectedTestcase = doomed;
+        vm.OpenDeleteTestcaseCommand.Execute(null);
+        vm.ConfirmTestcaseActionCommand.Execute(null);
+        Assert.DoesNotContain(vm.Document.Request.Headers.Concat(vm.Document.Response.Headers), h => steps.Any(s => h.Contains(s + ".", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains("data column", vm.StatusMessage);
+        vm.UndoCommand.Execute(null);
+        Assert.Contains(vm.Document.Request.Headers, h => h.StartsWith(steps[0] + ".", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Steps_can_be_moved_up_and_down()
     {
         using var dir = new TempDir();
