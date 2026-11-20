@@ -558,6 +558,14 @@ Example row:
 ## Timeout in milliseconds (2026-11-20)
 - [x] New config column `responsetimeout` (ms) for http, graphql, caseql: stop waiting, fail the step with "Timed out after N ms…", run the next step. Wins over `timeout` (s). Step form field, help text, validation and docs added.
 
+## Copy and duplicate audit (2026-11-20)
+- [x] Duplicate testcase and duplicate step copy config settings, request and response data, extract mappings and dontrun entries; checked with a dump of all three sheets.
+- [x] Duplicate step (tree menu "Duplicate step…") opens a panel: choose the new name, and whether the copy gets its own template file ("name copy.ext") or shares the original.
+- [x] A duplicated step also gets its `extractvariable` mappings under the new name (same variables).
+- [x] Duplicate testcase has the same "Copy template files" choice.
+- [x] Copy to another instance reports template files that exist there with different content (they are still kept, not overwritten).
+- [ ] Not done: files named inside `stepconfig` (graphql source, file-step paths) are not copied with a step or testcase.
+
 ## Leftovers closed 2026-11-17
 - Per-run "Enable internal log" checkbox removed (it did nothing; the instance setting decides).
 - Resolved copies (ResolvedValues, Request) show `<from_filepath>name` for file cells instead of masked content; content is still never written.

@@ -9,7 +9,9 @@ namespace LoadTestingTool.UI.DataEditor;
 // Every action is an in-memory edit (one undo step) and is saved with the rest.
 public sealed partial class DataEditorViewModel
 {
-    private enum TestcaseAction { None, Rename, Copy, Delete, RenameStep }
+    private enum TestcaseAction { None, Rename, Copy, Delete, RenameStep, DuplicateStep }
+
+    private string _duplicateStepSource = string.Empty;
 
     private TestcaseAction _testcaseAction;
 
@@ -20,6 +22,8 @@ public sealed partial class DataEditorViewModel
     [ObservableProperty] private string _testcasePanelConfirmText = "OK";
     [ObservableProperty] private bool _testcasePanelAsksName;
     [ObservableProperty] private bool _testcasePanelIsDelete;
+    [ObservableProperty] private bool _testcasePanelAsksTemplate;
+    [ObservableProperty] private bool _testcasePanelCopyTemplate = true;
 
     [RelayCommand]
     private void OpenRenameTestcase()
@@ -92,8 +96,22 @@ public sealed partial class DataEditorViewModel
         TestcasePanelTitle = $"DUPLICATE TESTCASE · {testcase.Title}";
         TestcasePanelName = testcase.Name + " copy";
         TestcasePanelConfirmText = "Duplicate";
-        TestcasePanelNote = $"Copies its {testcase.Steps.Count} {(testcase.Steps.Count == 1 ? "step" : "steps")} (named Name + Copy, with their data columns) and its {testcase.RowCount} data {(testcase.RowCount == 1 ? "row" : "rows")} under the next free testcase number. The copy uses the same template files.";
-        OpenTestcasePanel(asksName: true, isDelete: false);
+        TestcasePanelNote = $"Copies its {testcase.Steps.Count} {(testcase.Steps.Count == 1 ? "step" : "steps")} (named Name + Copy, with their data columns, extract mappings and dontrun entries) and its {testcase.RowCount} data {(testcase.RowCount == 1 ? "row" : "rows")} under the next free testcase number. Tick the box to give the copy its own template files; untick it to share the originals.";
+        OpenTestcasePanel(asksName: true, isDelete: false, asksTemplate: true);
+    }
+
+    /// <summary>Opens the duplicate panel for one step: its new name (offered, editable) and whether it gets its own template file.</summary>
+    public void OpenDuplicateStep(string stepName)
+    {
+        var step = StepRows.FirstOrDefault(r => string.Equals(r.CurrentName, stepName, StringComparison.OrdinalIgnoreCase));
+        if (step is null) return;
+        _testcaseAction = TestcaseAction.DuplicateStep;
+        _duplicateStepSource = step.CurrentName;
+        TestcasePanelTitle = $"DUPLICATE STEP · {step.CurrentName}";
+        TestcasePanelName = _document.SuggestCopyName(step.CurrentName);
+        TestcasePanelConfirmText = "Duplicate";
+        TestcasePanelNote = "Copies the step right after the original with its data columns and values, extract mappings (Step.path:variable, under the new name) and settings. Tick the box to give it its own template file; untick it to share the original's.";
+        OpenTestcasePanel(asksName: true, isDelete: false, asksTemplate: true);
     }
 
     [RelayCommand]
@@ -107,8 +125,9 @@ public sealed partial class DataEditorViewModel
         OpenTestcasePanel(asksName: false, isDelete: true);
     }
 
-    private void OpenTestcasePanel(bool asksName, bool isDelete)
+    private void OpenTestcasePanel(bool asksName, bool isDelete, bool asksTemplate = false)
     {
+        TestcasePanelAsksTemplate = asksTemplate;
         TestcasePanelAsksName = asksName;
         TestcasePanelIsDelete = isDelete;
         TestcasePanelVisible = true;
@@ -134,6 +153,16 @@ public sealed partial class DataEditorViewModel
             if (!ReferenceEquals(step.CurrentName, name) && step.CurrentName == name) step.SetCellSilently(0, name);
             return;
         }
+        if (action == TestcaseAction.DuplicateStep)
+        {
+            var source = _duplicateStepSource;
+            var copyTemplate = TestcasePanelCopyTemplate;
+            if (name.Length == 0) { ShowStatus("A step name cannot be empty.", isError: true); return; }
+            if (DuplicateStepNamed(source, name, copyTemplate) is null) return;
+            TestcasePanelVisible = false;
+            _testcaseAction = TestcaseAction.None;
+            return;
+        }
         Record($"{action.ToString().ToLowerInvariant()} testcase {testcase.Title}");
         try
         {
@@ -145,10 +174,14 @@ public sealed partial class DataEditorViewModel
                     break;
                 case TestcaseAction.Copy:
                     var copy = _document.CopyTestcase(index, name);
+                    var templateNote = TestcasePanelCopyTemplate
+                        ? GiveOwnTemplates(_document.Config.Rows.Where(r => !r.IsBlank && WorkbookDocument.EffectiveIndex(r) == copy.NewIndex).ToList())
+                        : "sharing the original template files";
                     var notes = new List<string>
                     {
                         $"Copied testcase {index} as {copy.NewIndex} ({copy.Steps} {(copy.Steps == 1 ? "step" : "steps")}, {copy.DataRows} data {(copy.DataRows == 1 ? "row" : "rows")}, {copy.ColumnsAdded} new data {(copy.ColumnsAdded == 1 ? "column" : "columns")})"
                     };
+                    notes.Add(templateNote);
                     if (copy.AbsoluteReferences > 0) notes.Add($"{copy.AbsoluteReferences} <From_…_N> row {(copy.AbsoluteReferences == 1 ? "reference" : "references")} in the copy still point at the original rows — check {(copy.AbsoluteReferences == 1 ? "it" : "them")}");
                     FinishTestcaseAction(copy.NewIndex, string.Join("; ", notes) + ".");
                     break;

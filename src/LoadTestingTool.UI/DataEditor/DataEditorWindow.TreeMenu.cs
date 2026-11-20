@@ -94,7 +94,7 @@ public partial class DataEditorWindow
                 break;
             case StepNode step:
                 menu.Items.Add(Item("Rename", () => BeginTreeRename(tree, node)));
-                menu.Items.Add(Item("Duplicate step", () => _shell.DuplicateStep(step)));
+                menu.Items.Add(Item("Duplicate step…", () => _shell.OpenDuplicateStepPanel(step)));
                 menu.Items.Add(CopyStepMenu(step));
                 menu.Items.Add(new Separator());
                 menu.Items.Add(Item("Remove step", () => _shell.RemoveStep(step)));

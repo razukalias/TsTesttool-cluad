@@ -44,6 +44,16 @@ public sealed partial class EditorShellViewModel
         else editor.OpenCopyTestcaseCommand.Execute(null);
     }
 
+    /// <summary>"Duplicate step…" in the tree: selects the clicked step's testcase and opens the panel for its name and template choice.</summary>
+    public void OpenDuplicateStepPanel(StepNode step)
+    {
+        if (EditorOf(step) is not { } editor) return;
+        Current = editor;
+        if (!ReferenceEquals(editor.SelectedTestcase, step.Owner)) editor.SelectedTestcase = step.Owner;
+        SelectedNode = step;
+        editor.OpenDuplicateStep(step.Name);
+    }
+
     public void DuplicateStep(StepNode step)
     {
         if (EditorOf(step) is not { } editor) return;

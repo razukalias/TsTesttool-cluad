@@ -117,4 +117,70 @@ public class TransferTests
         await Task.Run(() => shell.DuplicateStep(first));
         Assert.Equal(["CreateCustomer", "CreateCustomerCopy", "Step2", "Step3"], shell.Instances[0].Testcases[0].StepNodes.Select(n => n.Name));
     }
+
+    [Fact]
+    public void Duplicating_a_step_with_a_chosen_name_copies_the_template_file_and_the_extract_mapping()
+    {
+        using var dir = new TempDir();
+        var path = Samples.Copy(dir, Samples.IntegrationScenarios);
+        var vm = new DataEditorViewModel(path);
+        var template = vm.StepRows.First(r => r.CurrentName == "FetchUser").Value("templetsource");
+        Directory.CreateDirectory(vm.TemplatesFolder);
+        File.WriteAllText(Path.Combine(vm.TemplatesFolder, template), "{\"a\":1}");
+
+        vm.OpenDuplicateStep("FetchUser");
+        Assert.True(vm.TestcasePanelAsksTemplate);
+        vm.TestcasePanelName = "FetchUserAgain";
+        vm.TestcasePanelCopyTemplate = true;
+        vm.ConfirmTestcaseActionCommand.Execute(null);
+
+        var copy = vm.Document.Config.Rows.First(r => r.Get("stepname") == "FetchUserAgain");
+        Assert.NotEqual(template, copy.Get("templetsource"));
+        Assert.True(File.Exists(Path.Combine(vm.TemplatesFolder, copy.Get("templetsource"))));
+        Assert.Equal("{\"a\":1}", File.ReadAllText(Path.Combine(vm.TemplatesFolder, copy.Get("templetsource"))));
+        Assert.Contains(vm.Document.Response.Rows, r => r.Get("extractvariable").Contains("FetchUserAgain.id:userId"));
+        Assert.Contains(vm.Document.Response.Rows, r => r.Get("extractvariable").Contains("FetchUser.id:userId"));
+    }
+
+    [Fact]
+    public void Duplicating_a_step_can_keep_sharing_the_template_and_refuses_a_name_in_use()
+    {
+        using var dir = new TempDir();
+        var path = Samples.Copy(dir, Samples.IntegrationScenarios);
+        var vm = new DataEditorViewModel(path);
+        var template = vm.StepRows.First(r => r.CurrentName == "FetchUser").Value("templetsource");
+
+        vm.OpenDuplicateStep("FetchUser");
+        vm.TestcasePanelName = "CreatePost";                       // taken
+        vm.ConfirmTestcaseActionCommand.Execute(null);
+        Assert.True(vm.TestcasePanelVisible);
+        Assert.Contains("already exists", vm.StatusMessage);
+
+        vm.TestcasePanelName = "FetchUserShared";
+        vm.TestcasePanelCopyTemplate = false;
+        vm.ConfirmTestcaseActionCommand.Execute(null);
+        Assert.False(vm.TestcasePanelVisible);
+        Assert.Equal(template, vm.Document.Config.Rows.First(r => r.Get("stepname") == "FetchUserShared").Get("templetsource"));
+    }
+
+    [Fact]
+    public void Duplicating_a_testcase_can_give_the_copy_its_own_template_files()
+    {
+        using var dir = new TempDir();
+        var path = Samples.Copy(dir, Samples.IntegrationScenarios);
+        var vm = new DataEditorViewModel(path);
+        Directory.CreateDirectory(vm.TemplatesFolder);
+        foreach (var row in vm.Document.Config.Rows.Where(r => !r.IsBlank && r.Get("templetsource").Length > 0))
+            File.WriteAllText(Path.Combine(vm.TemplatesFolder, row.Get("templetsource")), "x");
+
+        vm.OpenCopyTestcaseCommand.Execute(null);
+        vm.TestcasePanelName = "Own";
+        vm.TestcasePanelCopyTemplate = true;
+        vm.ConfirmTestcaseActionCommand.Execute(null);
+
+        var copies = vm.Document.Config.Rows.Where(r => r.Get("testcase") == "Own").ToList();
+        Assert.NotEmpty(copies);
+        Assert.All(copies, r => Assert.True(File.Exists(Path.Combine(vm.TemplatesFolder, r.Get("templetsource")))));
+        Assert.All(copies, r => Assert.Contains(" copy", r.Get("templetsource")));
+    }
 }

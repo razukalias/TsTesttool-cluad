@@ -45,18 +45,21 @@ public sealed partial class WorkbookDocument
     }
 
     /// <summary>Copies a step inside its own testcase, right after the original, with its data columns and values.</summary>
-    public StepTransferResult DuplicateStep(TableRow step)
+    public StepTransferResult DuplicateStep(TableRow step, string? newName = null)
     {
         var index = EffectiveIndex(step);
         var position = RowsOf(Config, index).ToList().IndexOf(step);
         if (position < 0) throw new InvalidOperationException("That step is not in the config sheet.");
-        var result = CopyStepTo(this, step, index);
+        var result = CopyStepTo(this, step, index, newName);
         // MoveStep swaps cell values between neighbouring rows, so walk the row at each position upwards rather than one row object.
         var steps = RowsOf(Config, index).ToList();
         for (var at = steps.Count - 1; at > position + 1; at--)
             if (!MoveStep(steps[at], -1)) break;
         return result;
     }
+
+    /// <summary>The name a duplicate of <paramref name="stepName"/> would get (the one offered in the duplicate panel).</summary>
+    public string SuggestCopyName(string stepName) => UniqueStepName(stepName);
 
     private bool NameInUse(string stepName)
         => Config.Rows.Any(r => !r.IsBlank && string.Equals(r.Get("stepname").Trim(), stepName, StringComparison.OrdinalIgnoreCase))
@@ -119,13 +122,15 @@ public sealed partial class WorkbookDocument
     /// data columns come along; their values are matched to the target testcase's data rows by dataid, or by position when there is none.
     /// A name already in use in the target gets "Copy" appended.
     /// </summary>
-    public StepTransferResult CopyStepTo(WorkbookDocument target, TableRow step, int targetTestcaseIndex)
+    public StepTransferResult CopyStepTo(WorkbookDocument target, TableRow step, int targetTestcaseIndex, string? wantedName = null)
     {
         var sourceIndex = EffectiveIndex(step);
         var oldName = step.Get("stepname").Trim();
         if (oldName.Length == 0) throw new InvalidOperationException("The step has no name.");
         var info = target.GetTestcases().FirstOrDefault(t => t.Index == targetTestcaseIndex) ?? throw new InvalidOperationException($"The target has no testcase {targetTestcaseIndex}.");
-        var newName = target.UniqueStepName(oldName);
+        wantedName = wantedName?.Trim();
+        if (!string.IsNullOrEmpty(wantedName) && target.NameInUse(wantedName)) throw new InvalidOperationException($"A step called {wantedName} already exists. Choose another name.");
+        var newName = string.IsNullOrEmpty(wantedName) ? target.UniqueStepName(oldName) : wantedName;
 
         var copy = target.Config.AddRow();
         var headers = Config.Headers;
@@ -141,8 +146,35 @@ public sealed partial class WorkbookDocument
         int dataRows = 0, added = 0;
         CopyStepData(this, sourceIndex, target, targetTestcaseIndex, Request, target.Request, oldName, newName, ref dataRows, ref added);
         CopyStepData(this, sourceIndex, target, targetTestcaseIndex, Response, target.Response, oldName, newName, ref dataRows, ref added);
+        CopyExtractMappings(target, sourceIndex, targetTestcaseIndex, oldName, newName);
         var template = step.Get("templetsource").Trim();
         return new StepTransferResult(newName, dataRows, added, template.Length == 0 ? null : template);
+    }
+
+    /// <summary>
+    /// The response sheet's <c>extractvariable</c> cell holds <c>Step.path:variable</c> mappings separated by <c>|</c>. A copied step gets the
+    /// same mappings under its own name (so it fills the same variables), on the data row with the same dataid.
+    /// </summary>
+    private void CopyExtractMappings(WorkbookDocument target, int sourceIndex, int targetIndex, string oldName, string newName)
+    {
+        if (Response.FindColumn("extractvariable") < 0) return;
+        var targetRows = target.RowsOf(target.Response, targetIndex).ToList();
+        var sourceRows = RowsOf(Response, sourceIndex).ToList();
+        for (var r = 0; r < sourceRows.Count; r++)
+        {
+            var mappings = sourceRows[r].Get("extractvariable").Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Where(m => m.StartsWith(oldName + ".", StringComparison.OrdinalIgnoreCase))
+                .Select(m => newName + m[oldName.Length..]).ToList();
+            if (mappings.Count == 0) continue;
+            var row = target.Response.FindColumn("dataid") >= 0 && Response.FindColumn("dataid") >= 0
+                ? targetRows.FirstOrDefault(t => string.Equals(t.Get("dataid").Trim(), sourceRows[r].Get("dataid").Trim(), StringComparison.OrdinalIgnoreCase))
+                : (r < targetRows.Count ? targetRows[r] : null);
+            if (row is null) continue;
+            var existing = row.Get("extractvariable");
+            var have = existing.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+            foreach (var m in mappings) if (!have.Contains(m, StringComparer.OrdinalIgnoreCase)) have.Add(m);
+            row.Set("extractvariable", string.Join("|", have));
+        }
     }
 
     /// <summary>Copies a whole testcase into <paramref name="target"/> under its next free number, with steps, data columns and data rows.</summary>
