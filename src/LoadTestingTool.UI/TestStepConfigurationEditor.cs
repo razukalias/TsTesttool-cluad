@@ -23,7 +23,7 @@ internal sealed class TestStepConfigurationEditor : UserControl
     private readonly StackPanel _steps = new() { Spacing = 5 };
     private readonly StackPanel _editor = new() { Spacing = 8 };
     private readonly TextBox _newStepName = new() { Watermark = "Step name", MinWidth = 260 };
-    private readonly ComboBox _newStepType = new() { ItemsSource = new[] { "HTTP", "GraphQL", "CaseQL", "File", "Script", "SQL" }, SelectedIndex = 0, MinWidth = 180 };
+    private readonly ComboBox _newStepType = new() { ItemsSource = new[] { "HTTP", "GraphQL", "CaseQL", "File", "Script", "SQL", "If", "While", "For", "ForEach" }, SelectedIndex = 0, MinWidth = 180 };
     private readonly TextBlock _status = DashboardStyle.Text("", 11, false, DashboardStyle.Muted);
     private readonly Dictionary<string, int> _headers = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<StepRow> _rows = [];
@@ -194,7 +194,7 @@ internal sealed class TestStepConfigurationEditor : UserControl
         _selectedStep = row; _loading = true; _editor.Children.Clear();
         _stepName = new TextBox { Text = row.Get(_headers, "stepname", "NewStep") };
         var existingType = row.Get(_headers, "steptype", "HTTP");
-        _stepType = new ComboBox { ItemsSource = new[] { "HTTP", "GraphQL", "CaseQL", "File", "Script", "SQL" }.Concat(existingType.Equals("ActionManual", StringComparison.OrdinalIgnoreCase) ? new[] { "ActionManual" } : Array.Empty<string>()), SelectedItem = existingType };
+        _stepType = new ComboBox { ItemsSource = new[] { "HTTP", "GraphQL", "CaseQL", "File", "Script", "SQL", "If", "While", "For", "ForEach" }.Concat(existingType.Equals("ActionManual", StringComparison.OrdinalIgnoreCase) ? new[] { "ActionManual" } : Array.Empty<string>()), SelectedItem = existingType };
         _enabled = new CheckBox { Content = "Enabled", IsChecked = !row.Get(_headers, "enabled", "true").Equals("false", StringComparison.OrdinalIgnoreCase) };
         _stage = new ComboBox { ItemsSource = new[] { "Setup", "Test", "Teardown" }, SelectedItem = row.Get(_headers, "stage", "Test") };
         _timeout = new TextBox { Text = row.Get(_headers, "timeout", "30") }; _manualTimeoutMinutes = new TextBox { Text = row.Get(_headers, "manualtimeoutminutes", "15") }; _wait = new TextBox { Text = row.Get(_headers, "wait", "0") };
@@ -234,6 +234,7 @@ internal sealed class TestStepConfigurationEditor : UserControl
         // TextBox that still has the previous StackPanel as its visual parent.
         foreach (var panel in _typeFields.Children.OfType<Panel>().Where(x => !ReferenceEquals(x, _headerFields)).ToList()) panel.Children.Clear();
         _typeFields.Children.Clear(); var type = _stepType.SelectedItem?.ToString() ?? "HTTP";
+        if (type is "If" or "While" or "For" or "ForEach") { _typeFields.Children.Add(DashboardStyle.Text($"{type} (control step)", 13, true)); _typeFields.Children.Add(DashboardStyle.Text("Set the step's condition, parent and loop settings (max, from, to, items, var ...) in the data editor's step form or in the StepConfig box below. No URL or template is needed.", 12)); }
         if (type == "ActionManual") { _typeFields.Children.Add(DashboardStyle.Text("Manual action", 13, true)); _typeFields.Children.Add(Field("Manual timeout (minutes)", _manualTimeoutMinutes)); }
         if (type == "HTTP") { _typeFields.Children.Add(DashboardStyle.Text("HTTP request configuration", 13, true)); _typeFields.Children.Add(Field("Target URL", _targetUrl)); _typeFields.Children.Add(Field("HTTP verb", _verb)); _typeFields.Children.Add(Field("Content type", _contentType)); _typeFields.Children.Add(Field("Expected status", _expectedStatus)); _typeFields.Children.Add(_headerFields); _typeFields.Children.Add(Field("Template source", _template)); _typeFields.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { DashboardStyle.Action("New / edit template", EditTemplate, "primary"), DashboardStyle.Action("Validate template", ValidateTemplate) } }); if (_contentType.Text.Equals("multipart/form-data", StringComparison.OrdinalIgnoreCase)) _typeFields.Children.Add(_multipartEditor); }
         if (type is "GraphQL" or "CaseQL") { _typeFields.Children.Add(DashboardStyle.Text($"{type} configuration", 13, true)); _typeFields.Children.Add(Field("Target URL", _targetUrl)); _typeFields.Children.Add(Field("HTTP verb", _verb)); _typeFields.Children.Add(Field("Template source", _template)); _typeFields.Children.Add(_headerFields); _typeFields.Children.Add(Field("Source", _graphqlSource)); _typeFields.Children.Add(Field("Inline query", _graphqlInline)); _typeFields.Children.Add(Field("Operation name", _graphqlOperation)); _typeFields.Children.Add(Field("Variables JSON", _graphqlVariables)); _typeFields.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { DashboardStyle.Action("New / edit template", EditTemplate, "primary"), DashboardStyle.Action("Validate template", ValidateTemplate), DashboardStyle.Action($"Generate {type} StepConfig", GenerateStepConfig) } }); }

@@ -18,6 +18,10 @@ public sealed partial class WorkbookDocument
     public StepRemoveResult RemoveStep(TableRow configRow)
     {
         var name = configRow.Get("stepname").Trim();
+        // what was inside a removed control step moves up to where that step was
+        var ownParent = configRow.Get("parent");
+        foreach (var inner in Config.Rows.Where(r => !r.IsBlank && !ReferenceEquals(r, configRow) && name.Length > 0 && ParentName(r.Get("parent")).Equals(name, StringComparison.OrdinalIgnoreCase)).ToList())
+            inner.Set("parent", ownParent);
         Config.RemoveRow(configRow);
         var stillUsed = name.Length == 0 || Config.Rows.Any(r => !r.IsBlank && string.Equals(r.Get("stepname").Trim(), name, StringComparison.OrdinalIgnoreCase));
         var removed = 0;
@@ -71,6 +75,7 @@ public sealed partial class WorkbookDocument
         foreach (var row in Config.Rows.Where(r => string.Equals(r.Get("stepname").Trim(), oldName, StringComparison.OrdinalIgnoreCase)))
             row.Set("stepname", newName);
         foreach (var (table, column, header) in plan) table.RenameColumn(column, header);
+        FollowStepRename(oldName, newName);
 
         var runtime = new Regex($@"(<From_response_){Regex.Escape(oldName)}(\.)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         var dontrun = new Regex($@"(?<=^|[,|]\s*){Regex.Escape(oldName)}(?=\s*(?:[,|]|$))", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);

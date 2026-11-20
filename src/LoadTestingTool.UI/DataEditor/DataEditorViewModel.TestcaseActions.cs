@@ -76,6 +76,36 @@ public sealed partial class DataEditorViewModel
         MoveStep(direction);
     }
 
+    /// <summary>Puts the step (with what is inside it) into a control step, or back at the top level when <paramref name="parent"/> is null.</summary>
+    public void SetStepParentNamed(string name, string? parent, bool elseBranch = false)
+    {
+        var step = StepRows.FirstOrDefault(r => string.Equals(r.CurrentName, name, StringComparison.OrdinalIgnoreCase));
+        if (step is null) return;
+        Record(parent is null ? $"take step {name} out of its control step" : $"put step {name} inside {parent}{(elseBranch ? " (else)" : string.Empty)}");
+        try { _document.SetStepParent(step.Row, parent, elseBranch); }
+        catch (InvalidOperationException ex) { DiscardLastRecord(); ShowStatus(ex.Message, isError: true); return; }
+        AfterControlMove(name, parent is null ? $"Moved {name} to the top level." : $"Put {name} inside {parent}{(elseBranch ? " (else branch)" : string.Empty)}.");
+    }
+
+    /// <summary>Moves the step one level out: next to the control step it is inside.</summary>
+    public void MoveStepOutNamed(string name)
+    {
+        var step = StepRows.FirstOrDefault(r => string.Equals(r.CurrentName, name, StringComparison.OrdinalIgnoreCase));
+        if (step is null) return;
+        Record($"take step {name} out of its control step");
+        try { _document.MoveStepOut(step.Row); }
+        catch (InvalidOperationException ex) { DiscardLastRecord(); ShowStatus(ex.Message, isError: true); return; }
+        AfterControlMove(name, $"Moved {name} one level out.");
+    }
+
+    private void AfterControlMove(string name, string message)
+    {
+        StepsChanged();
+        BuildSteps();   // the Parent column may be new, and the rows changed places
+        SelectedStep = StepRows.FirstOrDefault(r => string.Equals(r.CurrentName, name, StringComparison.OrdinalIgnoreCase)) ?? SelectedStep;
+        ShowStatus(message, isError: false);
+    }
+
     [RelayCommand]
     private void OpenRenameStep()
     {

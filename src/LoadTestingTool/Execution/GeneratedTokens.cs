@@ -22,6 +22,9 @@ public static class GeneratedTokens
     {
         public string RowKey { get; } = rowKey;
         internal ConcurrentDictionary<string, string> Values { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>Which round of which loop is running (empty outside loops). Every round makes its own values, so a GUID in a step inside a loop is new each round.</summary>
+        public string Round { get; set; } = string.Empty;
     }
 
     public static AsyncLocal<RowScope?> Scope { get; } = new();
@@ -57,8 +60,9 @@ public static class GeneratedTokens
             var id = m.Groups[3].Value;
             var owner = m.Groups[4].Value.Length == 0 ? null : m.Groups[4].Value;
             if (scope is null) return Make(kind, argument);
-            return scope.Values.GetOrAdd(id, _ => RunValueMemory.Active is { } memory
-                ? memory.GeneratedFor(scope.RowKey, id, owner, () => Make(kind, argument))
+            var key = id + scope.Round;
+            return scope.Values.GetOrAdd(key, _ => RunValueMemory.Active is { } memory
+                ? memory.GeneratedFor(scope.RowKey, key, owner, () => Make(kind, argument))
                 : Make(kind, argument));
         });
     }

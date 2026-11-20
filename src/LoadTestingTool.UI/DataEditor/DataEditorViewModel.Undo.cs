@@ -129,7 +129,7 @@ public sealed partial class DataEditorViewModel
                 Testcases.Insert(Math.Min(position, Testcases.Count), Track(new TestcaseItem(info, count)));
                 continue;
             }
-            existing.UpdateSteps(info.Steps);
+            existing.UpdateSteps(info.Steps, info.Nesting);
             existing.RowCount = count;
         }
     }

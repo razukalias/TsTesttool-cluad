@@ -110,6 +110,8 @@ public sealed class RecordView : UserControl
         head.Children.Add(new TextBlock { Text = _editor.RecordTitle, FontSize = 16, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center });
         _body.Children.Add(head);
         if (_editor.SelectedRow is null) return;
+        if (_editor.SelectedTestcase?.ControlSummary is { Length: > 0 } controls)
+            _body.Children.Add(new TextBlock { Text = controls, Tag = "control-summary", Foreground = Brush.Parse("#8EA4BC"), FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) });
         Section("REQUEST", _editor.RequestLines);
         Section("EXPECTED RESPONSE", _editor.ExpectedLines);
     }

@@ -141,6 +141,9 @@ public sealed partial class DataEditorViewModel
             step.Row.Set("stepname", name);
             step.CurrentName = name;
             if (name != value) step.SetCellSilently(0, name);
+            var parentColumn = StepColumns.ToList().FindIndex(c => c.Title.Equals("parent", StringComparison.OrdinalIgnoreCase));
+            if (parentColumn >= 0)   // steps inside a renamed control step now name it differently
+                foreach (var other in StepRows) other.SetCellSilently(parentColumn + 1, other.Row.GetAt(StepColumns[parentColumn].SheetColumn));
             StepsChanged();
             ShowStatus(RenameSummary(old, name, result), isError: false);
             return;
@@ -230,7 +233,7 @@ public sealed partial class DataEditorViewModel
         if (SelectedTestcase is { } testcase)
         {
             var info = _document.GetTestcases().FirstOrDefault(t => t.Index == testcase.Index);
-            if (info is not null) testcase.UpdateSteps(info.Steps);
+            if (info is not null) testcase.UpdateSteps(info.Steps, info.Nesting);
         }
         _dataStale = true;
         MarkChanged();

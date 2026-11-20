@@ -38,7 +38,17 @@ public sealed partial class StepNode(TestcaseItem owner, string name, int positi
     private string _name = name;
     public string Name { get => _name; internal set { if (SetProperty(ref _name, value)) { OnPropertyChanged(nameof(Title)); } } }
     public int Position { get; } = position;
-    public string Title => $"{Position} · {Name}";
+    public string Title => $"{Position} · {Name}{(IsControl ? $"  ({TypeName})" : string.Empty)}{(InElse ? "  · else" : string.Empty)}";
+
+    /// <summary>How deep the step sits inside If, While, For and ForEach steps (0 = top level).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(Indent)), NotifyPropertyChangedFor(nameof(Title))] private int _depth;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))] private bool _isControl;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))] private bool _inElse;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))] private string _typeName = string.Empty;
+    public Avalonia.Thickness Indent => new(Depth * 16, 1, 0, 1);
+    public string Kind => IsControl ? TypeName : string.Empty;
+
+    internal void ApplyNesting(StepNesting nesting) { Depth = nesting.Depth; IsControl = nesting.IsControl; InElse = nesting.InElse; TypeName = nesting.TypeName; }
 }
 
 public sealed partial class TestcaseItem : ObservableObject
@@ -48,6 +58,7 @@ public sealed partial class TestcaseItem : ObservableObject
         Index = info.Index;
         Name = info.Name;
         Steps = info.Steps;
+        _nesting = info.Nesting;
         _rowCount = rowCount;
         RebuildStepNodes();
     }
@@ -90,6 +101,7 @@ public sealed partial class TestcaseItem : ObservableObject
             for (var i = 0; i < Steps.Count; i++) StepNodes.Add(new StepNode(this, Steps[i], i + 1) { IsChosen = kept.Contains(Steps[i]) || (IsChosen && !known.Contains(Steps[i])) });
         }
         finally { _syncingChosen = false; }
+        ApplyNesting();
         OnPropertyChanged(nameof(ChosenState));
     }
 
@@ -119,9 +131,30 @@ public sealed partial class TestcaseItem : ObservableObject
     public string Name { get; }
     public IReadOnlyList<string> Steps { get; private set; }
 
-    public void UpdateSteps(IReadOnlyList<string> steps)
+    private IReadOnlyList<StepNesting>? _nesting;
+
+    /// <summary>One line naming the control steps (If/While/For/ForEach) of this testcase, for the Record view; empty when there are none.</summary>
+    public string ControlSummary
+    {
+        get
+        {
+            var controls = _nesting?.Where(n => n.IsControl).ToList();
+            return controls is not { Count: > 0 } ? string.Empty
+                : "Control steps: " + string.Join(", ", controls.Select(c => $"{c.Name} ({c.TypeName})")) + ". Columns of steps inside a loop are filled once and used in every round; edit the settings in the step tree.";
+        }
+    }
+
+    /// <summary>Indents each step node by how deep it sits inside control steps.</summary>
+    private void ApplyNesting()
+    {
+        if (_nesting is null || _nesting.Count != StepNodes.Count) return;
+        for (var i = 0; i < StepNodes.Count; i++) StepNodes[i].ApplyNesting(_nesting[i]);
+    }
+
+    public void UpdateSteps(IReadOnlyList<string> steps, IReadOnlyList<StepNesting>? nesting = null)
     {
         Steps = steps;
+        _nesting = nesting;
         if (!StepNodes.Select(n => n.Name).SequenceEqual(steps))
         {
             // A rename keeps the tree's nodes (and its selection); only an add, remove or move rebuilds them.
@@ -133,6 +166,7 @@ public sealed partial class TestcaseItem : ObservableObject
             }
             else RebuildStepNodes();
         }
+        ApplyNesting();
         OnPropertyChanged(nameof(Steps));
         OnPropertyChanged(nameof(Summary));
     }

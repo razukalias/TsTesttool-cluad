@@ -62,7 +62,8 @@ public sealed partial class WorkbookDocument
             .Select(g => new TestcaseInfo(
                 g.Key,
                 g.Select(r => r.Get("testcase").Trim()).FirstOrDefault(x => x.Length > 0) ?? string.Empty,
-                g.Select(r => r.Get("stepname").Trim()).Where(x => x.Length > 0).ToList()))
+                g.Select(r => r.Get("stepname").Trim()).Where(x => x.Length > 0).ToList(),
+                GetNesting(g.Key)))
             .ToList();
 
     /// <summary>Data IDs of a testcase, in sheet order.</summary>

@@ -321,6 +321,8 @@ public sealed class RequestResult
     public List<CorrelationRecord> Correlations { get; } = [];
     public List<AssertionResult> Assertions { get; } = [];
     public string ErrorMessage { get; set; } = string.Empty;
+    /// <summary>Which round of which loop made this result, e.g. "Poll #3" (empty outside loops).</summary>
+    public string LoopRound { get; set; } = string.Empty;
     public string FailureCategory { get; set; } = string.Empty;
     public string RuntimeReference { get; set; } = string.Empty;
     public string RuntimeReferenceKey { get; set; } = string.Empty;

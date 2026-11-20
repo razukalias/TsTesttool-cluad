@@ -63,6 +63,7 @@ public sealed partial class WorkbookDocument
     public bool MoveStep(TableRow step, int direction)
     {
         var index = EffectiveIndex(step);
+        if (Config.FindColumn("parent") >= 0) return MoveStepAmongSiblings(step, direction);
         var steps = RowsOf(Config, index).ToList();
         var at = steps.IndexOf(step);
         var target = at + Math.Sign(direction);

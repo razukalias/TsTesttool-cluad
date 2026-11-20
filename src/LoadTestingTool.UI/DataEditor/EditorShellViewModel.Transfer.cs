@@ -75,6 +75,15 @@ public sealed partial class EditorShellViewModel
         return editor;
     }
 
+    /// <summary>Tree menu: puts a step inside a control step (null = top level), or one level out.</summary>
+    public void PutStepInside(StepNode step, string? parent, bool elseBranch = false, bool oneLevelOut = false)
+    {
+        if (EditorFor(step) is not { } editor) return;
+        var name = step.Name;
+        if (oneLevelOut) editor.MoveStepOutNamed(name); else editor.SetStepParentNamed(name, parent, elseBranch);
+        if (step.Owner.StepNodes.FirstOrDefault(n => string.Equals(n.Name, name, StringComparison.OrdinalIgnoreCase)) is { } again) SelectedNode = again;
+    }
+
     public void RemoveStep(StepNode step)
     {
         if (EditorOf(step) is not { } editor) return;

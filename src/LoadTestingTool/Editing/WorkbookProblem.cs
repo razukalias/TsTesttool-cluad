@@ -17,7 +17,7 @@ public enum ProblemSeverity
 public sealed record WorkbookProblem(ProblemSeverity Severity, string Sheet, int? RowNumber, string Message, TableRow? Row = null);
 
 /// <summary>A testcase from the config sheet: its index, name, and step names in run order.</summary>
-public sealed record TestcaseInfo(int Index, string Name, IReadOnlyList<string> Steps);
+public sealed record TestcaseInfo(int Index, string Name, IReadOnlyList<string> Steps, IReadOnlyList<StepNesting>? Nesting = null);
 
 /// <summary>Result of <see cref="WorkbookDocument.Save"/>.</summary>
 /// <param name="Saved">False when there was nothing to write.</param>

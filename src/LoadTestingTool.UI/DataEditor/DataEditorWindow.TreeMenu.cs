@@ -97,6 +97,8 @@ public partial class DataEditorWindow
                 menu.Items.Add(Item("Duplicate step…", () => _shell.OpenDuplicateStepPanel(step)));
                 menu.Items.Add(CopyStepMenu(step));
                 menu.Items.Add(Item("Add columns from template / response…", () => _ = AddColumnsAsync(step)));
+                menu.Items.Add(NestMenu(step));
+                if (step.Depth > 0) menu.Items.Add(Item("Move out (one level)", () => _shell.PutStepInside(step, null, oneLevelOut: true)));
                 menu.Items.Add(new Separator());
                 menu.Items.Add(Item("Remove step", () => _shell.RemoveStep(step)));
                 break;
@@ -107,6 +109,20 @@ public partial class DataEditorWindow
     }
 
     /// <summary>Opens the Add columns form for one step of the clicked step's instance.</summary>
+    /// <summary>"Put inside ▸": the If, While, For and ForEach steps of the testcase (an If also offers its else branch).</summary>
+    private MenuItem NestMenu(StepNode step)
+    {
+        var menu = new MenuItem { Header = "Put inside" };
+        foreach (var control in step.Owner.StepNodes.Where(n => n.IsControl && !ReferenceEquals(n, step)))
+        {
+            menu.Items.Add(Item($"{control.Name}  ({control.TypeName})", () => _shell.PutStepInside(step, control.Name)));
+            if (control.TypeName == "If") menu.Items.Add(Item($"{control.Name}  (else)", () => _shell.PutStepInside(step, control.Name, elseBranch: true)));
+        }
+        if (step.Depth > 0) menu.Items.Add(Item("Top level", () => _shell.PutStepInside(step, null)));
+        if (menu.Items.Count == 0) menu.Items.Add(new MenuItem { Header = "No If, While, For or ForEach step here", IsEnabled = false });
+        return menu;
+    }
+
     private async Task AddColumnsAsync(StepNode step)
     {
         if (_shell.EditorFor(step) is not { } editor) return;

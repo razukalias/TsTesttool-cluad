@@ -74,6 +74,11 @@ public sealed class TestRunner
                 if (RunValueMemory.Active is { Reuse: true } rowMemory)
                     foreach (var saved in rowMemory.PreviousRow(rowKey)) correlation[saved.Key] = saved.Value;   // what earlier steps extracted in the last run
                 var loopVars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                static void AddRequest(TestcaseResult into, RequestResult r)
+                {
+                    r.LoopRound = LoopRoundLabel(GeneratedTokens.Scope.Value?.Round);
+                    into.Requests.Add(r);
+                }
                 async Task<bool> RunStepAsync(RequestStep request)   // false = stop this data row
                 {
                     Position.Value = (data.ExcelRowNumber, stepOrder + 1);
@@ -141,7 +146,7 @@ public sealed class TestRunner
                     catch (RuntimeReferenceException ex)
                     {
                         var failure = CreateRuntimeReferenceFailure(run, testcase, data.DataId, request, ++stepOrder, threadId, iteration, environment, ex);
-                        testcaseResult.Requests.Add(failure);
+                        AddRequest(testcaseResult, failure);
                         Publish(failure);
                         _logger.Warn($"Stopping current data row after missing runtime reference. testcase={testcase.TestcaseIndex}; dataid={data.DataId}; stepName={request.StepName}; iteration={iteration}; reference={ex.Reference}");
                         return false;
@@ -158,7 +163,7 @@ public sealed class TestRunner
                         else
                         {
                             var manualWait = await ExecuteActionManualAsync(run, testcase, data.DataId, request, variables, waitExpression, ++stepOrder, threadId, iteration, token, environment, waitDriven: true);
-                            testcaseResult.Requests.Add(manualWait);
+                            AddRequest(testcaseResult, manualWait);
                             if (manualWait.Result == "FAIL") return false;
                         }
                     }
@@ -167,7 +172,7 @@ public sealed class TestRunner
                     var result = request.StepType == StepType.ActionManual
                         ? await ExecuteActionManualAsync(run, testcase, data.DataId, request, variables, variables.TryGetValue("manualinfo", out var manualInfo) ? Substitute(manualInfo, variables) : string.Empty, ++stepOrder, threadId, iteration, token, environment)
                         : await ExecuteRequestAsync(run, testcase, data.DataId, request, variables, redactedVariables, definitions, requestReferences, ++stepOrder, threadId, iteration, correlation, correlationSources, executionContext, token, environment);
-                    testcaseResult.Requests.Add(result);
+                    AddRequest(testcaseResult, result);
                     if (result.FailureCategory.Equals("RuntimeReference", StringComparison.OrdinalIgnoreCase)) { _logger.Warn($"Stopping current data row after missing runtime reference. dataid={data.DataId}; step={request.StepName}; iteration={iteration}; remaining rows will continue."); return false; }
                     if (result.Result == "FAIL" && (request.StopOnFailure || request.StepType == StepType.ActionManual)) { _logger.Warn($"Stopping current data row after failed dataid={data.DataId}, step {request.StepName} because {(request.StepType == StepType.ActionManual ? "ActionManual always stops immediately" : "stopOnFailure=true")}."); return false; }
                     return true;
@@ -185,7 +190,7 @@ public sealed class TestRunner
                     bool FailControl(string message)
                     {
                         var failure = CreateControlFailure(run, testcase, data.DataId, control, ++stepOrder, threadId, iteration, environment, message);
-                        testcaseResult.Requests.Add(failure);
+                        AddRequest(testcaseResult, failure);
                         Publish(failure);
                         _logger.Warn($"CONTROL STEP FAILED | step={control.StepName} | {message}");
                         return false;
@@ -208,8 +213,19 @@ public sealed class TestRunner
                         return long.TryParse(resolved, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var number) ? number : throw new InvalidDataException($"'{key}' must be a whole number, but it is '{resolved}'.");
                     }
                     async Task<bool> ConditionAsync() => ConditionEvaluator.Evaluate(await TextAsync(control.Condition));
-                    // 0 = next round, 1 = leave the loop, 2 = stop the data row
-                    async Task<int> RoundAsync() => await RunSequenceAsync(Inside(false)) ? 0 : onFailure switch { "continue" => 0, "break" => 1, _ => 2 };
+                    var totalMs = control.ResponseTimeoutMs > 0 ? control.ResponseTimeoutMs : control.TimeoutSeconds > 0 ? control.TimeoutSeconds * 1000L : 0L;
+                    var watch = System.Diagnostics.Stopwatch.StartNew();
+                    // 0 = next round, 1 = leave the loop, 2 = stop the data row, 3 = the whole loop took longer than its timeout
+                    async Task<int> RoundAsync(int number)
+                    {
+                        if (totalMs > 0 && watch.ElapsedMilliseconds > totalMs) return 3;
+                        var scope = GeneratedTokens.Scope.Value;
+                        var outer = scope?.Round ?? string.Empty;
+                        if (scope is not null) scope.Round = $"{outer}/{control.StepName}#{number}";   // new random numbers, GUIDs and dates every round
+                        _logger.Info($"LOOP ROUND | loop={control.StepName} | type={control.StepType.WireName()} | round={number}");
+                        try { return await RunSequenceAsync(Inside(false)) ? 0 : onFailure switch { "continue" => 0, "break" => 1, _ => 2 }; }
+                        finally { if (scope is not null) scope.Round = outer; }
+                    }
                     async Task<bool> LoopAsync(string variable, IEnumerable<string> values, string? indexName)
                     {
                         loopVars.TryGetValue(variable, out var savedValue);
@@ -223,9 +239,10 @@ public sealed class TestRunner
                                 if (indexName is not null) loopVars[indexName] = round.ToString(System.Globalization.CultureInfo.InvariantCulture);
                                 _logger.Info($"LOOP ROUND | step={control.StepName} | round={round + 1} | {variable}={value}");
                                 round++;
-                                var outcome = await RoundAsync();
+                                var outcome = await RoundAsync(round);
                                 if (outcome == 1) break;
                                 if (outcome == 2) return false;
+                                if (outcome == 3) return FailControl($"The loop ran longer than its timeout ({totalMs} ms) after {round - 1} rounds.");
                             }
                             return true;
                         }
@@ -238,6 +255,7 @@ public sealed class TestRunner
                     try
                     {
                         var max = await NumberAsync("max", control.StepType == StepType.While ? 100 : 10000);
+                        totalMs = await NumberAsync("timeoutms", totalMs);   // the whole loop; checked between rounds, a running step has its own timeout
                         switch (control.StepType)
                         {
                             case StepType.If:
@@ -294,9 +312,10 @@ public sealed class TestRunner
                                         rounds++;
                                         loopVars["round"] = rounds.ToString(System.Globalization.CultureInfo.InvariantCulture);
                                         _logger.Info($"LOOP ROUND | step={control.StepName} | round={rounds}");
-                                        var outcome = await RoundAsync();
+                                        var outcome = await RoundAsync(rounds);
                                         if (outcome == 1) break;
                                         if (outcome == 2) return false;
+                                        if (outcome == 3) return FailControl($"The loop ran longer than its timeout ({totalMs} ms) after {rounds - 1} rounds.");
                                         if (delay > 0) await Task.Delay((int)Math.Min(delay, int.MaxValue), token);
                                     }
                                 }
@@ -831,4 +850,8 @@ public sealed class TestRunner
     }
     private static string ResolveContentType(RequestStep step) => !string.IsNullOrWhiteSpace(step.ContentType) ? step.ContentType : Path.GetExtension(step.TemplateSource).TrimStart('.').ToLowerInvariant() switch { "xml" => "xml", _ => "json" };
     private static bool StatusMatches(int actual, string expected) => expected.Contains('-') ? int.TryParse(expected.Split('-')[0], out var min) && int.TryParse(expected.Split('-')[1], out var max) && actual >= min && actual <= max : expected.EndsWith("xx", StringComparison.OrdinalIgnoreCase) && int.TryParse(expected[..1], out var family) ? actual / 100 == family : int.TryParse(expected, out var exact) && actual == exact;
+
+    /// <summary>"/Outer#2/Inner#5" becomes "Outer #2 > Inner #5".</summary>
+    internal static string LoopRoundLabel(string? round) => string.IsNullOrEmpty(round) ? string.Empty
+        : string.Join(" > ", round.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(p => p.Replace("#", " #")));
 }

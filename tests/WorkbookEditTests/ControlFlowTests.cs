@@ -171,6 +171,37 @@ public class ControlFlowTests
     }
 
     [Fact]
+    public async Task A_guid_in_a_step_inside_a_loop_is_new_every_round()
+    {
+        var result = await RunAsync(Build(new TempDir(),
+            new Step("Loop", "For", Config: "from=1;to=3"), new Step("Each", Parent: "Loop", Url: "/g/<guid>"), new Step("Once", Url: "/o/<guid>")), Ok);
+        var guids = result.Paths.Where(p => p.StartsWith("/g/")).ToList();
+        Assert.Equal(3, guids.Count);
+        Assert.Equal(3, guids.Distinct().Count());
+        Assert.Single(result.Paths, p => p.StartsWith("/o/"));
+    }
+
+    [Fact]
+    public async Task A_loop_that_runs_longer_than_its_timeout_fails_between_rounds()
+    {
+        var result = await RunAsync(Build(new TempDir(),
+            new Step("Wait", "While", Condition: "1 eq 1", Config: "max=1000;delayms=40;timeoutms=150"), new Step("Poll", Parent: "Wait", Url: "/poll"), new Step("After", Url: "/after")), Ok);
+        Assert.DoesNotContain("/after", result.Paths);
+        Assert.InRange(result.Paths.Count, 2, 8);
+        var failure = result.Run.Testcases.SelectMany(t => t.Requests).Single(r => r.Result == "FAIL");
+        Assert.Contains("longer than its timeout (150 ms)", failure.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task Results_inside_a_loop_say_which_round_made_them()
+    {
+        var result = await RunAsync(Build(new TempDir(),
+            new Step("Loop", "For", Config: "from=1;to=2"), new Step("Each", Parent: "Loop", Url: "/e"), new Step("Once", Url: "/o")), Ok);
+        var rows = result.Run.Testcases.SelectMany(t => t.Requests).ToList();
+        Assert.Equal(new[] { "Loop #1", "Loop #2", "" }, rows.Where(r => r.StepName != "Loop").Select(r => r.LoopRound).ToArray());
+    }
+
+    [Fact]
     public async Task Loops_nest_and_each_level_keeps_its_own_variable()
     {
         var result = await RunAsync(Build(new TempDir(),
@@ -265,5 +296,99 @@ public class ControlFlowValidationTests
     {
         var problems = Problems(("Check", "If", "", "_status_ eq 200", ""), ("T", "HTTP", "Check", "", ""), ("E", "HTTP", "Check:else", "", ""), ("Loop", "For", "", "", "from=1;to=3"), ("Each", "HTTP", "Loop", "", ""));
         Assert.DoesNotContain(problems, m => m.Contains("Parent") || m.Contains("condition") || m.Contains("needs 'to'") || m.Contains("':else'"));
+    }
+}
+
+public class ControlFlowEditingTests
+{
+    private static LoadTestingTool.Editing.WorkbookDocument Open(TempDir dir, params (string Name, string Type, string Parent)[] steps)
+    {
+        var path = Workbooks.CreateSmall(dir, (config, request, response) =>
+        {
+            config.Cell(1, 9).Value = "parent";
+            for (var i = 0; i < steps.Length; i++)
+            {
+                var row = i + 2;
+                config.Cell(row, 1).Value = 1; config.Cell(row, 2).Value = "Flow"; config.Cell(row, 3).Value = steps[i].Name; config.Cell(row, 4).Value = steps[i].Type;
+                config.Cell(row, 5).Value = "t.json"; config.Cell(row, 6).Value = "http://h/x"; config.Cell(row, 7).Value = "POST"; config.Cell(row, 8).Value = true;
+                config.Cell(row, 9).Value = steps[i].Parent;
+            }
+        });
+        return LoadTestingTool.Editing.WorkbookDocument.Load(path);
+    }
+
+    private static string Tree(LoadTestingTool.Editing.WorkbookDocument d) => string.Join(" ", d.GetNesting(1).Select(n => new string('.', n.Depth) + n.Name + (n.InElse ? "~" : "")));
+    private static LoadTestingTool.Editing.TableRow Row(LoadTestingTool.Editing.WorkbookDocument d, string name) => d.Config.Rows.First(r => r.Get("stepname") == name);
+
+    [Fact]
+    public void Nesting_is_read_from_the_parent_column()
+    {
+        using var dir = new TempDir();
+        var d = Open(dir, ("A", "HTTP", ""), ("If1", "If", ""), ("T", "HTTP", "If1"), ("E", "HTTP", "If1:else"), ("L", "For", "If1"), ("Deep", "HTTP", "L"));
+        Assert.Equal("A If1 .T .E~ .L ..Deep", Tree(d));
+        Assert.Equal(["", "If", "", "", "For", ""], d.GetNesting(1).Select(n => n.IsControl ? n.TypeName : "").ToArray());
+    }
+
+    [Fact]
+    public void Putting_a_step_inside_a_control_step_makes_it_the_last_one_in_it_and_keeps_the_rows_in_tree_order()
+    {
+        using var dir = new TempDir();
+        var d = Open(dir, ("L", "For", ""), ("Inner1", "HTTP", "L"), ("Other", "HTTP", ""), ("After", "HTTP", ""));
+        d.SetStepParent(Row(d, "After"), "L");
+        Assert.Equal("L .Inner1 .After Other", Tree(d));
+        Assert.Equal(["L", "Inner1", "After", "Other"], d.GetTestcases()[0].Steps);   // run order of the rows follows the tree
+        d.SetStepParent(Row(d, "Other"), "L");
+        Assert.Equal("L .Inner1 .After .Other", Tree(d));
+    }
+
+    [Fact]
+    public void A_control_step_takes_the_steps_inside_it_along_and_cannot_go_inside_itself()
+    {
+        using var dir = new TempDir();
+        var d = Open(dir, ("Outer", "For", ""), ("Mid", "If", ""), ("Leaf", "HTTP", "Mid"), ("Z", "HTTP", ""));
+        d.SetStepParent(Row(d, "Mid"), "Outer");
+        Assert.Equal("Outer .Mid ..Leaf Z", Tree(d));
+        Assert.Throws<InvalidOperationException>(() => d.SetStepParent(Row(d, "Outer"), "Mid"));
+        Assert.Throws<InvalidOperationException>(() => d.SetStepParent(Row(d, "Z"), "Leaf"));            // not a control step
+        Assert.Throws<InvalidOperationException>(() => d.SetStepParent(Row(d, "Z"), "Outer", elseBranch: true));   // only If has else
+        d.SetStepParent(Row(d, "Z"), "Mid", elseBranch: true);
+        Assert.Equal("Outer .Mid ..Leaf ..Z~", Tree(d));
+    }
+
+    [Fact]
+    public void Moving_out_puts_the_step_right_after_the_control_step_it_left()
+    {
+        using var dir = new TempDir();
+        var d = Open(dir, ("L", "For", ""), ("A", "HTTP", "L"), ("B", "HTTP", "L"), ("Next", "HTTP", ""));
+        d.MoveStepOut(Row(d, "A"));
+        Assert.Equal("L .B A Next", Tree(d));
+        Assert.Throws<InvalidOperationException>(() => d.MoveStepOut(Row(d, "A")));
+        d.SetStepParent(Row(d, "B"), null);
+        Assert.Equal("L B A Next", Tree(d));
+    }
+
+    [Fact]
+    public void The_arrows_swap_a_step_with_its_neighbour_inside_the_same_parent_and_take_its_children_along()
+    {
+        using var dir = new TempDir();
+        var d = Open(dir, ("L", "For", ""), ("A", "If", "L"), ("A1", "HTTP", "A"), ("B", "HTTP", "L"), ("End", "HTTP", ""));
+        Assert.True(d.MoveStep(Row(d, "B"), -1));
+        Assert.Equal("L .B .A ..A1 End", Tree(d));
+        Assert.True(d.MoveStep(Row(d, "B"), 1));
+        Assert.Equal("L .A ..A1 .B End", Tree(d));
+        Assert.False(d.MoveStep(Row(d, "B"), 1));   // last inside L
+        Assert.True(d.MoveStep(Row(d, "L"), 1));
+        Assert.Equal("End L .A ..A1 .B", Tree(d));
+    }
+
+    [Fact]
+    public void Renaming_a_control_step_updates_its_children_and_removing_it_lifts_them_up()
+    {
+        using var dir = new TempDir();
+        var d = Open(dir, ("Outer", "For", ""), ("If1", "If", "Outer"), ("T", "HTTP", "If1"), ("E", "HTTP", "If1:else"));
+        d.RenameStep("If1", "Check");
+        Assert.Equal("Outer .Check ..T ..E~", Tree(d));
+        d.RemoveStep(Row(d, "Check"));
+        Assert.Equal("Outer .T .E", Tree(d));   // they take the removed step's own parent
     }
 }

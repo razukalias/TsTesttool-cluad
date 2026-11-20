@@ -68,6 +68,8 @@ The internal log writes `INLINE SCRIPT START` (template, file, parameters, testc
 
 ## Control steps: If, While, For, ForEach
 
+Generated values (`<randomnumber>`, `<guid>`, dates) inside a loop are new every round. `timeoutms=` in the loop settings limits the whole loop. RequestHistory has a `loopround` column such as `Outer #2 > Inner #5`.
+
 A control step sends nothing itself; it decides whether, how often and over what other steps run. The workbook stays flat: a step names the control step it runs inside in the config column **`parent`** (empty = top level). For the else branch of an If write `IfName:else`. Nesting is allowed up to 5 levels. A workbook without a `parent` column behaves exactly as before. `dontrun` or `enabled=False` on a control step skips everything inside it.
 
 Settings go in the `condition` column (If, While) and in `stepconfig` as JSON or `key=value;key=value`:

@@ -320,7 +320,7 @@
               </Grid>
             </TreeDataTemplate>
             <DataTemplate DataType="vm:StepNode">
-              <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,1">
+              <Grid ColumnDefinitions="Auto,*,Auto" Margin="{Binding Indent}">
                 <CheckBox Classes="treecheck" IsChecked="{Binding IsChosen, Mode=TwoWay}" ToolTip.Tip="Tick to run this step on its own" />
                 <TextBlock Grid.Column="1" Text="{Binding Title}" IsVisible="{Binding IsNotEditing}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 <TextBox Grid.Column="1" Classes="treeedit" Text="{Binding EditText, Mode=TwoWay}" IsVisible="{Binding IsEditing}" FontSize="12" MinHeight="24" Padding="4,2" />
