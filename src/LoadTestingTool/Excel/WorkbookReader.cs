@@ -30,12 +30,15 @@ public sealed class WorkbookReader
             var url = Compile(Text(configHeaders, row, "targeturl"), workbook, config, compiledCellCache, row.RowNumber());
             var stepType = StepTypeParser.Parse(Text(configHeaders, row, "steptype", "HTTP"));
             if (string.IsNullOrWhiteSpace(testcase) || string.IsNullOrWhiteSpace(stepName)) throw new InvalidDataException($"config row {row.RowNumber()} is missing testcase or stepname.");
+            var parentText = Text(configHeaders, row, "parent");
+            var inElse = parentText.EndsWith(":else", StringComparison.OrdinalIgnoreCase);
+            var parent = inElse ? parentText[..^5].Trim() : parentText;
             if ((stepType is StepType.Http or StepType.GraphQL or StepType.CaseQL) && string.IsNullOrWhiteSpace(url)) throw new InvalidDataException($"config row {row.RowNumber()} requires targetUrl for {stepType.WireName()}.");
             if (stepType == StepType.Http && string.IsNullOrWhiteSpace(template)) throw new InvalidDataException($"config row {row.RowNumber()} requires templetsource for HTTP.");
-            if (stepType != StepType.Http && stepType != StepType.ActionManual && string.IsNullOrWhiteSpace(Text(configHeaders, row, "stepconfig"))) throw new InvalidDataException($"config row {row.RowNumber()} requires StepConfig for {stepType.WireName()}.");
+            if (stepType != StepType.Http && stepType != StepType.ActionManual && !stepType.IsControl() && string.IsNullOrWhiteSpace(Text(configHeaders, row, "stepconfig"))) throw new InvalidDataException($"config row {row.RowNumber()} requires StepConfig for {stepType.WireName()}.");
             steps.Add(new RequestStep
             {
-                TestcaseIndex = index, Testcase = testcase, StepName = stepName, Sequence = row.RowNumber(), TemplateSource = template, TargetUrl = url,
+                TestcaseIndex = index, Testcase = testcase, StepName = stepName, Parent = parent, InElse = inElse, Condition = Compile(Text(configHeaders, row, "condition"), workbook, config, compiledCellCache, row.RowNumber()), Sequence = row.RowNumber(), TemplateSource = template, TargetUrl = url,
                 StepType = stepType, Stage = ExecutionStageParser.Parse(Text(configHeaders, row, "stage", "Test")), Enabled = Bool(configHeaders, row, "enabled", true), TimeoutSeconds = Math.Max(0, Int(configHeaders, row, "timeout", 0)), ResponseTimeoutMs = Math.Max(0, Int(configHeaders, row, "responsetimeout", 0)), ManualTimeoutMinutes = Math.Max(0, Int(configHeaders, row, "manualtimeoutminutes", 15)), StepConfig = Compile(Text(configHeaders, row, "stepconfig", "{}"), workbook, config, compiledCellCache, row.RowNumber()),
                 Verb = Text(configHeaders, row, "verb", "POST").ToUpperInvariant(), ContentType = Text(configHeaders, row, "contenttype"),
                 WaitExpression = Compile(Text(configHeaders, row, "wait", "0"), workbook, config, compiledCellCache, row.RowNumber()),
@@ -47,6 +50,7 @@ public sealed class WorkbookReader
             });
             RunValueMemory.CellOwner = null;
         }
+        CheckControlFlow(steps);
         var duplicate = steps.GroupBy(s => (s.TestcaseIndex, s.StepName), StepTupleComparer.Instance).FirstOrDefault(g => g.Count() > 1);
         if (duplicate is not null) throw new InvalidDataException($"Duplicate config testcaseindex + stepname: {duplicate.Key.Item1} + {duplicate.Key.Item2}.");
         var testcases = steps.GroupBy(s => (s.TestcaseIndex, Testcase: s.Testcase), TestcaseTupleComparer.Instance).OrderBy(g => g.Key.TestcaseIndex).Select(g => new TestcaseDefinition { TestcaseIndex = g.Key.TestcaseIndex, Testcase = g.Key.Testcase, Steps = g.OrderBy(s => s.Sequence).ToList() }).ToList();
@@ -59,6 +63,30 @@ public sealed class WorkbookReader
             foreach (var row in rows) if (!assertions.Keys.Any(k => k.Item1 == testcase.TestcaseIndex && k.Item2.Equals(row.DataId, StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException($"No response row found for testcaseindex {testcase.TestcaseIndex} and dataid '{row.DataId}'.");
         }
         return new WorkbookModel { Testcases = testcases, RequestData = requestData, Assertions = assertions };
+    }
+
+    /// <summary>The most levels of control steps inside each other.</summary>
+    public const int MaxControlDepth = 5;
+
+    /// <summary>A step's <c>parent</c> must name an If, While, For or ForEach step of the same testcase; nesting is limited and cannot loop back.</summary>
+    internal static void CheckControlFlow(IReadOnlyList<RequestStep> steps)
+    {
+        foreach (var step in steps.Where(s => s.Parent.Length > 0))
+        {
+            var depth = 0;
+            var current = step;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { step.StepName };
+            while (current.Parent.Length > 0)
+            {
+                var parent = steps.FirstOrDefault(s => s.TestcaseIndex == current.TestcaseIndex && s.StepName.Equals(current.Parent, StringComparison.OrdinalIgnoreCase));
+                if (parent is null) throw new InvalidDataException($"config row {current.Sequence}: step '{current.StepName}' has parent '{current.Parent}', which is not a step of testcase {current.TestcaseIndex}.");
+                if (!parent.StepType.IsControl()) throw new InvalidDataException($"config row {current.Sequence}: parent '{parent.StepName}' of step '{current.StepName}' is a {parent.StepType.WireName()} step; a parent must be If, While, For or ForEach.");
+                if (current.InElse && parent.StepType != StepType.If) throw new InvalidDataException($"config row {current.Sequence}: ':else' only belongs to an If step, but '{parent.StepName}' is {parent.StepType.WireName()}.");
+                if (!seen.Add(parent.StepName)) throw new InvalidDataException($"config row {step.Sequence}: step '{step.StepName}' is inside itself (parent chain loops back to '{parent.StepName}').");
+                if (++depth > MaxControlDepth) throw new InvalidDataException($"config row {step.Sequence}: step '{step.StepName}' is nested more than {MaxControlDepth} levels deep.");
+                current = parent;
+            }
+        }
     }
 
     private static Dictionary<(int, string), RequestDataRow> ReadRequests(XLWorkbook workbook, Dictionary<string, string> compiledCellCache)

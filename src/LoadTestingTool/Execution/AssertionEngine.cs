@@ -58,31 +58,36 @@ public sealed class AssertionEngine
     {
         values.TryGetValue(d.ResponsePath, out var actual);
         var op = string.IsNullOrWhiteSpace(d.AssertionVerb) ? "eq" : d.AssertionVerb.ToLowerInvariant();
-        var passed = op switch
-        {
-            "eq" => string.Equals(actual ?? "", d.ExpectedValue, StringComparison.OrdinalIgnoreCase),
-            "ne" => !string.Equals(actual ?? "", d.ExpectedValue, StringComparison.OrdinalIgnoreCase),
-            "lt" => CompareNumber(actual, d.ExpectedValue, out var lt) && lt < 0,
-            "lte" => CompareNumber(actual, d.ExpectedValue, out var lte) && lte <= 0,
-            "gt" => CompareNumber(actual, d.ExpectedValue, out var gt) && gt > 0,
-            "gte" => CompareNumber(actual, d.ExpectedValue, out var gte) && gte >= 0,
-            "contains" => actual?.Contains(d.ExpectedValue, StringComparison.OrdinalIgnoreCase) == true,
-            "notcontains" => actual?.Contains(d.ExpectedValue, StringComparison.OrdinalIgnoreCase) != true,
-            "startswith" => actual?.StartsWith(d.ExpectedValue, StringComparison.OrdinalIgnoreCase) == true,
-            "endswith" => actual?.EndsWith(d.ExpectedValue, StringComparison.OrdinalIgnoreCase) == true,
-            "regex" => actual is not null && System.Text.RegularExpressions.Regex.IsMatch(actual, d.ExpectedValue),
-            "exists" => values.ContainsKey(d.ResponsePath),
-            "notexists" => !values.ContainsKey(d.ResponsePath),
-            "empty" => string.IsNullOrEmpty(actual),
-            "notempty" => !string.IsNullOrEmpty(actual),
-            "in" => d.ExpectedValue.Split('|').Contains(actual ?? "", StringComparer.OrdinalIgnoreCase),
-            "size" => int.TryParse(d.ExpectedValue, out var size) && actual is not null && actual.Length == size,
-            _ => throw new InvalidDataException($"Unsupported assertion verb '{d.AssertionVerb}'.")
-        };
+        var passed = Test(op, actual, d.ExpectedValue, values.ContainsKey(d.ResponsePath), d.AssertionVerb);
         var actualValue = actual ?? "<missing>";
         var failureMessage = passed ? "" : $"Assertion failed: {d.ResponsePath} {op} '{d.ExpectedValue}', actual '{actualValue}'.";
         return new AssertionResult { RunId = runId, RequestId = requestId, TestcaseIndex = d.TestcaseIndex, Testcase = d.Testcase, DataId = d.DataId, StepName = d.StepName, ResponsePath = d.ResponsePath, AssertionVerb = op, AssertionType = AssertionSemantics.Type(op, actualValue, failureMessage), AssertionMeaning = AssertionSemantics.Meaning(op, actualValue, failureMessage), ExpectedValue = d.ExpectedValue, ActualValue = actualValue, Result = passed ? "PASS" : "FAIL", FailureMessage = failureMessage, ExtractVariable = d.ExtractVariable, ExcelRowNumber = d.ExcelRowNumber, ExpectedValueColumn = d.ExpectedValueColumn };
     }
+
+    /// <summary>The comparison behind every {verb}: used by assertions and by the conditions of If and While steps.</summary>
+    public static bool Test(string op, string? actual, string expected, bool exists, string? original = null) => op switch
+    {
+        "eq" => string.Equals(actual ?? "", expected, StringComparison.OrdinalIgnoreCase),
+        "ne" => !string.Equals(actual ?? "", expected, StringComparison.OrdinalIgnoreCase),
+        "lt" => CompareNumber(actual, expected, out var lt) && lt < 0,
+        "lte" => CompareNumber(actual, expected, out var lte) && lte <= 0,
+        "gt" => CompareNumber(actual, expected, out var gt) && gt > 0,
+        "gte" => CompareNumber(actual, expected, out var gte) && gte >= 0,
+        "contains" => actual?.Contains(expected, StringComparison.OrdinalIgnoreCase) == true,
+        "notcontains" => actual?.Contains(expected, StringComparison.OrdinalIgnoreCase) != true,
+        "startswith" => actual?.StartsWith(expected, StringComparison.OrdinalIgnoreCase) == true,
+        "endswith" => actual?.EndsWith(expected, StringComparison.OrdinalIgnoreCase) == true,
+        "regex" => actual is not null && System.Text.RegularExpressions.Regex.IsMatch(actual, expected),
+        "exists" => exists,
+        "notexists" => !exists,
+        "empty" => string.IsNullOrEmpty(actual),
+        "notempty" => !string.IsNullOrEmpty(actual),
+        "in" => expected.Split('|').Contains(actual ?? "", StringComparer.OrdinalIgnoreCase),
+        "size" => int.TryParse(expected, out var size) && actual is not null && actual.Length == size,
+        _ => throw new InvalidDataException($"Unsupported assertion verb '{original ?? op}'.")
+    };
+
+    public static readonly IReadOnlySet<string> Verbs = new HashSet<string>(["eq", "ne", "lt", "lte", "gt", "gte", "contains", "notcontains", "startswith", "endswith", "regex", "exists", "notexists", "empty", "notempty", "in", "size"], StringComparer.OrdinalIgnoreCase);
 
     private static AssertionResult Mismatch(string runId, string requestId, AssertionDefinition source, string path, string actualValue, string message) => new() { RunId = runId, RequestId = requestId, TestcaseIndex = source.TestcaseIndex, Testcase = source.Testcase, DataId = source.DataId, StepName = source.StepName, ResponsePath = path, AssertionVerb = "contract", AssertionType = AssertionSemantics.Type("contract", actualValue, message), AssertionMeaning = AssertionSemantics.Meaning("contract", actualValue, message), ExpectedValue = "<response-sheet-path>", ActualValue = actualValue, Result = "FAIL", FailureMessage = message, ExcelRowNumber = source.ExcelRowNumber, ExpectedValueColumn = source.ExpectedValueColumn };
 

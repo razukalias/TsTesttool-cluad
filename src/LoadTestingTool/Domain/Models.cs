@@ -117,6 +117,12 @@ public sealed class RequestStep
     public StepType StepType { get; init; } = StepType.Http;
     public ExecutionStage Stage { get; init; } = ExecutionStage.Test;
     public bool Enabled { get; init; } = true;
+    /// <summary>The control step (If, While, For, ForEach) this step runs inside, from the config column <c>parent</c>; empty at the top level.</summary>
+    public string Parent { get; init; } = string.Empty;
+    /// <summary>For a step inside an If: true when it belongs to the else branch (<c>parent</c> written as <c>Name:else</c>).</summary>
+    public bool InElse { get; init; }
+    /// <summary>The condition of an If or While (config column <c>condition</c>), for example <c>_status_ eq 200</c>.</summary>
+    public string Condition { get; init; } = string.Empty;
     public int TimeoutSeconds { get; init; }
     /// <summary>The wait limit in milliseconds (config column <c>responsetimeout</c>); when set it wins over <see cref="TimeoutSeconds"/>.</summary>
     public int ResponseTimeoutMs { get; init; }
@@ -258,6 +264,7 @@ public static class FailureCategories
     public const string Sql = "Sql";
     public const string FileSystem = "FileSystem";
     public const string Script = "Script";
+    public const string Control = "Control";
     public const string Cancelled = "Cancelled";
     public const string Infrastructure = "Infrastructure";
 }

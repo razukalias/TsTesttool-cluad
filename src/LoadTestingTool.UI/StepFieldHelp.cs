@@ -11,7 +11,7 @@ public static class StepFieldHelp
     private static readonly IReadOnlyDictionary<string, (string Label, string Text)> Fields = new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase)
     {
         ["stepname"] = ("Name", "The name of the step. Data and response columns refer to it as StepName.column, so renaming it renames those references too."),
-        ["steptype"] = ("Type", "What the step does: HTTP, GraphQL, CaseQL, SQL, File, Script, or ActionManual (pauses the row until a person continues)."),
+        ["steptype"] = ("Type", "What the step does: HTTP, GraphQL, CaseQL, SQL, File, Script, ActionManual (pauses the row until a person continues), or a control step that holds other steps: If (condition, optional else), While (repeats while a condition holds; max, delayms, onlimit), For (from, to or count, step, var) and ForEach (items, var, index, separator). Control settings go in Step config as JSON or key=value;key=value; onfailure=stop|break|continue decides what a failed step inside a loop does."),
         ["stage"] = ("Stage", "Setup runs first, Test is the main part, Teardown runs last (also after a failure) to clean up."),
         ["enabled"] = ("Enabled", "Untick to skip the step without deleting it."),
         ["stoponfailure"] = ("Stop on failure", "When ticked, a failing step stops the rest of the testcase for that data row."),
@@ -27,6 +27,8 @@ public static class StepFieldHelp
         ["ignoreempty"] = ("Ignore empty", "Skip expected cells that are empty instead of treating them as 'must be empty'."),
         ["assertonlyresponse"] = ("Only response", "Check only the response fields that have an expected column; unexpected fields are not reported."),
         ["manualtimeoutminutes"] = ("Manual timeout (min)", "How many minutes an ActionManual step waits for a person to continue before it is stopped and counted as failed. Default 15."),
+        ["parent"] = ("Inside (parent)", "The name of an If, While, For or ForEach step this step runs inside; leave empty for a top-level step. For the else branch of an If write IfName:else."),
+        ["condition"] = ("Condition", "left verb right, with the same verbs as assertions: _status_ eq 200, <From_response_Poll.state_r> ne DONE, _name_ notempty. Quote values with spaces. A single word is true when it is true, 1 or yes."),
         ["stepconfig"] = ("Step config", "Extra settings of the step type as JSON, e.g. the SQL connection, the script source or the multipart parts. Use the guided window when unsure."),
     };
 

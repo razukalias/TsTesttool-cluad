@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace LoadTestingTool.Domain;
 
-public enum StepType { Http, GraphQL, CaseQL, Sql, File, Script, ActionManual }
+public enum StepType { Http, GraphQL, CaseQL, Sql, File, Script, ActionManual, If, While, For, ForEach }
 public enum ExecutionStage { Setup, Test, Teardown }
 public enum VariableScope { Step, Iteration, VirtualUser, Testcase, Run }
 
@@ -191,6 +191,10 @@ public static class StepTypeParser
         "file" or "fileio" or "file-io" => StepType.File,
         "script" or "csharp" or "c#" => StepType.Script,
         "actionmanual" or "manual" or "manualhandling" or "manual-action" => StepType.ActionManual,
+        "if" => StepType.If,
+        "while" => StepType.While,
+        "for" or "vfor" => StepType.For,
+        "foreach" or "for-each" => StepType.ForEach,
         _ => throw new InvalidDataException($"Unsupported StepType '{value}'.")
     };
 }
@@ -352,8 +356,15 @@ public static class StepTypeExtensions
         StepType.File => "File",
         StepType.Script => "Script",
         StepType.ActionManual => "ActionManual",
+        StepType.If => "If",
+        StepType.While => "While",
+        StepType.For => "For",
+        StepType.ForEach => "ForEach",
         _ => "HTTP"
     };
+
+    /// <summary>If, While, For and ForEach hold other steps and send nothing themselves.</summary>
+    public static bool IsControl(this StepType type) => type is StepType.If or StepType.While or StepType.For or StepType.ForEach;
 }
 
 public static class ExecutionStageExtensions

@@ -51,8 +51,9 @@ public static class WorkbookValidator
                 Add(problems, ProblemSeverity.Error, table, row, $"{type.WireName()} steps need a targetUrl.");
             if (type == StepType.Http && Text(row, "templetsource").Length == 0)
                 Add(problems, ProblemSeverity.Error, table, row, "HTTP steps need a template (templetsource).");
-            if (type is not StepType.Http and not StepType.ActionManual && Text(row, "stepconfig").Length == 0)
+            if (type is not StepType.Http and not StepType.ActionManual && !type.IsControl() && Text(row, "stepconfig").Length == 0)
                 Add(problems, ProblemSeverity.Error, table, row, $"{type.WireName()} steps need a StepConfig.");
+            CheckControlStep(problems, table, row, type);
 
             foreach (var name in BooleanColumns)
             {
@@ -72,7 +73,61 @@ public static class WorkbookValidator
             if (!steps.TryGetValue(index, out var names)) steps[index] = names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             names.Add(stepName);
         }
+        CheckParents(problems, table);
         return steps;
+    }
+
+    /// <summary>What each control step needs: a condition for If and While, a range for For, a list for ForEach.</summary>
+    private static void CheckControlStep(List<WorkbookProblem> problems, SheetTable table, TableRow row, StepType type)
+    {
+        if (!type.IsControl()) return;
+        var config = LoadTestingTool.Execution.ControlConfig.Parse(Text(row, "stepconfig"));
+        if (type is StepType.If or StepType.While && Text(row, "condition").Length == 0)
+            Add(problems, ProblemSeverity.Error, table, row, $"{type.WireName()} steps need a condition, for example _status_ eq 200.");
+        else if (type is StepType.If or StepType.While)
+        {
+            var parts = Text(row, "condition").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2 && !LoadTestingTool.Execution.AssertionEngine.Verbs.Contains(parts[1].Trim('{', '}')) && !Text(row, "condition").Contains('"') && !Text(row, "condition").Contains('\''))
+                Add(problems, ProblemSeverity.Warning, table, row, $"Condition: '{parts[1]}' is not a comparison (eq, ne, lt, lte, gt, gte, contains, notcontains, startswith, endswith, regex, exists, notexists, empty, notempty, in, size).");
+        }
+        if (type == StepType.For && !config.ContainsKey("to") && !config.ContainsKey("count"))
+            Add(problems, ProblemSeverity.Error, table, row, "A For step needs 'to' or 'count' in its Step config, for example from=1;to=5.");
+        if (type == StepType.ForEach && !config.ContainsKey("items"))
+            Add(problems, ProblemSeverity.Error, table, row, "A ForEach step needs 'items' in its Step config: a <From_response_Step.list_r> reference, a JSON array or a comma list.");
+        if (type == StepType.While && !config.ContainsKey("max"))
+            Add(problems, ProblemSeverity.Warning, table, row, "A While step without 'max' stops after 100 rounds and then fails; set max (and delayms) for a polling loop.");
+        var onFailure = config.GetValueOrDefault("onfailure", "");
+        if (onFailure.Length > 0 && onFailure.ToLowerInvariant() is not ("stop" or "break" or "continue"))
+            Add(problems, ProblemSeverity.Error, table, row, $"onfailure '{onFailure}' must be stop, break or continue.");
+    }
+
+    /// <summary>A step's parent must be an If, While, For or ForEach step of the same testcase; the chain may not loop or go deeper than the runner allows.</summary>
+    private static void CheckParents(List<WorkbookProblem> problems, SheetTable table)
+    {
+        var rows = table.Rows.Where(r => !r.IsBlank).Select(r => (Row: r, Index: EffectiveIndex(table, r, []), Name: Text(r, "stepname"), Parent: Text(r, "parent"))).ToList();
+        StepType TypeOf(TableRow r) { try { return StepTypeParser.Parse(Text(r, "steptype")); } catch (InvalidDataException) { return StepType.Http; } }
+        foreach (var item in rows.Where(r => r.Parent.Length > 0))
+        {
+            var inElse = item.Parent.EndsWith(":else", StringComparison.OrdinalIgnoreCase);
+            var parentName = inElse ? item.Parent[..^5].Trim() : item.Parent;
+            var parent = rows.FirstOrDefault(r => r.Index == item.Index && r.Name.Equals(parentName, StringComparison.OrdinalIgnoreCase));
+            if (parent.Row is null) { Add(problems, ProblemSeverity.Error, table, item.Row, $"Parent '{parentName}' is not a step of this testcase."); continue; }
+            var parentType = TypeOf(parent.Row);
+            if (!parentType.IsControl()) { Add(problems, ProblemSeverity.Error, table, item.Row, $"Parent '{parentName}' is a {parentType.WireName()} step; it must be If, While, For or ForEach."); continue; }
+            if (inElse && parentType != StepType.If) { Add(problems, ProblemSeverity.Error, table, item.Row, $"':else' only belongs to an If step; '{parentName}' is {parentType.WireName()}."); continue; }
+            var depth = 0;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { item.Name };
+            var current = parent;
+            while (current.Parent.Length > 0)
+            {
+                var next = current.Parent.EndsWith(":else", StringComparison.OrdinalIgnoreCase) ? current.Parent[..^5].Trim() : current.Parent;
+                var above = rows.FirstOrDefault(r => r.Index == item.Index && r.Name.Equals(next, StringComparison.OrdinalIgnoreCase));
+                if (above.Row is null) break;
+                if (!seen.Add(above.Name)) { Add(problems, ProblemSeverity.Error, table, item.Row, $"Step '{item.Name}' is inside itself (the parent chain loops back to '{above.Name}')."); break; }
+                if (++depth >= LoadTestingTool.Excel.WorkbookReader.MaxControlDepth) { Add(problems, ProblemSeverity.Error, table, item.Row, $"Step '{item.Name}' is nested more than {LoadTestingTool.Excel.WorkbookReader.MaxControlDepth} levels deep."); break; }
+                current = above;
+            }
+        }
     }
 
     private static HashSet<(int, string)> ValidateDataSheet(SheetTable table, List<WorkbookProblem> problems, ProblemSeverity duplicateSeverity)

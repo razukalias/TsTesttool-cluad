@@ -70,6 +70,33 @@ public class StepTypeTests
     }
 
     [AvaloniaFact]
+    public void Control_steps_show_condition_or_step_config_and_every_step_can_name_a_parent()
+    {
+        using var dir = new TempDir();
+        var (window, shell, step) = Open(dir);
+        var form = window.GetVisualDescendants().OfType<StepFormView>().Single();
+        Assert.Contains("Inside (parent)", Labels(form));   // any step can sit inside a control step
+
+        step.Write("steptype", "If");
+        Pump();
+        form = window.GetVisualDescendants().OfType<StepFormView>().Single();
+        Assert.Contains("Condition", Labels(form));
+        Assert.Contains("Inside (parent)", Labels(form));
+        Assert.DoesNotContain("Verb", Labels(form));
+        Assert.DoesNotContain("Target URL", Labels(form));
+        Assert.DoesNotContain("Template", Labels(form));
+
+        step.Write("steptype", "ForEach");
+        Pump();
+        form = window.GetVisualDescendants().OfType<StepFormView>().Single();
+        Assert.Contains("Step config", Labels(form));
+        Assert.DoesNotContain("Condition", Labels(form));
+        Assert.DoesNotContain("Template", Labels(form));
+        Assert.Contains("ForEach", StepOptions.StepTypes);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Graphql_settings_use_the_runners_keys_and_keep_other_keys()
     {
         using var dir = new TempDir();

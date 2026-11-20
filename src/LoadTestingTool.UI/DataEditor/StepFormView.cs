@@ -34,26 +34,31 @@ public sealed class StepFormView : UserControl
         ["steptype"] = "Type", ["stage"] = "Stage", ["enabled"] = "Enabled", ["verb"] = "Verb", ["targeturl"] = "Target URL",
         ["templetsource"] = "Template", ["stoponfailure"] = "Stop on failure", ["contenttype"] = "Content type", ["timeout"] = "Timeout (s)", ["responsetimeout"] = "Response timeout (ms)",
         ["wait"] = "Wait before (ms or message)", ["expectedstatus"] = "Expected status", ["assert"] = "Assertions", ["ignoreempty"] = "Ignore empty",
-        ["assertonlyresponse"] = "Only response", ["manualtimeoutminutes"] = "Manual timeout (min)",
+        ["assertonlyresponse"] = "Only response", ["manualtimeoutminutes"] = "Manual timeout (min)", ["parent"] = "Inside (parent)", ["condition"] = "Condition", ["stepconfig"] = "Step config",
     };
 
     private static readonly string[] Formats = ["JSON", "XML", "SQL", "GraphQL", "C# script", "Plain text"];
     private static readonly string[] ContentTypeChoices = ["application/json", "application/xml", "text/plain", "application/graphql", "application/x-www-form-urlencoded", "multipart/form-data", "application/octet-stream"];
-    private static readonly HashSet<string> Known = new(["steptype", "stage", "enabled", "stoponfailure", "verb", "targeturl", "contenttype", "templetsource", "expectedstatus", "timeout", "responsetimeout", "wait", "assert", "ignoreempty", "assertonlyresponse", "manualtimeoutminutes", "stepconfig"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> Known = new(["steptype", "stage", "enabled", "stoponfailure", "verb", "targeturl", "contenttype", "templetsource", "expectedstatus", "timeout", "responsetimeout", "wait", "assert", "ignoreempty", "assertonlyresponse", "manualtimeoutminutes", "stepconfig", "parent", "condition"], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The fields each step type uses, in the order they are shown.</summary>
     private static string[] FieldsFor(string type) => type.Trim().ToLowerInvariant() switch
     {
-        "graphql" or "caseql" => ["steptype", "stage", "enabled", "stoponfailure", "targeturl", "templetsource", "expectedstatus", "timeout", "responsetimeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
-        "sql" => ["steptype", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
-        "file" => ["steptype", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
-        "script" => ["steptype", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait"],
-        "actionmanual" => ["steptype", "stage", "enabled", "stoponfailure", "manualtimeoutminutes"],
-        _ => ["steptype", "stage", "enabled", "stoponfailure", "verb", "targeturl", "contenttype", "templetsource", "expectedstatus", "timeout", "responsetimeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
+        "graphql" or "caseql" => ["steptype", "parent", "stage", "enabled", "stoponfailure", "targeturl", "templetsource", "expectedstatus", "timeout", "responsetimeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
+        "sql" => ["steptype", "parent", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
+        "file" => ["steptype", "parent", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
+        "script" => ["steptype", "parent", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait"],
+        "actionmanual" => ["steptype", "parent", "stage", "enabled", "stoponfailure", "manualtimeoutminutes"],
+        "if" => ["steptype", "parent", "stage", "enabled", "condition"],
+        "while" => ["steptype", "parent", "stage", "enabled", "condition", "stepconfig"],
+        "for" or "foreach" => ["steptype", "parent", "stage", "enabled", "stepconfig"],
+        _ => ["steptype", "parent", "stage", "enabled", "stoponfailure", "verb", "targeturl", "contenttype", "templetsource", "expectedstatus", "timeout", "responsetimeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
     };
 
-    private static bool UsesTemplate(string type) => !type.Trim().Equals("ActionManual", StringComparison.OrdinalIgnoreCase);
-    private static bool UsesHeaders(string type) => type.Trim().ToLowerInvariant() is not ("sql" or "file" or "script" or "actionmanual");
+    private static bool IsControl(string type) => type.Trim().ToLowerInvariant() is "if" or "while" or "for" or "foreach";
+
+    private static bool UsesTemplate(string type) => !type.Trim().Equals("ActionManual", StringComparison.OrdinalIgnoreCase) && !IsControl(type);
+    private static bool UsesHeaders(string type) => type.Trim().ToLowerInvariant() is not ("sql" or "file" or "script" or "actionmanual" or "if" or "while" or "for" or "foreach");
 
     private readonly StepRowViewModel _step;
     private readonly List<Action> _cleanup = [];

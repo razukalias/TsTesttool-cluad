@@ -73,7 +73,8 @@ public sealed class TestRunner
                 GeneratedTokens.Scope.Value = new GeneratedTokens.RowScope(rowKey);   // random numbers, GUIDs and dates are made when a step needs them, fresh for every row and iteration
                 if (RunValueMemory.Active is { Reuse: true } rowMemory)
                     foreach (var saved in rowMemory.PreviousRow(rowKey)) correlation[saved.Key] = saved.Value;   // what earlier steps extracted in the last run
-                foreach (var request in testcase.Steps)
+                var loopVars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                async Task<bool> RunStepAsync(RequestStep request)   // false = stop this data row
                 {
                     Position.Value = (data.ExcelRowNumber, stepOrder + 1);
                     _logger.Info($"---- STEP {stepOrder + 1}: {request.StepName} | type={request.StepType.WireName()} | dataid={data.DataId} | iteration={iteration} ----");
@@ -81,9 +82,10 @@ public sealed class TestRunner
                     if (data.Dontrun.Contains(request.StepName, StringComparer.OrdinalIgnoreCase))
                     {
                         _logger.Info($"STEP SKIPPED | reason=request.dontrun | step={request.StepName}");
-                        continue;
+                        return true;
                     }
-                    if (!request.Enabled) { _logger.Info($"STEP SKIPPED | reason=disabled | step={request.StepName}"); continue; }
+                    if (!request.Enabled) { _logger.Info($"STEP SKIPPED | reason=disabled | step={request.StepName}"); return true; }
+                    if (request.StepType.IsControl()) return await RunControlAsync(request);
                     Dictionary<string, string> variables;
                     IReadOnlySet<string> redactedVariables;
                     try
@@ -103,6 +105,7 @@ public sealed class TestRunner
                             if (executionContext.TryGet(pair.Key, out var existing) && existing is not string) continue;
                             variables[pair.Key] = pair.Value;
                         }
+                        foreach (var loopVar in loopVars) variables[loopVar.Key] = loopVar.Value;   // _i_, _item_ ... of the loops this step is inside
                         foreach (var variable in variables) executionContext.Set(variable.Key, variable.Value, VariableScope.Iteration);
                         var fileVariables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                         var fileCells = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -141,7 +144,7 @@ public sealed class TestRunner
                         testcaseResult.Requests.Add(failure);
                         Publish(failure);
                         _logger.Warn($"Stopping current data row after missing runtime reference. testcase={testcase.TestcaseIndex}; dataid={data.DataId}; stepName={request.StepName}; iteration={iteration}; reference={ex.Reference}");
-                        break;
+                        return false;
                     }
                     foreach (var variable in variables) executionContext.Set(variable.Key, variable.Value, VariableScope.Iteration);
                     var waitExpression = await ResolveDynamicValueAsync(request.WaitExpression, correlation, requestReferences, executionContext, token);
@@ -156,7 +159,7 @@ public sealed class TestRunner
                         {
                             var manualWait = await ExecuteActionManualAsync(run, testcase, data.DataId, request, variables, waitExpression, ++stepOrder, threadId, iteration, token, environment, waitDriven: true);
                             testcaseResult.Requests.Add(manualWait);
-                            if (manualWait.Result == "FAIL") break;
+                            if (manualWait.Result == "FAIL") return false;
                         }
                     }
                     foreach (var source in correlationSources.Values) if (string.IsNullOrWhiteSpace(source.UsedByStepName) || !source.UsedByStepName.Split(',', StringSplitOptions.TrimEntries).Contains(request.StepName, StringComparer.OrdinalIgnoreCase)) source.UsedByStepName = string.IsNullOrWhiteSpace(source.UsedByStepName) ? request.StepName : $"{source.UsedByStepName},{request.StepName}";
@@ -165,9 +168,147 @@ public sealed class TestRunner
                         ? await ExecuteActionManualAsync(run, testcase, data.DataId, request, variables, variables.TryGetValue("manualinfo", out var manualInfo) ? Substitute(manualInfo, variables) : string.Empty, ++stepOrder, threadId, iteration, token, environment)
                         : await ExecuteRequestAsync(run, testcase, data.DataId, request, variables, redactedVariables, definitions, requestReferences, ++stepOrder, threadId, iteration, correlation, correlationSources, executionContext, token, environment);
                     testcaseResult.Requests.Add(result);
-                    if (result.FailureCategory.Equals("RuntimeReference", StringComparison.OrdinalIgnoreCase)) { _logger.Warn($"Stopping current data row after missing runtime reference. dataid={data.DataId}; step={request.StepName}; iteration={iteration}; remaining rows will continue."); break; }
-                    if (result.Result == "FAIL" && (request.StopOnFailure || request.StepType == StepType.ActionManual)) { _logger.Warn($"Stopping current data row after failed dataid={data.DataId}, step {request.StepName} because {(request.StepType == StepType.ActionManual ? "ActionManual always stops immediately" : "stopOnFailure=true")}."); break; }
+                    if (result.FailureCategory.Equals("RuntimeReference", StringComparison.OrdinalIgnoreCase)) { _logger.Warn($"Stopping current data row after missing runtime reference. dataid={data.DataId}; step={request.StepName}; iteration={iteration}; remaining rows will continue."); return false; }
+                    if (result.Result == "FAIL" && (request.StopOnFailure || request.StepType == StepType.ActionManual)) { _logger.Warn($"Stopping current data row after failed dataid={data.DataId}, step {request.StepName} because {(request.StepType == StepType.ActionManual ? "ActionManual always stops immediately" : "stopOnFailure=true")}."); return false; }
+                    return true;
                 }
+                async Task<bool> RunSequenceAsync(IEnumerable<RequestStep> steps)
+                {
+                    foreach (var step in steps) if (!await RunStepAsync(step)) return false;
+                    return true;
+                }
+                // If, While, For and ForEach: they send nothing themselves, they decide whether, how often and over what their steps run.
+                async Task<bool> RunControlAsync(RequestStep control)
+                {
+                    var config = ControlConfig.Parse(control.StepConfig);
+                    var onFailure = config.GetValueOrDefault("onfailure", "stop").Trim().ToLowerInvariant();
+                    bool FailControl(string message)
+                    {
+                        var failure = CreateControlFailure(run, testcase, data.DataId, control, ++stepOrder, threadId, iteration, environment, message);
+                        testcaseResult.Requests.Add(failure);
+                        Publish(failure);
+                        _logger.Warn($"CONTROL STEP FAILED | step={control.StepName} | {message}");
+                        return false;
+                    }
+                    IEnumerable<RequestStep> Inside(bool elseBranch) => testcase.Steps.Where(step => step.Parent.Equals(control.StepName, StringComparison.OrdinalIgnoreCase) && step.InElse == elseBranch).ToList();
+                    async Task<string> TextAsync(string text)
+                    {
+                        var vars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var pair in correlation) vars[pair.Key] = pair.Value;
+                        foreach (var pair in loopVars) vars[pair.Key] = pair.Value;
+                        if (!string.IsNullOrWhiteSpace(environment)) vars["env"] = environment;
+                        var resolved = await ResolveDynamicValueAsync(text ?? string.Empty, correlation, requestReferences, executionContext, token);
+                        return Substitute(resolved, vars).Trim();
+                    }
+                    async Task<long> NumberAsync(string key, long fallback, bool required = false)
+                    {
+                        if (!config.TryGetValue(key, out var text) || string.IsNullOrWhiteSpace(text))
+                            return required ? throw new InvalidDataException($"'{key}' is missing in the step config.") : fallback;
+                        var resolved = await TextAsync(text);
+                        return long.TryParse(resolved, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var number) ? number : throw new InvalidDataException($"'{key}' must be a whole number, but it is '{resolved}'.");
+                    }
+                    async Task<bool> ConditionAsync() => ConditionEvaluator.Evaluate(await TextAsync(control.Condition));
+                    // 0 = next round, 1 = leave the loop, 2 = stop the data row
+                    async Task<int> RoundAsync() => await RunSequenceAsync(Inside(false)) ? 0 : onFailure switch { "continue" => 0, "break" => 1, _ => 2 };
+                    async Task<bool> LoopAsync(string variable, IEnumerable<string> values, string? indexName)
+                    {
+                        loopVars.TryGetValue(variable, out var savedValue);
+                        var savedIndex = indexName is not null && loopVars.TryGetValue(indexName, out var oldIndex) ? oldIndex : null;
+                        try
+                        {
+                            var round = 0;
+                            foreach (var value in values)
+                            {
+                                loopVars[variable] = value;
+                                if (indexName is not null) loopVars[indexName] = round.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                _logger.Info($"LOOP ROUND | step={control.StepName} | round={round + 1} | {variable}={value}");
+                                round++;
+                                var outcome = await RoundAsync();
+                                if (outcome == 1) break;
+                                if (outcome == 2) return false;
+                            }
+                            return true;
+                        }
+                        finally
+                        {
+                            if (savedValue is null) loopVars.Remove(variable); else loopVars[variable] = savedValue;
+                            if (indexName is not null) { if (savedIndex is null) loopVars.Remove(indexName); else loopVars[indexName] = savedIndex; }
+                        }
+                    }
+                    try
+                    {
+                        var max = await NumberAsync("max", control.StepType == StepType.While ? 100 : 10000);
+                        switch (control.StepType)
+                        {
+                            case StepType.If:
+                            {
+                                var met = await ConditionAsync();
+                                _logger.Info($"IF | step={control.StepName} | condition={control.Condition} | result={met}");
+                                return await RunSequenceAsync(Inside(!met));
+                            }
+                            case StepType.For:
+                            {
+                                var from = await NumberAsync("from", 1);
+                                var by = await NumberAsync("step", 1);
+                                if (by == 0) return FailControl("'step' cannot be 0.");
+                                var to = config.ContainsKey("to") ? await NumberAsync("to", 0) : config.ContainsKey("count") ? from + (await NumberAsync("count", 0) - 1) * by : throw new InvalidDataException("Give 'to' or 'count' in the step config.");
+                                var values = new List<string>();
+                                for (var value = from; by > 0 ? value <= to : value >= to; value += by)
+                                {
+                                    if (values.Count >= max) return FailControl($"The loop would run more than {max} rounds (set 'max' to allow more).");
+                                    values.Add(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                                }
+                                return await LoopAsync(config.GetValueOrDefault("var", "i"), values, null);
+                            }
+                            case StepType.ForEach:
+                            {
+                                var source = await TextAsync(config.TryGetValue("items", out var itemsText) ? itemsText : throw new InvalidDataException("'items' is missing in the step config (a JSON array, a <From_response_...> reference or a comma list)."));
+                                var values = new List<string>();
+                                if (source.StartsWith('['))
+                                {
+                                    using var document = JsonDocument.Parse(source);
+                                    foreach (var element in document.RootElement.EnumerateArray()) values.Add(element.ValueKind == JsonValueKind.String ? element.GetString() ?? string.Empty : element.GetRawText());
+                                }
+                                else values.AddRange(source.Split(config.GetValueOrDefault("separator", ","), StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                                if (values.Count > max) return FailControl($"The list has {values.Count} items, more than 'max' ({max}).");
+                                return await LoopAsync(config.GetValueOrDefault("var", "item"), values, config.GetValueOrDefault("index", "index"));
+                            }
+                            default:   // While
+                            {
+                                var delay = await NumberAsync("delayms", 0);
+                                var rounds = 0;
+                                loopVars.TryGetValue("round", out var savedRound);
+                                try
+                                {
+                                    while (true)
+                                    {
+                                        bool met;
+                                        try { met = await ConditionAsync(); }
+                                        catch (RuntimeReferenceException) when (rounds == 0) { met = true; }   // a polling loop reads the response of a step inside it: before that step has run once, the wait is not over
+                                        if (!met) break;
+                                        if (rounds >= max)
+                                        {
+                                            if (config.GetValueOrDefault("onlimit", "fail").Equals("continue", StringComparison.OrdinalIgnoreCase)) { _logger.Warn($"WHILE LIMIT | step={control.StepName} | stopped after {max} rounds, continuing"); break; }
+                                            return FailControl($"The condition '{control.Condition}' was still true after {max} rounds (set 'max' or 'onlimit=continue').");
+                                        }
+                                        rounds++;
+                                        loopVars["round"] = rounds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                        _logger.Info($"LOOP ROUND | step={control.StepName} | round={rounds}");
+                                        var outcome = await RoundAsync();
+                                        if (outcome == 1) break;
+                                        if (outcome == 2) return false;
+                                        if (delay > 0) await Task.Delay((int)Math.Min(delay, int.MaxValue), token);
+                                    }
+                                }
+                                finally { if (savedRound is null) loopVars.Remove("round"); else loopVars["round"] = savedRound; }
+                                return true;
+                            }
+                        }
+                    }
+                    catch (RuntimeReferenceException ex) { return FailControl($"{control.StepType.WireName()} '{control.StepName}': {ex.Message}"); }
+                    catch (Exception ex) when (ex is InvalidDataException or System.Text.Json.JsonException or System.FormatException or OverflowException) { return FailControl($"{control.StepType.WireName()} '{control.StepName}': {ex.Message}"); }
+                }
+                await RunSequenceAsync(testcase.Steps.Where(step => step.Parent.Length == 0 || !testcase.Steps.Any(p => p.TestcaseIndex == step.TestcaseIndex && p.StepName.Equals(step.Parent, StringComparison.OrdinalIgnoreCase))));
                 RunValueMemory.Active?.SetRow(rowKey, correlation);
                 testcaseResult.EndedAt = DateTimeOffset.Now;
                 lock (run.Testcases) run.Testcases.Add(testcaseResult);
@@ -243,6 +384,17 @@ public sealed class TestRunner
             if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) names.Add(name[prefix.Length..]);
         }
         return names;
+    }
+
+    private RequestResult CreateControlFailure(RunResult run, TestcaseDefinition testcase, string dataId, RequestStep step, int sequence, int thread, int iteration, string environment, string message)
+    {
+        var now = DateTimeOffset.Now;
+        return new RequestResult
+        {
+            RunId = run.RunId, RequestId = $"CTL-{Interlocked.Increment(ref _sequence):D8}", TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId,
+            StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = now, EndedAt = now,
+            Verb = step.StepType.WireName(), StepConfig = step.StepConfig, HttpStatus = 0, ErrorMessage = message, FailureCategory = FailureCategories.Control, Environment = environment
+        };
     }
 
     private RequestResult CreateRuntimeReferenceFailure(RunResult run, TestcaseDefinition testcase, string dataId, RequestStep step, int sequence, int thread, int iteration, string environment, RuntimeReferenceException exception)
