@@ -120,6 +120,27 @@ public class StepNodeTests
     }
 
     [Fact]
+    public void Duplicating_a_testcase_from_the_tree_menu_copies_the_right_clicked_testcase_not_the_selected_one()
+    {
+        using var dir = new TempDir();
+        var shell = new EditorShellViewModel([("Sample", Samples.Copy(dir, Samples.IntegrationScenarios))]);
+        var vm = shell.Current!;
+        Assert.True(vm.Testcases.Count >= 2);
+        var instance = shell.Instances[0];
+        var selected = instance.Testcases[0];
+        var target = instance.Testcases[1];
+        shell.SelectedNode = selected;
+        var before = vm.Testcases.Count;
+        shell.OpenTestcasePanel(target, delete: false);
+        Assert.True(vm.TestcasePanelVisible);
+        Assert.Contains(target.Title, vm.TestcasePanelTitle);
+        vm.TestcasePanelName = "Dup";
+        vm.ConfirmTestcaseActionCommand.Execute(null);
+        Assert.Equal(before + 1, vm.Testcases.Count);
+        Assert.Contains(vm.Testcases, t => t.Name == "Dup" && t.Steps.Count == target.Steps.Count);
+    }
+
+    [Fact]
     public void Renaming_a_step_in_the_config_table_renames_its_data_columns_and_keeps_the_tree_node()
     {
         using var dir = new TempDir();

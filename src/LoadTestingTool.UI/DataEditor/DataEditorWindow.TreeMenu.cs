@@ -85,12 +85,12 @@ public partial class DataEditorWindow
                 break;
             case TestcaseItem:
                 menu.Items.Add(Item("Rename", () => BeginTreeRename(tree, node)));
-                menu.Items.Add(Item("Duplicate testcase…", () => _shell.Current?.OpenCopyTestcaseCommand.Execute(null)));
+                menu.Items.Add(Item("Duplicate testcase…", () => _shell.OpenTestcasePanel((TestcaseItem)node, delete: false)));
                 menu.Items.Add(CopyTestcaseMenu((TestcaseItem)node));
                 menu.Items.Add(new Separator());
                 menu.Items.Add(Item("Add step", () => _ = AddChildAsync(tree, node)));
                 menu.Items.Add(new Separator());
-                menu.Items.Add(Item("Delete testcase…", () => _shell.Current?.OpenDeleteTestcaseCommand.Execute(null)));
+                menu.Items.Add(Item("Delete testcase…", () => _shell.OpenTestcasePanel((TestcaseItem)node, delete: true)));
                 break;
             case StepNode step:
                 menu.Items.Add(Item("Rename", () => BeginTreeRename(tree, node)));

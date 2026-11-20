@@ -33,6 +33,17 @@ public sealed partial class EditorShellViewModel
         return node;
     }
 
+    /// <summary>Duplicate or delete on the right-clicked testcase (not on whichever one was selected before): selects it, then opens the panel.</summary>
+    public void OpenTestcasePanel(TestcaseItem testcase, bool delete)
+    {
+        if (EditorOf(testcase) is not { } editor) return;
+        Current = editor;
+        if (!ReferenceEquals(editor.SelectedTestcase, testcase)) editor.SelectedTestcase = testcase;
+        SelectedNode = testcase;
+        if (delete) editor.OpenDeleteTestcaseCommand.Execute(null);
+        else editor.OpenCopyTestcaseCommand.Execute(null);
+    }
+
     public void DuplicateStep(StepNode step)
     {
         if (EditorOf(step) is not { } editor) return;
