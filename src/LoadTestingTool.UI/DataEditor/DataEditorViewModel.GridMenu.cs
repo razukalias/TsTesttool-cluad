@@ -1,3 +1,4 @@
+using System.Globalization;
 using LoadTestingTool.Editing;
 
 namespace LoadTestingTool.UI.DataEditor;
@@ -32,6 +33,80 @@ public sealed partial class DataEditorViewModel
             return count;
         });
         if (made > 0) ShowStatus($"Added {made} {(made == 1 ? "copy" : "copies")} of {source.Cells[0]} at the end.", isError: false);
+    }
+
+    /// <summary>Copies every selected row once to the end of the testcase, in the order shown.</summary>
+    public void DuplicateRows(IReadOnlyList<DataRowViewModel> rows)
+    {
+        if (SelectedTestcase is not { } testcase || rows.Count == 0) return;
+        var made = RunBatch($"duplicate {rows.Count} {Rows(rows.Count)}", () =>
+        {
+            foreach (var row in rows) AppendRow(testcase, NextDataId(testcase), row);
+            return rows.Count;
+        });
+        if (made > 0) ShowStatus($"Added {made} {(made == 1 ? "copy" : "copies")} at the end, one per selected row.", isError: false);
+    }
+
+    /// <summary>Ticks or unticks the run box of every selected row.</summary>
+    public void TickRows(IReadOnlyList<DataRowViewModel> rows, bool ticked)
+    {
+        foreach (var row in rows) row.IsTicked = ticked;
+        ShowStatus($"{(ticked ? "Ticked" : "Unticked")} {rows.Count} {Rows(rows.Count)}.", isError: false);
+    }
+
+    /// <summary>Empties the request values or the expected values of every selected row (Data ID, tick and result are kept).</summary>
+    public void ClearRowValues(IReadOnlyList<DataRowViewModel> rows, bool expected)
+    {
+        if (rows.Count == 0) return;
+        var cells = Columns.Select((c, i) => (c, Cell: i + 1)).Where(x => (x.c.Group == ColumnGroup.Response) == expected).Select(x => x.Cell).ToList();
+        Record($"clear {(expected ? "expected" : "request")} values of {rows.Count} {Rows(rows.Count)}");
+        var changed = 0;
+        foreach (var row in rows) foreach (var cell in cells) if (ApplyCell(row, cell, string.Empty) == CellResult.Changed) changed++;
+        FinishBulk(changed, $"Cleared {changed} {(changed == 1 ? "cell" : "cells")} in {rows.Count} {Rows(rows.Count)}", 0, 0);
+        AfterCellsChanged();
+    }
+
+    /// <summary>
+    /// What would break if these rows were removed: the cells (outside the removed rows) that read one of them by row number
+    /// (<c>&lt;From_Sheet_header_N&gt;</c>, as of the last save). Empty when nothing refers to them.
+    /// </summary>
+    public IReadOnlyList<string> RemovalWarnings(IReadOnlyList<DataRowViewModel> rows)
+    {
+        var doomed = new HashSet<(string Sheet, int Row)>();
+        foreach (var row in rows)
+        {
+            if (row.Request.SourceRow is { } q) doomed.Add((_document.Request.SheetName, q));
+            if (row.Response?.SourceRow is { } r) doomed.Add((_document.Response.SheetName, r));
+        }
+        var warnings = new List<string>();
+        foreach (var reference in _document.FindRowReferences())
+        {
+            if (!doomed.Contains((reference.TargetSheet, reference.TargetRow))) continue;
+            var cellRow = int.Parse(new string(reference.Cell.Where(char.IsDigit).ToArray()), CultureInfo.InvariantCulture);
+            if (doomed.Contains((reference.Sheet, cellRow))) continue;   // the reference goes away with its row
+            warnings.Add($"{reference.Sheet}!{reference.Cell} reads {reference.TargetSheet} row {reference.TargetRow} ({reference.Token})");
+        }
+        return warnings;
+    }
+
+    public void ShowCancelled(string text) => ShowStatus(text, isError: false);
+
+    /// <summary>Removes every given row (request and its paired expected row) as one step; one Undo brings them all back.</summary>
+    public void RemoveRows(IReadOnlyList<DataRowViewModel> rows)
+    {
+        if (SelectedTestcase is not { } testcase || rows.Count == 0) return;
+        Record($"remove {rows.Count} {Rows(rows.Count)}");
+        foreach (var row in rows)
+        {
+            _document.Request.RemoveRow(row.Request);
+            if (row.Response is not null) _document.Response.RemoveRow(row.Response);
+            _allRows.Remove(row);
+            VisibleRows.Remove(row);
+        }
+        testcase.RowCount = Math.Max(0, testcase.RowCount - rows.Count);
+        MarkChanged();
+        OnPropertyChanged(nameof(RowCountText));
+        ShowStatus($"Removed {rows.Count} {Rows(rows.Count)}. They leave the file when you save; Undo brings them back.", isError: false);
     }
 
     /// <summary>Inserts empty rows directly above or below the selected row.</summary>

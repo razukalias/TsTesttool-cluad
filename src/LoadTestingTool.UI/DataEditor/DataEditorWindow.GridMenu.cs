@@ -42,7 +42,8 @@ public partial class DataEditorWindow
         menu.Items.Add(CountItem("Add rows at the end", n => editor.AddRows(n), editor.SelectedTestcase is not null));
         menu.Items.Add(CountItem("Insert above", n => editor.InsertRows(n, above: true), haveRow));
         menu.Items.Add(CountItem("Insert below", n => editor.InsertRows(n, above: false), haveRow));
-        menu.Items.Add(CountItem("Duplicate (copies at the end)", n => editor.DuplicateRows(n), haveRow));
+        if (selected().Count > 1) menu.Items.Add(Item($"Duplicate {selected().Count} selected rows (copies at the end)", () => editor.DuplicateRows(selected()), haveRow));
+        else menu.Items.Add(CountItem("Duplicate (copies at the end)", n => editor.DuplicateRows(n), haveRow));
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("Copy row(s)", async () => { if (Clipboard is not null) await Clipboard.SetTextAsync(editor.CopyRowsText(selected())); }, haveRow));
         menu.Items.Add(Item("Paste row(s) below", async () =>
@@ -57,7 +58,30 @@ public partial class DataEditorWindow
             hex => editor.FormatCells(RowCells(editor, selected()), f => f with { Fill = hex }, "Highlighted row"),
             () => editor.FormatCells(RowCells(editor, selected()), f => f with { Fill = null }, "Cleared highlight")));
         menu.Items.Add(new Separator());
-        menu.Items.Add(Item("Remove row", () => editor.RemoveRowCommand.Execute(null), haveRow, danger: true));
+        menu.Items.Add(Item(selected().Count > 1 ? $"Tick {selected().Count} rows to run" : "Tick row to run", () => editor.TickRows(selected(), true), haveRow));
+        menu.Items.Add(Item(selected().Count > 1 ? $"Untick {selected().Count} rows" : "Untick row", () => editor.TickRows(selected(), false), haveRow));
+        var values = new MenuItem { Header = selected().Count > 1 ? $"Values of {selected().Count} rows" : "Values of this row", IsEnabled = haveRow };
+        values.Items.Add(Item("Clear request values", () => { CommitPendingEdit(); editor.ClearRowValues(selected(), expected: false); }));
+        values.Items.Add(Item("Clear expected values", () => { CommitPendingEdit(); editor.ClearRowValues(selected(), expected: true); }));
+        var setIn = new MenuItem { Header = "Set value in column" };
+        foreach (var (column, index) in editor.Columns.Select((c, i) => (c, i + 1)))
+        {
+            var cell = index;
+            setIn.Items.Add(Item((column.Group == ColumnGroup.Response ? "expected · " : "request · ") + column.Title, () =>
+            {
+                CommitPendingEdit();
+                var rows = selected();
+                if (rows.Count == 0) return;
+                editor.CellSelection.Clear();
+                editor.CellSelection.Select(rows[0], cell);
+                foreach (var row in rows.Skip(1)) editor.CellSelection.Toggle(row, cell);
+                ShowSetValue(editor, grid);
+            }));
+        }
+        values.Items.Add(setIn);
+        menu.Items.Add(values);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item(selected().Count > 1 ? $"Remove {selected().Count} rows" : "Remove row", async () => await RemoveRowsAskingAsync(editor, selected()), haveRow, danger: true));
         return menu;
     }
 
@@ -257,6 +281,51 @@ public partial class DataEditorWindow
     }
 
     // ---- Menu building blocks -----------------------------------------------------------------
+
+    /// <summary>Replaces the confirmation dialog (tests).</summary>
+    internal Func<string, string, Task<bool>>? ConfirmRemove { get; set; }
+
+    /// <summary>
+    /// Removes the rows. When cells elsewhere read one of them by row number the user first sees which cells and chooses to remove anyway or cancel.
+    /// </summary>
+    internal async Task RemoveRowsAskingAsync(DataEditorViewModel editor, IReadOnlyList<DataRowViewModel> rows)
+    {
+        if (rows.Count == 0) return;
+        CommitPendingEdit();
+        var warnings = editor.RemovalWarnings(rows);
+        if (warnings.Count > 0)
+        {
+            var title = $"{warnings.Count} {(warnings.Count == 1 ? "cell reads" : "cells read")} {(rows.Count == 1 ? "this row" : "these rows")} by row number";
+            var detail = string.Join("\n", warnings.Take(12)) + (warnings.Count > 12 ? $"\n… and {warnings.Count - 12} more" : string.Empty)
+                + "\n\nAfter removing, those references point at a different row or at nothing.";
+            var go = ConfirmRemove is not null ? await ConfirmRemove(title, detail) : await AskAsync(title, detail, rows.Count == 1 ? "Remove row" : $"Remove {rows.Count} rows");
+            if (!go) { editor.ShowCancelled("Nothing removed."); return; }
+        }
+        editor.RemoveRows(rows);
+    }
+
+    private async Task<bool> AskAsync(string title, string detail, string yesText)
+    {
+        var yes = new Button { Content = yesText, Classes = { "accent" } };
+        var no = new Button { Content = "Cancel", Margin = new Thickness(0, 0, 8, 0) };
+        var dialog = new Window
+        {
+            Title = "Remove rows", SizeToContent = SizeToContent.WidthAndHeight, WindowStartupLocation = WindowStartupLocation.CenterOwner, CanResize = false, Background = Brush.Parse("#0B1626"),
+            Content = new StackPanel
+            {
+                Margin = new Thickness(20), Spacing = 10, MaxWidth = 560,
+                Children =
+                {
+                    new TextBlock { Text = title, TextWrapping = TextWrapping.Wrap, FontWeight = FontWeight.SemiBold },
+                    new TextBlock { Text = detail, TextWrapping = TextWrapping.Wrap, Opacity = 0.8, FontSize = 12 },
+                    new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Children = { no, yes } }
+                }
+            }
+        };
+        yes.Click += (_, _) => dialog.Close(true);
+        no.Click += (_, _) => dialog.Close(false);
+        return await dialog.ShowDialog<bool>(this);
+    }
 
     private static MenuItem Item(string header, Action click, bool enabled = true, bool danger = false)
     {
