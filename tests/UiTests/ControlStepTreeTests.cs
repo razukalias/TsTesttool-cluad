@@ -45,6 +45,17 @@ public class ControlStepTreeTests
     }
 
     [Fact]
+    public void The_record_view_names_the_control_steps_of_the_testcase()
+    {
+        using var dir = new TempDir();
+        var (shell, testcase) = Open(dir);
+        Assert.Equal(string.Empty, testcase.ControlSummary);
+        var first = testcase.StepNodes[0].Name;
+        shell.Current!.StepRows.First(r => r.CurrentName == first).Write("steptype", "For");
+        Assert.Contains($"{first} (For)", testcase.ControlSummary);
+    }
+
+    [Fact]
     public void A_move_that_is_not_allowed_says_why_and_changes_nothing()
     {
         using var dir = new TempDir();

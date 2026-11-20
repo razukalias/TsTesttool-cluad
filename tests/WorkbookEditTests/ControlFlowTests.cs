@@ -223,6 +223,51 @@ public class ControlFlowTests
     }
 
     [Fact]
+    public async Task A_re_run_that_reuses_values_gets_the_same_guid_in_every_round_as_before()
+    {
+        using var dir = new TempDir();
+        var path = Build(dir, new Step("Loop", "For", Config: "from=1;to=3"), new Step("Each", Parent: "Loop", Url: "/g/<guid>"));
+        var store = new MemoryRunStateStore();
+        async Task<List<string>> OnceAsync(bool reuse)
+        {
+            var memory = new RunValueMemory(store);
+            RunValueMemory.Active = memory;
+            try
+            {
+                memory.BeginRead(reuse);
+                var result = await RunAsync(path, Ok);
+                memory.Save();
+                return result.Paths.Where(p => p.StartsWith("/g/")).ToList();
+            }
+            finally { RunValueMemory.Active = null; }
+        }
+        var first = await OnceAsync(false);
+        var second = await OnceAsync(true);
+        var third = await OnceAsync(false);
+        Assert.Equal(3, first.Distinct().Count());
+        Assert.Equal(first, second);
+        Assert.NotEqual(first, third);
+    }
+
+    [Fact]
+    public async Task The_live_event_of_a_step_in_a_loop_names_its_round()
+    {
+        using var dir = new TempDir();
+        var path = Build(dir, new Step("Loop", "For", Config: "from=1;to=2"), new Step("Each", Parent: "Loop", Url: "/e"));
+        var result = await RunAsync(path, Ok);
+        var folder = dir.Combine("events");
+        string file;
+        using (var writer = new LoadTestingTool.Reporting.LiveEventWriter(folder, "i", "r"))
+        {
+            foreach (var request in result.Run.Testcases.SelectMany(t => t.Requests).Where(r => r.StepName == "Each")) writer.WriteRequest(request);
+            file = writer.EventPath;
+        }
+        var rounds = File.ReadAllLines(file).Select(l => System.Text.Json.JsonDocument.Parse(l).RootElement)
+            .Where(e => e.GetProperty("eventType").GetString() == "request-completed").Select(e => e.GetProperty("loopRound").GetString()).ToArray();
+        Assert.Equal(new[] { "Loop #1", "Loop #2" }, rounds);
+    }
+
+    [Fact]
     public async Task Loops_nest_and_each_level_keeps_its_own_variable()
     {
         var result = await RunAsync(Build(new TempDir(),
