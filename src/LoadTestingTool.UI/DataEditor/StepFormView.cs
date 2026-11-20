@@ -32,24 +32,24 @@ public sealed class StepFormView : UserControl
     private static readonly IReadOnlyDictionary<string, string> Labels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["steptype"] = "Type", ["stage"] = "Stage", ["enabled"] = "Enabled", ["verb"] = "Verb", ["targeturl"] = "Target URL",
-        ["templetsource"] = "Template", ["stoponfailure"] = "Stop on failure", ["contenttype"] = "Content type", ["timeout"] = "Timeout (s)", ["timeoutms"] = "Timeout (ms)",
+        ["templetsource"] = "Template", ["stoponfailure"] = "Stop on failure", ["contenttype"] = "Content type", ["timeout"] = "Timeout (s)", ["responsetimeout"] = "Response timeout (ms)",
         ["wait"] = "Wait before (ms or message)", ["expectedstatus"] = "Expected status", ["assert"] = "Assertions", ["ignoreempty"] = "Ignore empty",
         ["assertonlyresponse"] = "Only response", ["manualtimeoutminutes"] = "Manual timeout (min)",
     };
 
     private static readonly string[] Formats = ["JSON", "XML", "SQL", "GraphQL", "C# script", "Plain text"];
     private static readonly string[] ContentTypeChoices = ["application/json", "application/xml", "text/plain", "application/graphql", "application/x-www-form-urlencoded", "multipart/form-data", "application/octet-stream"];
-    private static readonly HashSet<string> Known = new(["steptype", "stage", "enabled", "stoponfailure", "verb", "targeturl", "contenttype", "templetsource", "expectedstatus", "timeout", "timeoutms", "wait", "assert", "ignoreempty", "assertonlyresponse", "manualtimeoutminutes", "stepconfig"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> Known = new(["steptype", "stage", "enabled", "stoponfailure", "verb", "targeturl", "contenttype", "templetsource", "expectedstatus", "timeout", "responsetimeout", "wait", "assert", "ignoreempty", "assertonlyresponse", "manualtimeoutminutes", "stepconfig"], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The fields each step type uses, in the order they are shown.</summary>
     private static string[] FieldsFor(string type) => type.Trim().ToLowerInvariant() switch
     {
-        "graphql" or "caseql" => ["steptype", "stage", "enabled", "stoponfailure", "targeturl", "templetsource", "expectedstatus", "timeout", "timeoutms", "wait", "assert", "ignoreempty", "assertonlyresponse"],
+        "graphql" or "caseql" => ["steptype", "stage", "enabled", "stoponfailure", "targeturl", "templetsource", "expectedstatus", "timeout", "responsetimeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
         "sql" => ["steptype", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
         "file" => ["steptype", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
         "script" => ["steptype", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait"],
         "actionmanual" => ["steptype", "stage", "enabled", "stoponfailure", "manualtimeoutminutes"],
-        _ => ["steptype", "stage", "enabled", "stoponfailure", "verb", "targeturl", "contenttype", "templetsource", "expectedstatus", "timeout", "timeoutms", "wait", "assert", "ignoreempty", "assertonlyresponse"],
+        _ => ["steptype", "stage", "enabled", "stoponfailure", "verb", "targeturl", "contenttype", "templetsource", "expectedstatus", "timeout", "responsetimeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
     };
 
     private static bool UsesTemplate(string type) => !type.Trim().Equals("ActionManual", StringComparison.OrdinalIgnoreCase);

@@ -21,7 +21,7 @@ public static class StepFieldHelp
         ["templetsource"] = ("Template", "The file in the instance's Templates folder that holds the request body (or the SQL, script or file text). Its _name_ placeholders are filled from the data row."),
         ["expectedstatus"] = ("Expected status", "The HTTP status the step must return, e.g. 201. Leave empty to accept any 2xx."),
         ["timeout"] = ("Timeout (s)", "How many seconds the step may take before it is stopped and counted as failed."),
-        ["timeoutms"] = ("Timeout (ms)", "How many milliseconds to wait for the response (http, graphql, caseql). When it passes, the app stops waiting, marks the step failed with \"timed out after N ms\" and runs the next step; the server may keep processing the request. Overrides Timeout (s); empty = use Timeout (s)."),
+        ["responsetimeout"] = ("Response timeout (ms)", "How many milliseconds to wait for the response (http, graphql, caseql). When it passes, the app stops waiting, marks the step failed with \"timed out after N ms\" and runs the next step; the server may keep processing the request. Overrides Timeout (s) for the response wait; empty = use Timeout (s)."),
         ["wait"] = ("Wait before (ms or message)", "A pause before the step: a number of milliseconds (500), a row variable (_waitMs_), or any other text, which pauses the row in the ActionManual panel and shows the text."),
         ["assert"] = ("Assertions", "Check the response against the expected cells of the response sheet. Untick to run the step without checking."),
         ["ignoreempty"] = ("Ignore empty", "Skip expected cells that are empty instead of treating them as 'must be empty'."),

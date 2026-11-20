@@ -451,9 +451,9 @@ public sealed class TestRunner
         }
         Publish(result); return result;
     }
-    /// <summary>How long a step may wait: its <c>timeoutms</c>, else its <c>timeout</c> seconds, else the application default.</summary>
+    /// <summary>How long a step may wait: its <c>responsetimeout</c>, else its <c>timeout</c> seconds, else the application default.</summary>
     internal TimeSpan StepTimeout(RequestStep step)
-        => step.TimeoutMs > 0 ? TimeSpan.FromMilliseconds(step.TimeoutMs)
+        => step.ResponseTimeoutMs > 0 ? TimeSpan.FromMilliseconds(step.ResponseTimeoutMs)
          : TimeSpan.FromSeconds(step.TimeoutSeconds > 0 ? step.TimeoutSeconds : _timeoutSeconds);
 
     /// <summary>The message for a step that stopped waiting; the run goes on with the next step while the server may still be working.</summary>

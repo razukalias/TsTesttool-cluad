@@ -23,7 +23,7 @@ public readonly record struct FieldCheck(FieldState State, string Message)
 /// <summary>The rules for the numeric and status fields of a step: wait, timeout, manualtimeoutminutes and expectedstatus.</summary>
 public static class StepFieldRules
 {
-    public static bool Covers(string header) => header.Trim().ToLowerInvariant() is "wait" or "timeout" or "timeoutms" or "manualtimeoutminutes" or "expectedstatus";
+    public static bool Covers(string header) => header.Trim().ToLowerInvariant() is "wait" or "timeout" or "responsetimeout" or "manualtimeoutminutes" or "expectedstatus";
 
     public static FieldCheck Check(string header, string? rawValue)
     {
@@ -34,7 +34,7 @@ public static class StepFieldRules
         {
             "wait" => CheckWait(value),
             "timeout" => CheckWhole(name, value, "the runner will use 0 instead (the default timeout)"),
-            "timeoutms" => CheckWhole(name, value, "the runner will use 0 instead (the timeout in seconds, or the default)"),
+            "responsetimeout" => CheckWhole(name, value, "the runner will use 0 instead (the timeout in seconds, or the default)"),
             "manualtimeoutminutes" => CheckWhole(name, value, "the runner will use 0 instead"),
             "expectedstatus" => CheckStatus(value),
             _ => FieldCheck.Fine

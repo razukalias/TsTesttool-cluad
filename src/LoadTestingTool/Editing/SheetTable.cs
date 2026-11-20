@@ -24,7 +24,7 @@ public sealed class SheetTable
 {
     private static readonly HashSet<string> NumericHeaders = new(StringComparer.OrdinalIgnoreCase)
     {
-        "testcaseindex", "threads", "iterations", "wait", "timeout", "timeoutms", "manualtimeoutminutes", "threadintervalms", "iterationintervalms"
+        "testcaseindex", "threads", "iterations", "wait", "timeout", "responsetimeout", "manualtimeoutminutes", "threadintervalms", "iterationintervalms"
     };
 
     private readonly List<Column> _columns = [];

@@ -556,7 +556,7 @@ Example row:
 - [x] Renaming from the step form no longer rebuilds the tree nodes (selection stayed on a removed node) and no longer renames twice on Enter plus focus loss.
 
 ## Timeout in milliseconds (2026-11-20)
-- [x] New config column `timeoutms` (ms) for http, graphql, caseql: stop waiting, fail the step with "Timed out after N ms…", run the next step. Wins over `timeout` (s). Step form field, help text, validation and docs added.
+- [x] New config column `responsetimeout` (ms) for http, graphql, caseql: stop waiting, fail the step with "Timed out after N ms…", run the next step. Wins over `timeout` (s). Step form field, help text, validation and docs added.
 
 ## Leftovers closed 2026-11-17
 - Per-run "Enable internal log" checkbox removed (it did nothing; the instance setting decides).

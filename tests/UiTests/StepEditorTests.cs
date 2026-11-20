@@ -160,11 +160,11 @@ public class StepEditorTests
         using var dir = new TempDir();
         var path = Samples.Copy(dir, Samples.IntegrationScenarios);
         var vm = new DataEditorViewModel(path);
-        vm.StepRows[1].Write("timeoutms", "2");
+        vm.StepRows[1].Write("responsetimeout", "2");
         vm.SaveCommand.Execute(null);
 
         var step = new WorkbookReader().Read(path).Testcases.SelectMany(t => t.Steps).First(s => s.StepName == "CreatePost");
-        Assert.Equal(2, step.TimeoutMs);
+        Assert.Equal(2, step.ResponseTimeoutMs);
     }
 
     [Fact]
