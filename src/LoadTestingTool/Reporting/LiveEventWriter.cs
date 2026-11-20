@@ -49,7 +49,7 @@ public sealed class LiveEventWriter : IDisposable
             failureCategory = request.FailureCategory,
             runtimeReference = request.RuntimeReference,
             runtimeReferenceKey = request.RuntimeReferenceKey
-            ,environment = request.Environment, manualInfo = request.ManualInfo, manualComment = request.ManualComment
+            ,loopRound = request.LoopRound, environment = request.Environment, manualInfo = request.ManualInfo, manualComment = request.ManualComment
         };
         Write(message);
         foreach (var assertion in request.Assertions) Write(new

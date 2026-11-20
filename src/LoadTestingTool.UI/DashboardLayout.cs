@@ -1677,7 +1677,7 @@ public sealed partial class MainWindow
             top.Children.Add(DashboardStyle.Badge(statusText));
             top.Children.Add(DashboardStyle.Action("View details", () => LaunchStepDetails(request), "primary"));
             var position = stepPositions[rowKey];
-            var context = DashboardStyle.Text($"{request.Testcase} / Row {request.DataId} · {request.Environment} · Step {position}/{stepTotals.GetValueOrDefault(rowKey, position)} · {request.DurationMs} ms", 10, false, DashboardStyle.Muted);
+            var context = DashboardStyle.Text($"{request.Testcase} / Row {request.DataId} · {request.Environment} · Step {position}/{stepTotals.GetValueOrDefault(rowKey, position)}{(request.LoopRound.Length > 0 ? $" · {request.LoopRound}" : "")} · {request.DurationMs} ms", 10, false, DashboardStyle.Muted);
             context.TextWrapping = TextWrapping.Wrap;
             var line = new StackPanel { Spacing = 3, Children = { top, context } };
             var hasCategory = !string.IsNullOrWhiteSpace(request.FailureCategory) && request.FailureCategory != "None";
@@ -1972,7 +1972,7 @@ public sealed partial class MainWindow
         var type = Str("eventType");
         if (type == "request-completed")
         {
-            item.Requests.Add(new DashboardRequest(Str("stepName"), Str("stepType"), Str("testcase"), Str("dataId"), Str("environment"), Str("result"), Long("durationMs"), Str("failureCategory"), Str("errorMessage"), (int)Long("testcaseIndex"), (int)Long("excelRow"), (int)Long("stepOrder")));
+            item.Requests.Add(new DashboardRequest(Str("stepName"), Str("stepType"), Str("testcase"), Str("dataId"), Str("environment"), Str("result"), Long("durationMs"), Str("failureCategory"), Str("errorMessage"), (int)Long("testcaseIndex"), (int)Long("excelRow"), (int)Long("stepOrder"), "", Str("loopRound")));
             item.EventMessages.Add($"{DateTime.Now:HH:mm:ss}  {Str("result"),-5}  {Str("stepType")} / {Str("stepName")} / {Long("durationMs")} ms / {Str("failureCategory")}");
         }
         else if (type == "run-completed")
@@ -1986,7 +1986,7 @@ public sealed partial class MainWindow
 }
 
 /// <param name="TestcaseIndex">The testcase's number in the workbook, with <paramref name="ExcelRow"/> and <paramref name="StepOrder"/> the sort key that lists steps in workbook order (0 when an older run did not record them).</param>
-public sealed record DashboardRequest(string StepName, string StepType, string Testcase, string DataId, string Environment, string Result, long DurationMs, string FailureCategory, string Error, int TestcaseIndex = 0, int ExcelRow = 0, int StepOrder = 0, string RunResult = "")
+public sealed record DashboardRequest(string StepName, string StepType, string Testcase, string DataId, string Environment, string Result, long DurationMs, string FailureCategory, string Error, int TestcaseIndex = 0, int ExcelRow = 0, int StepOrder = 0, string RunResult = "", string LoopRound = "")
 {
     /// <summary>Steps in workbook order: environment, then testcase, then the data row's position in the sheet, then the step's position. Ties keep the order they finished in.</summary>
     public static List<DashboardRequest> InWorkbookOrder(IEnumerable<DashboardRequest> requests)

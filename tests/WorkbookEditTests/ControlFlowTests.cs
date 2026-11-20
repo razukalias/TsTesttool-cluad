@@ -202,6 +202,27 @@ public class ControlFlowTests
     }
 
     [Fact]
+    public async Task An_ActionManual_step_inside_a_loop_asks_once_per_round()
+    {
+        using var dir = new TempDir();
+        var path = Build(dir, new Step("Loop", "For", Config: "from=1;to=3"), new Step("Ask", "ActionManual", Parent: "Loop"));
+        var model = new WorkbookReader().Read(path);
+        var control = dir.Combine("manual");
+        Directory.CreateDirectory(control);
+        var prompts = new List<string>();
+        var runner = new TestRunner(new HttpClient(new Server(Ok)), new AssertionEngine(), dir.Combine("Templates"), 30, manualPending: (request, _, _) =>
+        {
+            prompts.Add(request.RequestId);
+            LoadTestingTool.Reporting.ManualActionControl.WriteResponse(control, request.RequestId, "pass", "ok");
+        }, manualControlFolder: control);
+        var run = new RunResult { RunId = "r", StartedAt = DateTimeOffset.Now };
+        await runner.RunAsync(model.Testcases[0], model, run, CancellationToken.None, selectedDataIds: new HashSet<string> { "D1" }, executionMode: "sequential");
+        Assert.Equal(3, prompts.Count);
+        Assert.Equal(3, prompts.Distinct().Count());
+        Assert.Equal(new[] { "Loop #1", "Loop #2", "Loop #3" }, run.Testcases.SelectMany(t => t.Requests).Where(r => r.StepName == "Ask").Select(r => r.LoopRound).ToArray());
+    }
+
+    [Fact]
     public async Task Loops_nest_and_each_level_keeps_its_own_variable()
     {
         var result = await RunAsync(Build(new TempDir(),
