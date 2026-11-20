@@ -64,3 +64,23 @@ public class StepResponseTimeoutTests
         Assert.Equal(30, step.TimeoutSeconds);
     }
 }
+
+public class StepConfigFilesTests
+{
+    [Theory]
+    [InlineData("{\"source\": \"Queries/Get.graphql\", \"operationName\":\"Get\"}", "Queries/Get.graphql")]
+    [InlineData("{\"Source\":\"a\\\\b.sql\"}", "a/b.sql")]
+    [InlineData("source=Queries/Get.sql;parameters=x", "Queries/Get.sql")]
+    [InlineData("{\"source\":\"Queries/_name_.sql\"}", null)]
+    [InlineData("{\"query\":\"{ a }\"}", null)]
+    [InlineData("", null)]
+    public void The_source_file_is_read_from_json_and_from_key_value_text(string config, string? expected)
+        => Assert.Equal(expected, StepConfigFiles.SourceOf(config));
+
+    [Fact]
+    public void Only_the_source_value_is_replaced()
+    {
+        Assert.Equal("{\"source\": \"Q/x copy.graphql\", \"operationName\":\"Get\"}", StepConfigFiles.WithSource("{\"source\": \"Q/x.graphql\", \"operationName\":\"Get\"}", "Q/x copy.graphql"));
+        Assert.Equal("a=1;source=Q/x copy.sql;b=2", StepConfigFiles.WithSource("a=1;source=Q/x.sql;b=2", "Q/x copy.sql"));
+    }
+}

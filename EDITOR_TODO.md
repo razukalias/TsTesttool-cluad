@@ -564,7 +564,7 @@ Example row:
 - [x] A duplicated step also gets its `extractvariable` mappings under the new name (same variables).
 - [x] Duplicate testcase has the same "Copy template files" choice.
 - [x] Copy to another instance reports template files that exist there with different content (they are still kept, not overwritten).
-- [ ] Not done: files named inside `stepconfig` (graphql source, file-step paths) are not copied with a step or testcase.
+- [x] (2026-11-20) The `source` file in `stepconfig` (graphql, sql, script query/code file) follows copies like templates: duplicate gets its own "name copy.ext" and the stepconfig points at it (same tick box, now "Copy template and query files"); copy to another instance brings the file along at the same relative path. Not copied: File-step `path` (often shared or an output file) and sources with variables in the name.
 
 - [x] Delete testcase removes its steps' data columns from the request and response sheets (undoable), except columns of a step name another testcase still uses.
 

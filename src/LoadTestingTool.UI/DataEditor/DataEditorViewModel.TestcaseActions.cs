@@ -96,7 +96,7 @@ public sealed partial class DataEditorViewModel
         TestcasePanelTitle = $"DUPLICATE TESTCASE · {testcase.Title}";
         TestcasePanelName = testcase.Name + " copy";
         TestcasePanelConfirmText = "Duplicate";
-        TestcasePanelNote = $"Copies its {testcase.Steps.Count} {(testcase.Steps.Count == 1 ? "step" : "steps")} (named Name + Copy, with their data columns, extract mappings and dontrun entries) and its {testcase.RowCount} data {(testcase.RowCount == 1 ? "row" : "rows")} under the next free testcase number. Tick the box to give the copy its own template files; untick it to share the originals.";
+        TestcasePanelNote = $"Copies its {testcase.Steps.Count} {(testcase.Steps.Count == 1 ? "step" : "steps")} (named Name + Copy, with their data columns, extract mappings and dontrun entries) and its {testcase.RowCount} data {(testcase.RowCount == 1 ? "row" : "rows")} under the next free testcase number. Tick the box to give the copy its own template and query (stepconfig source) files; untick it to share the originals.";
         OpenTestcasePanel(asksName: true, isDelete: false, asksTemplate: true);
     }
 
@@ -110,7 +110,7 @@ public sealed partial class DataEditorViewModel
         TestcasePanelTitle = $"DUPLICATE STEP · {step.CurrentName}";
         TestcasePanelName = _document.SuggestCopyName(step.CurrentName);
         TestcasePanelConfirmText = "Duplicate";
-        TestcasePanelNote = "Copies the step right after the original with its data columns and values, extract mappings (Step.path:variable, under the new name) and settings. Tick the box to give it its own template file; untick it to share the original's.";
+        TestcasePanelNote = "Copies the step right after the original with its data columns and values, extract mappings (Step.path:variable, under the new name) and settings. Tick the box to give it its own template and query (stepconfig source) file; untick it to share the original's.";
         OpenTestcasePanel(asksName: true, isDelete: false, asksTemplate: true);
     }
 
@@ -174,9 +174,10 @@ public sealed partial class DataEditorViewModel
                     break;
                 case TestcaseAction.Copy:
                     var copy = _document.CopyTestcase(index, name);
+                    var newRows = _document.Config.Rows.Where(r => !r.IsBlank && WorkbookDocument.EffectiveIndex(r) == copy.NewIndex).ToList();
                     var templateNote = TestcasePanelCopyTemplate
-                        ? GiveOwnTemplates(_document.Config.Rows.Where(r => !r.IsBlank && WorkbookDocument.EffectiveIndex(r) == copy.NewIndex).ToList())
-                        : "sharing the original template files";
+                        ? GiveOwnTemplates(newRows) + GiveOwnQueryFiles(newRows)
+                        : "sharing the original template and query files";
                     var notes = new List<string>
                     {
                         $"Copied testcase {index} as {copy.NewIndex} ({copy.Steps} {(copy.Steps == 1 ? "step" : "steps")}, {copy.DataRows} data {(copy.DataRows == 1 ? "row" : "rows")}, {copy.ColumnsAdded} new data {(copy.ColumnsAdded == 1 ? "column" : "columns")})"

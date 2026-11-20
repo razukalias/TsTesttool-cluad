@@ -183,4 +183,26 @@ public class TransferTests
         Assert.All(copies, r => Assert.True(File.Exists(Path.Combine(vm.TemplatesFolder, r.Get("templetsource")))));
         Assert.All(copies, r => Assert.Contains(" copy", r.Get("templetsource")));
     }
+
+    [Fact]
+    public void Duplicating_a_step_gives_its_query_file_a_copy_and_repoints_the_stepconfig()
+    {
+        using var dir = new TempDir();
+        var path = Samples.Copy(dir, Samples.IntegrationScenarios);
+        var vm = new DataEditorViewModel(path);
+        var workspace = Path.GetDirectoryName(Path.GetFullPath(path))!;
+        Directory.CreateDirectory(Path.Combine(workspace, "Queries"));
+        File.WriteAllText(Path.Combine(workspace, "Queries", "q.graphql"), "{ me { id } }");
+        vm.StepRows.First(r => r.CurrentName == "FetchUser").Write("stepconfig", "{\"source\": \"Queries/q.graphql\", \"operationName\":\"Me\"}");
+
+        vm.OpenDuplicateStep("FetchUser");
+        vm.TestcasePanelName = "FetchUserTwo";
+        vm.TestcasePanelCopyTemplate = true;
+        vm.ConfirmTestcaseActionCommand.Execute(null);
+
+        var copy = vm.Document.Config.Rows.First(r => r.Get("stepname") == "FetchUserTwo");
+        Assert.Equal("{\"source\": \"Queries/q copy.graphql\", \"operationName\":\"Me\"}", copy.Get("stepconfig"));
+        Assert.Equal("{ me { id } }", File.ReadAllText(Path.Combine(workspace, "Queries", "q copy.graphql")));
+        Assert.Contains("Queries/q.graphql", vm.Document.Config.Rows.First(r => r.Get("stepname") == "FetchUser").Get("stepconfig"));
+    }
 }

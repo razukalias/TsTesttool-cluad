@@ -578,7 +578,7 @@
             <TextBlock Classes="caption" Text="{Binding TestcasePanelTitle}" />
             <WrapPanel Classes="form">
               <TextBox x:Name="TestcaseNameBox" Text="{Binding TestcasePanelName, Mode=TwoWay}" IsVisible="{Binding TestcasePanelAsksName}" MinWidth="320" />
-              <CheckBox Content="Copy template files" IsChecked="{Binding TestcasePanelCopyTemplate, Mode=TwoWay}" IsVisible="{Binding TestcasePanelAsksTemplate}" />
+              <CheckBox Content="Copy template and query files" IsChecked="{Binding TestcasePanelCopyTemplate, Mode=TwoWay}" IsVisible="{Binding TestcasePanelAsksTemplate}" />
               <Button Content="{Binding TestcasePanelConfirmText}" Classes="primary" Command="{Binding ConfirmTestcaseActionCommand}" IsVisible="{Binding !TestcasePanelIsDelete}" />
               <Button Content="{Binding TestcasePanelConfirmText}" Classes="danger" Command="{Binding ConfirmTestcaseActionCommand}" IsVisible="{Binding TestcasePanelIsDelete}" />
               <Button Content="Cancel" Command="{Binding CloseTestcasePanelCommand}" />
