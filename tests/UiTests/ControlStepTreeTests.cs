@@ -1,3 +1,4 @@
+using Avalonia.Headless.XUnit;
 using LoadTestingTool.UI.DataEditor;
 using Xunit;
 
@@ -70,5 +71,27 @@ public class ControlStepTreeTests
         Assert.Equal(0, testcase.StepNodes.First(n => n.Name == second.Name).Depth);
         Assert.Contains("not an If, While, For or ForEach", editor.StatusMessage);
         Assert.Equal(undoBefore, editor.UndoTip);   // nothing was recorded
+    }
+}
+
+public class ResponseValuePickerTests
+{
+    [AvaloniaFact]
+    public void The_picker_lists_status_codes_and_expected_fields_of_the_other_steps_and_builds_the_reference()
+    {
+        using var dir = new TempDir();
+        var shell = new EditorShellViewModel([("Sample", Samples.CreateLarge(dir, rows: 3))]);
+        var testcase = shell.Instances[0].Testcases.FirstOrDefault(t => t.StepNodes.Count >= 2) ?? shell.Instances[0].Testcases[0];
+        shell.SelectedNode = testcase;
+        var editor = shell.Current!;
+        if (testcase.StepNodes.Count < 2) editor.AddStepCommand.Execute(null);
+        var first = testcase.StepNodes[0].Name;
+        var second = testcase.StepNodes[1].Name;
+        var targets = editor.ReferenceTargets(second);
+        Assert.Contains($"{first}.statusCode", targets);
+        Assert.DoesNotContain($"{second}.statusCode", targets);
+        Assert.Equal($"<From_response_{first}.statusCode_r>", ResponseValuePicker.ReferenceFor($"{first}.statusCode"));
+        var picker = new ResponseValuePicker(editor, second);
+        Assert.Contains($"{first}.statusCode", picker.Shown);
     }
 }

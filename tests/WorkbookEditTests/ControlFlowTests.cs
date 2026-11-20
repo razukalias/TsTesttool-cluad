@@ -268,6 +268,16 @@ public class ControlFlowTests
     }
 
     [Fact]
+    public async Task A_condition_can_read_the_status_code_of_an_earlier_step()
+    {
+        var result = await RunAsync(Build(new TempDir(),
+            new Step("Get", Url: "/get"), new Step("Check", "If", Condition: "<From_response_Get.statusCode_r> eq 202"),
+            new Step("Yes", Parent: "Check", Url: "/yes"), new Step("No", Parent: "Check:else", Url: "/no")), Ok, path => HttpStatusCode.Accepted);
+        Assert.Contains("/yes", result.Paths);
+        Assert.DoesNotContain("/no", result.Paths);
+    }
+
+    [Fact]
     public async Task Loops_nest_and_each_level_keeps_its_own_variable()
     {
         var result = await RunAsync(Build(new TempDir(),

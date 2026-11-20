@@ -68,6 +68,15 @@ The internal log writes `INLINE SCRIPT START` (template, file, parameters, testc
 
 ## Control steps: If, While, For, ForEach
 
+### Using what an earlier step returned
+
+A condition or a loop setting can read the response of any other step of the testcase (HTTP, GraphQL; File and Script steps give their named outputs). Write `<From_response_Step.path_r>`, or press **Insert value from a step…** next to the field and pick it from the list. The list has the step's status code (`Step.statusCode`), the fields of its expected response columns and of its last stored response, and its response headers.
+
+Example: an HTTP step `GetOrders` returns `{"orders":[{"id":1},{"id":2}]}`.
+- ForEach `items=<From_response_GetOrders.orders_r>`, `var=order`: the steps inside run for every order and read `_order_`.
+- If with condition `<From_response_GetOrders.statusCode_r> eq 200`: the steps inside run only when the call worked; steps with `parent=Check:else` run otherwise.
+- While `<From_response_Poll.state_r> ne DONE` with a Poll step inside: the loop polls until the state is DONE.
+
 Generated values (`<randomnumber>`, `<guid>`, dates) inside a loop are new every round. `timeoutms=` in the loop settings limits the whole loop. RequestHistory has a `loopround` column such as `Outer #2 > Inner #5`.
 
 A control step sends nothing itself; it decides whether, how often and over what other steps run. The workbook stays flat: a step names the control step it runs inside in the config column **`parent`** (empty = top level). For the else branch of an If write `IfName:else`. Nesting is allowed up to 5 levels. A workbook without a `parent` column behaves exactly as before. `dontrun` or `enabled=False` on a control step skips everything inside it.

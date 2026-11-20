@@ -266,11 +266,50 @@ internal sealed class TestStepConfigurationEditor : UserControl
         _parent.SelectedItem = current;
     }
 
+    /// <summary>What other steps of the testcase can give: status codes, plus the fields of their last stored response when the History folder has one.</summary>
+    private List<string> ReferenceTargets(StepRow current)
+    {
+        var targets = new List<string>();
+        if (!_byTestcase.TryGetValue(_selectedTestcase, out var rows)) return targets;
+        var history = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(_item.WorkbookPath)) ?? ".", "History");
+        foreach (var other in rows.Where(r => !ReferenceEquals(r, current)))
+        {
+            var name = other.Get(_headers, "stepname");
+            if (name.Length == 0 || ControlStepSettings.IsControl(other.Get(_headers, "steptype"))) continue;
+            targets.Add($"{name}.statusCode");
+            try { if (LoadTestingTool.Reporting.ResponseSamples.Latest(history, name) is { } sample) targets.AddRange(LoadTestingTool.Reporting.ResponseSamples.Flatten(sample.Body).Select(f => $"{name}.{f.Path}")); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* no stored response to list */ }
+        }
+        return targets.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(t => t, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private Control WithValuePicker(TextBox box)
+    {
+        var pick = new Button { Content = "Insert value from a step…", Margin = new Thickness(6, 0, 0, 0), Tag = "insert-response-value" };
+        pick.Click += async (_, _) =>
+        {
+            if (_selectedStep is null || TopLevel.GetTopLevel(this) is not Window owner) return;
+            var chosen = await new DataEditor.ResponseValuePicker(ReferenceTargets(_selectedStep)).ShowDialog<string?>(owner);
+            if (chosen is null) return;
+            var text = box.Text ?? string.Empty;
+            var start = Math.Clamp(Math.Min(box.SelectionStart, box.SelectionEnd), 0, text.Length);
+            var end = Math.Clamp(Math.Max(box.SelectionStart, box.SelectionEnd), start, text.Length);
+            box.Text = text[..start] + chosen + text[end..];
+            box.CaretIndex = start + chosen.Length;
+        };
+        (box.Parent as Panel)?.Children.Remove(box);   // the box is reused when the type changes
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        grid.Children.Add(box);
+        Grid.SetColumn(pick, 1);
+        grid.Children.Add(pick);
+        return grid;
+    }
+
     private void AddControlFields(string type)
     {
         _typeFields.Children.Add(DashboardStyle.Text($"{type} (control step: sends nothing, decides which steps run)", 13, true));
         _typeFields.Children.Add(Field("Runs inside (leave empty for top level; Name:else = the else branch of an If)", _parent));
-        if (type is "If" or "While") _typeFields.Children.Add(Field("Condition: left verb right (for example _status_ eq 200)", _condition));
+        if (type is "If" or "While") _typeFields.Children.Add(Field("Condition: left verb right (for example _status_ eq 200)", WithValuePicker(_condition)));
         _controlFields.Clear();
         var values = ControlStepSettings.Read(_stepConfig.Text);
         foreach (var setting in ControlStepSettings.For(type))
@@ -279,7 +318,7 @@ internal sealed class TestStepConfigurationEditor : UserControl
             if (setting.Help.Length > 0) Avalonia.Controls.ToolTip.SetTip(box, setting.Help);
             box.PropertyChanged += (_, e) => { if (e.Property == TextBox.TextProperty && !_loading) WriteControlConfig(type); };
             _controlFields[setting.Key] = box;
-            _typeFields.Children.Add(Field(setting.Label + (setting.Help.Length > 0 ? " - " + setting.Help : string.Empty), box));
+            _typeFields.Children.Add(Field(setting.Label + (setting.Help.Length > 0 ? " - " + setting.Help : string.Empty), setting.Key is "items" or "to" or "from" or "count" ? WithValuePicker(box) : box));
         }
         _typeFields.Children.Add(DashboardStyle.Text("Steps that should run inside this one: choose this step in their \"Runs inside\" box.", 11, false, DashboardStyle.Muted));
     }

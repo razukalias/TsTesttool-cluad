@@ -172,6 +172,23 @@ public sealed partial class DataEditorViewModel
         return names.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    /// <summary>
+    /// The values another step of the testcase can give a condition or a loop: its status code, the fields of its expected response columns
+    /// and of its last stored response, and its response headers, as <c>Step.path</c> (the text goes into <c>&lt;From_response_Step.path_r&gt;</c>).
+    /// </summary>
+    public IReadOnlyList<string> ReferenceTargets(string? exceptStep)
+    {
+        var targets = new List<string>();
+        var steps = ResponseSteps().Where(s => !s.Equals(exceptStep, StringComparison.OrdinalIgnoreCase)).ToList();
+        foreach (var step in steps) targets.Add($"{step}.statusCode");
+        foreach (var name in ResponseFieldNames())
+            if (steps.Any(s => name.StartsWith(s + ".", StringComparison.OrdinalIgnoreCase))) targets.Add(name);
+        foreach (var step in steps)
+            if (ResponseSamples.LatestHeaders(HistoryFolderPath, step) is { } stored)
+                targets.AddRange(stored.Headers.Select(h => $"{step}.{LoadTestingTool.Execution.AssertionEngine.ResponseHeaderPrefix}{h.Name}"));
+        return targets.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(t => t, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
     /// <summary>Forget stored responses so the next menu reads the newest history (after a run or when Record view opens).</summary>
     private void ForgetStoredResponses() => _storedResponses = null;
 }

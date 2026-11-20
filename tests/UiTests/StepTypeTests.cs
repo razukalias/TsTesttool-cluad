@@ -93,6 +93,15 @@ public class StepTypeTests
         Assert.DoesNotContain("Condition", Labels(form));
         Assert.DoesNotContain("Template", Labels(form));
         Assert.Contains("ForEach", StepOptions.StepTypes);
+        Assert.Single(form.GetVisualDescendants().OfType<Button>(), b => Equals(b.Tag, "insert-response-value"));   // step config of a loop: picker for items
+        step.Write("steptype", "If");
+        Pump();
+        form = window.GetVisualDescendants().OfType<StepFormView>().Single();
+        Assert.Single(form.GetVisualDescendants().OfType<Button>(), b => Equals(b.Tag, "insert-response-value"));   // condition: picker
+        step.Write("steptype", "HTTP");
+        Pump();
+        form = window.GetVisualDescendants().OfType<StepFormView>().Single();
+        Assert.DoesNotContain(form.GetVisualDescendants().OfType<Button>(), b => Equals(b.Tag, "insert-response-value"));
         window.Close();
     }
 

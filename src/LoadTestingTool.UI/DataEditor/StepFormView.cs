@@ -222,6 +222,29 @@ public sealed class StepFormView : UserControl
             box.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Commit(); e.Handled = true; } else if (e.Key == Key.Escape) { box.Text = _step.Value(title); e.Handled = true; } };
             input = box;
             Follow(title, v => { if (box.Text != v) box.Text = v; });
+            if (_step.Editor is { } valueSource && (title.Equals("condition", StringComparison.OrdinalIgnoreCase) || (title.Equals("stepconfig", StringComparison.OrdinalIgnoreCase) && IsControl(_step.TypeText))))
+            {
+                // "Insert value from a step…": puts <From_response_Step.path_r> at the cursor, so nobody has to type the reference
+                var pick = new Button { Content = "Insert value from a step…", Margin = new Thickness(6, 0, 0, 0), Tag = "insert-response-value" };
+                ToolTip.SetTip(pick, "Choose a status code, response field or header of another step; its reference is inserted at the cursor");
+                pick.Click += async (_, _) =>
+                {
+                    if (TopLevel.GetTopLevel(this) is not Window owner) return;
+                    var chosen = await new ResponseValuePicker(valueSource, _step.CurrentName).ShowDialog<string?>(owner);
+                    if (chosen is null) return;
+                    var text = box.Text ?? string.Empty;
+                    var start = Math.Clamp(Math.Min(box.SelectionStart, box.SelectionEnd), 0, text.Length);
+                    var end = Math.Clamp(Math.Max(box.SelectionStart, box.SelectionEnd), start, text.Length);
+                    box.Text = text[..start] + chosen + text[end..];
+                    box.CaretIndex = start + chosen.Length;
+                    Commit();
+                };
+                var withButton = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+                withButton.Children.Add(box);
+                Grid.SetColumn(pick, 1);
+                withButton.Children.Add(pick);
+                input = withButton;
+            }
         }
         if (title.Equals("templetsource", StringComparison.OrdinalIgnoreCase) && _step.Editor is not null && input is TextBox templateBox)
         {

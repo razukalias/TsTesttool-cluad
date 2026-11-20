@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using Avalonia.Controls;
+using Avalonia.LogicalTree;
 using Avalonia.Headless.XUnit;
 using Xunit;
 
@@ -98,5 +99,27 @@ public class ControlWizardTests
         Assert.Contains("Check:else", choices);
         parent.SelectedItem = "Check:else";
         Assert.Equal("Check:else", parent.SelectedItem);
+    }
+}
+
+public class ControlWizardPickerTests
+{
+    [AvaloniaFact]
+    public void The_wizard_offers_the_value_picker_next_to_condition_and_items()
+    {
+        using var dir = new TempDir();
+        var source = typeof(LoadTestingTool.UI.MainWindow).Assembly.GetType("LoadTestingTool.UI.TestStepConfigurationEditor")!;
+        var item = Activator.CreateInstance(source.Assembly.GetType("LoadTestingTool.UI.InstanceInfo")!, nonPublic: true)!;
+        item.GetType().GetProperty("Name")!.SetValue(item, "Demo");
+        item.GetType().GetProperty("WorkbookPath")!.SetValue(item, Samples.CreateLarge(dir, rows: 3));
+        var editor = Activator.CreateInstance(source, item)!;
+        var add = source.GetMethod("AddStep", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        T Get<T>(string n) => (T)source.GetField(n, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(editor)!;
+        Get<TextBox>("_newStepName").Text = "Each";
+        Get<ComboBox>("_newStepType").SelectedItem = "ForEach";
+        add.Invoke(editor, null);
+        var typeFields = Get<StackPanel>("_typeFields");
+        var buttons = typeFields.GetLogicalDescendants().OfType<Button>().Where(b => Equals(b.Tag, "insert-response-value")).ToList();
+        Assert.Single(buttons);   // ForEach: the items field has the picker
     }
 }
