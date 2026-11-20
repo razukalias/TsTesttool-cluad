@@ -38,3 +38,65 @@ public class LoopRoundDisplayTests
         foreach (var type in new[] { "If", "While", "For", "ForEach" }) Assert.Contains(type, types);
     }
 }
+
+public class ControlWizardTests
+{
+    private static (object Editor, Type Type, string Path) Open(TempDir dir)
+    {
+        var source = typeof(LoadTestingTool.UI.MainWindow).Assembly.GetType("LoadTestingTool.UI.TestStepConfigurationEditor")!;
+        var item = Activator.CreateInstance(source.Assembly.GetType("LoadTestingTool.UI.InstanceInfo")!, nonPublic: true)!;
+        var path = Samples.CreateLarge(dir, rows: 3);
+        item.GetType().GetProperty("Name")!.SetValue(item, "Demo");
+        item.GetType().GetProperty("WorkbookPath")!.SetValue(item, path);
+        return (Activator.CreateInstance(source, item)!, source, path);
+    }
+
+    private static T Field<T>(object editor, string name) => (T)editor.GetType().GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(editor)!;
+
+    private static void AddStep(object editor, string name, string type)
+    {
+        Field<TextBox>(editor, "_newStepName").Text = name;
+        Field<ComboBox>(editor, "_newStepType").SelectedItem = type;
+        editor.GetType().GetMethod("AddStep", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(editor, null);
+    }
+
+    [AvaloniaFact]
+    public void A_For_step_gets_its_own_fields_that_write_the_step_config_and_are_saved_with_the_columns()
+    {
+        using var dir = new TempDir();
+        var (editor, type, path) = Open(dir);
+        AddStep(editor, "Loop1", "For");
+        var fields = Field<Dictionary<string, TextBox>>(editor, "_controlFields");
+        Assert.Contains("to", fields.Keys);
+        Assert.Contains("var", fields.Keys);
+        fields["to"].Text = "3";
+        fields["var"].Text = "n";
+        Assert.Equal("to=3;var=n", Field<TextBox>(editor, "_stepConfig").Text);
+
+        var args = new object?[] { null };
+        Assert.True((bool)type.GetMethod("TrySave")!.Invoke(editor, args)!, args[0]?.ToString());
+
+        using var workbook = new ClosedXML.Excel.XLWorkbook(path);
+        var sheet = workbook.Worksheet("Config");
+        var headers = sheet.Row(1).CellsUsed().ToDictionary(c => c.GetString().Trim(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase);
+        Assert.True(headers.ContainsKey("parent") && headers.ContainsKey("condition"));
+        var row = sheet.RowsUsed().Skip(1).Single(r => r.Cell(headers["stepname"]).GetString() == "Loop1");
+        Assert.Equal("For", row.Cell(headers["steptype"]).GetString());
+        Assert.Equal("to=3;var=n", row.Cell(headers["stepconfig"]).GetString());
+    }
+
+    [AvaloniaFact]
+    public void The_parent_choices_list_the_control_steps_and_the_else_branch_of_an_If()
+    {
+        using var dir = new TempDir();
+        var (editor, _, _) = Open(dir);
+        AddStep(editor, "Check", "If");
+        AddStep(editor, "Inner", "HTTP");
+        var parent = Field<ComboBox>(editor, "_parent");
+        var choices = ((System.Collections.IEnumerable)parent.ItemsSource!).Cast<string>().ToList();
+        Assert.Contains("Check", choices);
+        Assert.Contains("Check:else", choices);
+        parent.SelectedItem = "Check:else";
+        Assert.Equal("Check:else", parent.SelectedItem);
+    }
+}

@@ -39,7 +39,8 @@ internal sealed class TestStepConfigurationEditor : UserControl
     private TextBox _timeout = null!;
     private TextBox _manualTimeoutMinutes = null!;
     private TextBox _condition = null!;
-    private TextBox _parent = null!;
+    private ComboBox _parent = null!;
+    private readonly Dictionary<string, TextBox> _controlFields = new(StringComparer.OrdinalIgnoreCase);
     private TextBox _wait = null!;
     private TextBox _targetUrl = null!;
     private ComboBox _verb = null!;
@@ -199,7 +200,7 @@ internal sealed class TestStepConfigurationEditor : UserControl
         _stepType = new ComboBox { ItemsSource = new[] { "HTTP", "GraphQL", "CaseQL", "File", "Script", "SQL", "If", "While", "For", "ForEach" }.Concat(existingType.Equals("ActionManual", StringComparison.OrdinalIgnoreCase) ? new[] { "ActionManual" } : Array.Empty<string>()), SelectedItem = existingType };
         _enabled = new CheckBox { Content = "Enabled", IsChecked = !row.Get(_headers, "enabled", "true").Equals("false", StringComparison.OrdinalIgnoreCase) };
         _stage = new ComboBox { ItemsSource = new[] { "Setup", "Test", "Teardown" }, SelectedItem = row.Get(_headers, "stage", "Test") };
-        _condition = new TextBox { Text = row.Get(_headers, "condition"), Watermark = "_status_ eq 200" }; _parent = new TextBox { Text = row.Get(_headers, "parent"), Watermark = "Loop1 or If1:else" };
+        _condition = new TextBox { Text = row.Get(_headers, "condition"), Watermark = "_status_ eq 200" }; _parent = new ComboBox { MinWidth = 220 }; FillParentChoices(row);
         _timeout = new TextBox { Text = row.Get(_headers, "timeout", "30") }; _manualTimeoutMinutes = new TextBox { Text = row.Get(_headers, "manualtimeoutminutes", "15") }; _wait = new TextBox { Text = row.Get(_headers, "wait", "0") };
         _targetUrl = new TextBox { Text = row.Get(_headers, "targeturl") }; _verb = new ComboBox { ItemsSource = new[] { "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS" }, SelectedItem = row.Get(_headers, "verb", "POST") };
         _template = new TextBox { Text = row.Get(_headers, "templetsource") }; _contentType = new TextBox { Text = row.Get(_headers, "contenttype", "application/json"), Watermark = "application/json" };
@@ -237,13 +238,56 @@ internal sealed class TestStepConfigurationEditor : UserControl
         // TextBox that still has the previous StackPanel as its visual parent.
         foreach (var panel in _typeFields.Children.OfType<Panel>().Where(x => !ReferenceEquals(x, _headerFields)).ToList()) panel.Children.Clear();
         _typeFields.Children.Clear(); var type = _stepType.SelectedItem?.ToString() ?? "HTTP";
-        if (type is "If" or "While" or "For" or "ForEach") { _typeFields.Children.Add(DashboardStyle.Text($"{type} (control step)", 13, true)); if (type is "If" or "While") _typeFields.Children.Add(Field("Condition (left verb right)", _condition)); _typeFields.Children.Add(Field("Parent (control step it runs inside)", _parent)); _typeFields.Children.Add(DashboardStyle.Text(_headers.ContainsKey("parent") && _headers.ContainsKey("condition") ? "Loop settings (max, from, to, items, var, timeoutms ...) go in the StepConfig box below as key=value;key=value. No URL or template is needed." : "This workbook has no parent / condition columns in its config sheet yet; add them (or use the data editor's step form) for these fields to be saved.", 12)); }
+        if (ControlStepSettings.IsControl(type)) AddControlFields(type);
         if (type == "ActionManual") { _typeFields.Children.Add(DashboardStyle.Text("Manual action", 13, true)); _typeFields.Children.Add(Field("Manual timeout (minutes)", _manualTimeoutMinutes)); }
         if (type == "HTTP") { _typeFields.Children.Add(DashboardStyle.Text("HTTP request configuration", 13, true)); _typeFields.Children.Add(Field("Target URL", _targetUrl)); _typeFields.Children.Add(Field("HTTP verb", _verb)); _typeFields.Children.Add(Field("Content type", _contentType)); _typeFields.Children.Add(Field("Expected status", _expectedStatus)); _typeFields.Children.Add(_headerFields); _typeFields.Children.Add(Field("Template source", _template)); _typeFields.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { DashboardStyle.Action("New / edit template", EditTemplate, "primary"), DashboardStyle.Action("Validate template", ValidateTemplate) } }); if (_contentType.Text.Equals("multipart/form-data", StringComparison.OrdinalIgnoreCase)) _typeFields.Children.Add(_multipartEditor); }
         if (type is "GraphQL" or "CaseQL") { _typeFields.Children.Add(DashboardStyle.Text($"{type} configuration", 13, true)); _typeFields.Children.Add(Field("Target URL", _targetUrl)); _typeFields.Children.Add(Field("HTTP verb", _verb)); _typeFields.Children.Add(Field("Template source", _template)); _typeFields.Children.Add(_headerFields); _typeFields.Children.Add(Field("Source", _graphqlSource)); _typeFields.Children.Add(Field("Inline query", _graphqlInline)); _typeFields.Children.Add(Field("Operation name", _graphqlOperation)); _typeFields.Children.Add(Field("Variables JSON", _graphqlVariables)); _typeFields.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { DashboardStyle.Action("New / edit template", EditTemplate, "primary"), DashboardStyle.Action("Validate template", ValidateTemplate), DashboardStyle.Action($"Generate {type} StepConfig", GenerateStepConfig) } }); }
         if (type == "File") { _typeFields.Children.Add(DashboardStyle.Text("File configuration", 13, true)); _typeFields.Children.Add(Field("Template source", _template)); _typeFields.Children.Add(Field("Action", _fileAction)); _typeFields.Children.Add(Field("Path", _filePath)); _typeFields.Children.Add(Field("Content", _fileContent)); _typeFields.Children.Add(Field("Output variable", _fileOutput)); _typeFields.Children.Add(Field("JSON path", _fileJsonPath)); _typeFields.Children.Add(Field("Encoding", _fileEncoding)); _typeFields.Children.Add(Field("Output mode", _fileMode)); _typeFields.Children.Add(Field("Maximum bytes", _fileMaxBytes)); _typeFields.Children.Add(Field("Content type", _fileContentType)); _typeFields.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { DashboardStyle.Action("New / edit template", EditTemplate, "primary"), DashboardStyle.Action("Validate template", ValidateTemplate), DashboardStyle.Action("Generate File StepConfig", GenerateStepConfig) } }); }
         if (type == "Script") { _typeFields.Children.Add(DashboardStyle.Text("Script configuration", 13, true)); _typeFields.Children.Add(Field("Template source", _template)); _typeFields.Children.Add(Field("Script source", _scriptSource)); _typeFields.Children.Add(Field("Inline script", _scriptInline)); _typeFields.Children.Add(DashboardStyle.Text("Trusted scripts must be enabled in the instance Security settings.", 12, false, DashboardStyle.Muted)); _typeFields.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { DashboardStyle.Action("New / edit template", EditTemplate, "primary"), DashboardStyle.Action("Validate template", ValidateTemplate), DashboardStyle.Action("Generate Script StepConfig", GenerateStepConfig) } }); }
         if (type == "SQL") { _typeFields.Children.Add(DashboardStyle.Text("SQL configuration", 13, true)); _typeFields.Children.Add(Field("Template source", _template)); _typeFields.Children.Add(Field("Connection profile", _sqlConnection)); _typeFields.Children.Add(Field("Command type", _sqlCommandType)); _typeFields.Children.Add(Field("Source", _sqlSource)); _typeFields.Children.Add(Field("Command text", _sqlCommandText)); _typeFields.Children.Add(Field("Procedure", _sqlProcedure)); _typeFields.Children.Add(Field("Parameters JSON", _sqlParameters)); _typeFields.Children.Add(Field("Outputs JSON", _sqlOutputs)); _typeFields.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Children = { DashboardStyle.Action("New / edit template", EditTemplate, "primary"), DashboardStyle.Action("Validate template", ValidateTemplate), DashboardStyle.Action("Generate SQL StepConfig", GenerateStepConfig) } }); }
+    }
+
+    /// <summary>The steps this one can run inside: every other control step of the testcase, and "Name:else" for an If.</summary>
+    private void FillParentChoices(StepRow row)
+    {
+        var choices = new List<string> { string.Empty };
+        if (_byTestcase.TryGetValue(_selectedTestcase, out var rows))
+            foreach (var other in rows.Where(r => !ReferenceEquals(r, row)))
+            {
+                var otherType = other.Get(_headers, "steptype");
+                var name = other.Get(_headers, "stepname");
+                if (name.Length == 0 || !ControlStepSettings.IsControl(otherType)) continue;
+                choices.Add(name);
+                if (otherType == "If") choices.Add(name + ":else");
+            }
+        var current = row.Get(_headers, "parent");
+        if (current.Length > 0 && !choices.Contains(current)) choices.Add(current);
+        _parent.ItemsSource = choices;
+        _parent.SelectedItem = current;
+    }
+
+    private void AddControlFields(string type)
+    {
+        _typeFields.Children.Add(DashboardStyle.Text($"{type} (control step: sends nothing, decides which steps run)", 13, true));
+        _typeFields.Children.Add(Field("Runs inside (leave empty for top level; Name:else = the else branch of an If)", _parent));
+        if (type is "If" or "While") _typeFields.Children.Add(Field("Condition: left verb right (for example _status_ eq 200)", _condition));
+        _controlFields.Clear();
+        var values = ControlStepSettings.Read(_stepConfig.Text);
+        foreach (var setting in ControlStepSettings.For(type))
+        {
+            var box = new TextBox { Text = values.GetValueOrDefault(setting.Key, string.Empty), Watermark = setting.Placeholder };
+            if (setting.Help.Length > 0) Avalonia.Controls.ToolTip.SetTip(box, setting.Help);
+            box.PropertyChanged += (_, e) => { if (e.Property == TextBox.TextProperty && !_loading) WriteControlConfig(type); };
+            _controlFields[setting.Key] = box;
+            _typeFields.Children.Add(Field(setting.Label + (setting.Help.Length > 0 ? " - " + setting.Help : string.Empty), box));
+        }
+        _typeFields.Children.Add(DashboardStyle.Text("Steps that should run inside this one: choose this step in their \"Runs inside\" box.", 11, false, DashboardStyle.Muted));
+    }
+
+    private void WriteControlConfig(string type)
+    {
+        var values = _controlFields.ToDictionary(p => p.Key, p => p.Value.Text ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+        _stepConfig.Text = ControlStepSettings.Write(type, values, _stepConfig.Text);
     }
 
     private void LoadStepConfigFields(string raw)
@@ -315,10 +359,14 @@ internal sealed class TestStepConfigurationEditor : UserControl
     private static JsonElement ParseJson(string? value) { try { using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(value) ? "{}" : value); return doc.RootElement.Clone(); } catch { return JsonDocument.Parse("{}").RootElement.Clone(); } }
     private static long ParseLong(string? value, long fallback) => long.TryParse(value, out var parsed) && parsed >= 0 ? parsed : fallback;
 
+    private void EnsureColumn(string name) { if (!_headers.ContainsKey(name)) _headers[name] = _headers.Values.DefaultIfEmpty(0).Max() + 1; }
+
     private void UpdateRowFromForm()
     {
         if (_selectedStep is null) return;
-        _selectedStep.Set(_headers, "condition", _condition.Text?.Trim() ?? ""); _selectedStep.Set(_headers, "parent", _parent.Text?.Trim() ?? ""); _selectedStep.Set(_headers, "stepname", _stepName.Text?.Trim() ?? ""); _selectedStep.Set(_headers, "steptype", _stepType.SelectedItem?.ToString() ?? "HTTP"); _selectedStep.Set(_headers, "enabled", (_enabled.IsChecked == true).ToString().ToLowerInvariant()); _selectedStep.Set(_headers, "stage", _stage.SelectedItem?.ToString() ?? "Test"); _selectedStep.Set(_headers, "timeout", _timeout.Text ?? "0"); _selectedStep.Set(_headers, "manualtimeoutminutes", _manualTimeoutMinutes.Text ?? "15"); _selectedStep.Set(_headers, "wait", _wait.Text ?? "0"); _selectedStep.Set(_headers, "targeturl", _targetUrl.Text ?? ""); _selectedStep.Set(_headers, "verb", _verb.SelectedItem?.ToString() ?? "POST"); _selectedStep.Set(_headers, "templetsource", _template.Text ?? ""); _selectedStep.Set(_headers, "contenttype", _contentType.Text ?? ""); _selectedStep.Set(_headers, "expectedstatus", _expectedStatus.Text ?? ""); _selectedStep.Set(_headers, "stepconfig", _stepConfig.Text ?? "{}"); _selectedStep.Set(_headers, "assert", (_assertEnabled.IsChecked == true).ToString().ToLowerInvariant()); _selectedStep.Set(_headers, "ignoreempty", (_ignoreEmpty.IsChecked == true).ToString().ToLowerInvariant()); _selectedStep.Set(_headers, "assertonlyresponse", (_assertOnlyResponse.IsChecked == true).ToString().ToLowerInvariant()); _selectedStep.Set(_headers, "stoponfailure", (_stopOnFailure.IsChecked == true).ToString().ToLowerInvariant());
+        var selectedType = _stepType.SelectedItem?.ToString() ?? "HTTP";
+        if (ControlStepSettings.IsControl(selectedType) || _parent.SelectedItem?.ToString() is { Length: > 0 } || _condition.Text is { Length: > 0 }) { EnsureColumn("parent"); EnsureColumn("condition"); EnsureColumn("stepconfig"); }   // the columns are added to the config sheet only when a step needs them
+        _selectedStep.Set(_headers, "condition", _condition.Text?.Trim() ?? ""); _selectedStep.Set(_headers, "parent", _parent.SelectedItem?.ToString() ?? ""); _selectedStep.Set(_headers, "stepname", _stepName.Text?.Trim() ?? ""); _selectedStep.Set(_headers, "steptype", _stepType.SelectedItem?.ToString() ?? "HTTP"); _selectedStep.Set(_headers, "enabled", (_enabled.IsChecked == true).ToString().ToLowerInvariant()); _selectedStep.Set(_headers, "stage", _stage.SelectedItem?.ToString() ?? "Test"); _selectedStep.Set(_headers, "timeout", _timeout.Text ?? "0"); _selectedStep.Set(_headers, "manualtimeoutminutes", _manualTimeoutMinutes.Text ?? "15"); _selectedStep.Set(_headers, "wait", _wait.Text ?? "0"); _selectedStep.Set(_headers, "targeturl", _targetUrl.Text ?? ""); _selectedStep.Set(_headers, "verb", _verb.SelectedItem?.ToString() ?? "POST"); _selectedStep.Set(_headers, "templetsource", _template.Text ?? ""); _selectedStep.Set(_headers, "contenttype", _contentType.Text ?? ""); _selectedStep.Set(_headers, "expectedstatus", _expectedStatus.Text ?? ""); _selectedStep.Set(_headers, "stepconfig", _stepConfig.Text ?? "{}"); _selectedStep.Set(_headers, "assert", (_assertEnabled.IsChecked == true).ToString().ToLowerInvariant()); _selectedStep.Set(_headers, "ignoreempty", (_ignoreEmpty.IsChecked == true).ToString().ToLowerInvariant()); _selectedStep.Set(_headers, "assertonlyresponse", (_assertOnlyResponse.IsChecked == true).ToString().ToLowerInvariant()); _selectedStep.Set(_headers, "stoponfailure", (_stopOnFailure.IsChecked == true).ToString().ToLowerInvariant());
         foreach (var key in _headers.Keys.Where(x => x.StartsWith("header_", StringComparison.OrdinalIgnoreCase)).ToList()) _selectedStep.Set(_headers, key, "");
         foreach (var pair in _headerEditors)
         {
