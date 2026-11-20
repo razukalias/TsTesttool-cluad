@@ -40,6 +40,7 @@ public sealed class GraphQlStepExecutor : IStepExecutor
             foreach (var header in request.Step.Headers) message.Headers.TryAddWithoutValidation(header.Key, request.Context.Resolve(header.Value));
             using var response = await _client.SendAsync(message, request.CancellationToken);
             result.StatusCode = (int)response.StatusCode;
+            foreach (var header in response.Headers.Concat(response.Content.Headers)) result.ResponseHeaders[header.Key] = string.Join(",", header.Value);
             result.RequestText = JsonSerializer.Serialize(payload, ReadableJsonOptions);
             result.ResponseText = await response.Content.ReadAsStringAsync(request.CancellationToken);
             using var document = JsonDocument.Parse(result.ResponseText);

@@ -328,7 +328,7 @@ public sealed class TestRunner
             _logger.Info($"STEP REQUEST [{requestId}]\nTYPE: HTTP\nSTEP: {step.StepName}\nENVIRONMENT: {environment}\nTARGET: {result.TargetUrl}\nMETHOD: {step.Verb}\nTEMPLATE: {step.TemplateSource}\nHEADERS:\n{result.RequestHeaders}\nDETAILS:\ncontentType={result.ContentType}\nBODY:\n{result.RequestBody}");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); timeout.CancelAfter(StepTimeout(step)); using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseContentRead, timeout.Token);
             result.HttpStatus = (int)response.StatusCode; var responseHeaderValues = response.Headers.Concat(response.Content.Headers).ToList(); result.ResponseHeaders = string.Join("\n", responseHeaderValues.Select(h => $"{h.Key}={string.Join(",", h.Value)}")); result.ResponseBody = await response.Content.ReadAsStringAsync(timeout.Token);
-            PublishResponseValues(step.StepName, result.ResponseBody, result.ContentType, correlation);
+            PublishResponseValues(step.StepName, result.ResponseBody, result.ContentType, correlation); PublishResponseHeaders(step.StepName, responseHeaderValues.ToDictionary(h => h.Key, h => string.Join(",", h.Value)), correlation);
             _logger.Info($"STEP RESPONSE [{requestId}]\nSTATUS: {result.HttpStatus}\nHEADERS:\n{result.ResponseHeaders}\nBODY:\n{result.ResponseBody}");
             if (step.AssertEnabled)
             {
@@ -405,7 +405,7 @@ public sealed class TestRunner
             var execution = await _pipeline.ExecuteAsync(new StepExecutionRequest { Step = step, Context = context, WorkspaceRoot = _features.WorkspaceRoot, TemplateText = templateText, CancellationToken = timeout.Token });
             StepExecutionResultMapper.PublishOutputs(execution, context);
             result.RequestBody = InternalLogger.RedactVariableValues(execution.RequestText, redactedVariables, variables); result.ResponseBody = execution.ResponseText; result.HttpStatus = execution.StatusCode == 0 && execution.Succeeded ? 200 : execution.StatusCode; result.ErrorMessage = execution.ErrorMessage;
-            PublishResponseValues(step.StepName, result.ResponseBody, "json", correlation);
+            PublishResponseValues(step.StepName, result.ResponseBody, "json", correlation); PublishResponseHeaders(step.StepName, execution.ResponseHeaders, correlation); result.ResponseHeaders = string.Join("\n", execution.ResponseHeaders.Select(h => $"{h.Key}={h.Value}"));
             var shownBody = InternalLogger.RedactVariableValues(string.IsNullOrEmpty(execution.LogBody) ? templateText : execution.LogBody, redactedVariables, variables);
             _logger.Info($"STEP REQUEST [{requestId}]\nTYPE: {step.StepType.WireName()}\nSTEP: {step.StepName}\nENVIRONMENT: {environment}\nTARGET: {result.TargetUrl}\nMETHOD: {execution.LogMethod}\nTEMPLATE: {step.TemplateSource}\nHEADERS:\n{string.Join("; ", step.Headers.Select(h => $"{h.Key}={h.Value}"))}\nDETAILS:\n{FormatDetails(execution.LogDetails, step.StepConfig)}\nBODY:\n{shownBody}");
             _logger.Info($"STEP RESPONSE [{requestId}]\nSTATUS: {result.HttpStatus}\nHEADERS:\n\nBODY:\n{execution.ResponseText}{OptionalErrorLine(execution.ErrorMessage)}");
@@ -416,7 +416,7 @@ public sealed class TestRunner
             {
                 var (plain, bugs) = BugTag.Strip(definitions, environment);
                 var resolvedDefinitions = await ResolveAssertionReferencesAsync(plain, correlation, requestReferences, context, cancellationToken);
-                var evaluated = _assertions.Evaluate(result.ResponseBody, "json", resolvedDefinitions, run.RunId, requestId, result.HttpStatus, step.IgnoreEmpty, step.AssertOnlyResponse);
+                var evaluated = _assertions.Evaluate(result.ResponseBody, "json", resolvedDefinitions, run.RunId, requestId, result.HttpStatus, step.IgnoreEmpty, step.AssertOnlyResponse, execution.ResponseHeaders);
                 BugTag.Apply(evaluated, bugs);
                 result.Assertions.AddRange(evaluated);
             }
@@ -544,6 +544,12 @@ public sealed class TestRunner
         }
         return result;
     }
+    /// <summary>Makes the response headers readable by later steps as <c>&lt;From_response_Step.responseHeader.Name&gt;</c>.</summary>
+    private static void PublishResponseHeaders(string stepName, IReadOnlyDictionary<string, string> headers, Dictionary<string, string> correlation)
+    {
+        foreach (var header in headers) correlation[$"{stepName}.{AssertionEngine.ResponseHeaderPrefix}{header.Key}"] = header.Value;
+    }
+
     private static void PublishResponseValues(string stepName, string body, string contentType, Dictionary<string, string> correlation)
     {
         if (string.IsNullOrWhiteSpace(body)) return;

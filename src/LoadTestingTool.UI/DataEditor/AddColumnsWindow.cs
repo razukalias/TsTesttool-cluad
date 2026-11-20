@@ -44,6 +44,13 @@ public sealed class AddColumnsWindow : Window
         }
         _responseStep.SelectionChanged += (_, _) => LoadResponse();
         _headerStep.SelectionChanged += (_, _) => LoadHeaders();
+        var pickHeaders = new Button { Content = "Choose a sample file…", Tag = "header-file" };
+        pickHeaders.Click += async (_, _) =>
+        {
+            if (StorageProvider is not { } storage) return;
+            var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "Sample response headers (Name: value per line)", AllowMultiple = false });
+            if (files.Count > 0 && files[0].TryGetLocalPath() is { } path) LoadHeaders(path);
+        };
 
         var pick = new Button { Content = "Choose a sample file…", Tag = "response-file" };
         pick.Click += async (_, _) =>
@@ -55,7 +62,7 @@ public sealed class AddColumnsWindow : Window
 
         _tabs.Items.Add(new TabItem { Header = "Request", Tag = "tab-request", Content = Tab(_requestNote, _requestList) });
         _tabs.Items.Add(new TabItem { Header = "Response", Tag = "tab-response", Content = Tab(Labeled("Step", _responseStep), _responseNote, _responseList, _responseFill, pick) });
-        _tabs.Items.Add(new TabItem { Header = "Response header", Tag = "tab-header", Content = Tab(Labeled("Step", _headerStep), _headerNote, _headerList, _headerFill) });
+        _tabs.Items.Add(new TabItem { Header = "Response header", Tag = "tab-header", Content = Tab(Labeled("Step", _headerStep), _headerNote, _headerList, _headerFill, pickHeaders) });
 
         var add = new Button { Content = "Add ticked columns", Classes = { "primary" }, Tag = "add-columns", MinWidth = 140 };
         var close = new Button { Content = "Close", MinWidth = 80, IsCancel = true };
@@ -107,28 +114,16 @@ public sealed class AddColumnsWindow : Window
         _responseFill.IsVisible = _editor.ResponseFields.Count > 0;
     }
 
-    private void LoadHeaders()
+    private void LoadHeaders(string? file = null)
     {
-        _editor.FindResponseHeaders(_headerStep.SelectedItem as string ?? string.Empty);
+        _editor.FindResponseHeaders(_headerStep.SelectedItem as string ?? string.Empty, file);
         Fill(_headerList, _editor.ResponseHeaderChoices, c => c.Display, c => c.IsChosen, (c, on) => c.IsChosen = on, "header-choice");
         _headerNote.Text = _editor.ResponseHeadersNote;
         _headerFill.IsVisible = _editor.ResponseHeaderChoices.Count > 0;
     }
 
-    /// <summary>Adds the ticked items of every tab. The selected row is kept between the parts so the "fill" option still reaches it.</summary>
-    public void AddTicked()
-    {
-        var keepId = _editor.SelectedRow?.CurrentDataId;
-        var keepTestcase = _editor.SelectedRow?.TestcaseIndex;
-        void Reselect() { if (keepId is not null) _editor.SelectedRow = _editor.VisibleRows.FirstOrDefault(r => r.CurrentDataId == keepId && r.TestcaseIndex == keepTestcase) ?? _editor.SelectedRow; }
-        var added = _editor.AddTemplateColumns();
-        Reselect();
-        added += _editor.AddResponseFields(_responseFill.IsChecked == true);
-        Reselect();
-        added += _editor.AddResponseHeaders(_headerFill.IsChecked == true);
-        Reselect();
-        if (added == 0) _editor.ShowStatusMessage("Nothing was ticked, so no columns were added.");
-    }
+    /// <summary>Adds the ticked items of every tab as one undo step.</summary>
+    public void AddTicked() => _editor.AddTickedColumns(_responseFill.IsChecked == true, _headerFill.IsChecked == true);
 
     internal void SelectTab(string header) => _tabs.SelectedItem = _tabs.Items.OfType<TabItem>().First(t => (string?)t.Header == header);
 }

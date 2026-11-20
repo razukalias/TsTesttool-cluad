@@ -110,6 +110,24 @@ public static class ResponseSamples
         return headers;
     }
 
+    /// <summary>Headers pasted or saved as text, one per line: <c>Name: value</c> (browser/curl -i style) or <c>Name=value</c>. A status line (HTTP/1.1 200 OK) and blank lines are ignored.</summary>
+    public static List<HeaderSample> ParseHeaderLines(string text)
+    {
+        var headers = new List<HeaderSample>();
+        foreach (var line in text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (line.StartsWith("HTTP/", StringComparison.OrdinalIgnoreCase)) continue;
+            var colon = line.IndexOf(':');
+            var equals = line.IndexOf('=');
+            var at = colon > 0 && (equals < 0 || colon < equals) ? colon : equals;
+            if (at <= 0) continue;
+            var name = line[..at].Trim();
+            if (name.Length == 0 || name.Contains(' ')) continue;
+            headers.Add(new HeaderSample(name, line[(at + 1)..].Trim()));
+        }
+        return headers;
+    }
+
     /// <summary>The response headers of the newest stored run of a step (the row of <paramref name="preferredDataId"/> first).</summary>
     public static (List<HeaderSample> Headers, string Source)? LatestHeaders(string historyFolder, string stepName, string? preferredDataId = null, int maxFiles = 60)
     {

@@ -73,6 +73,9 @@ public sealed class StepResult
     public int StatusCode { get; set; }
     public string RequestText { get; set; } = string.Empty;
     public string ResponseText { get; set; } = string.Empty;
+
+    /// <summary>The HTTP response headers (HTTP-based steps), addressable as Step.responseHeader.Name in assertions and references.</summary>
+    public Dictionary<string, string> ResponseHeaders { get; } = new(StringComparer.OrdinalIgnoreCase);
     public string ErrorMessage { get; set; } = string.Empty;
 
     /// <summary>For the log: the verb or action the step performed (POST, StoredProc, readbinary, ...).</summary>

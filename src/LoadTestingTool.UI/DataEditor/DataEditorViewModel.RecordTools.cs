@@ -17,6 +17,29 @@ public sealed partial class DataEditorViewModel
 {
     public ObservableCollection<TemplateColumnChoice> TemplateColumns { get; } = [];
 
+    /// <summary>
+    /// Adds the ticked template columns, response fields and response headers as one undo step. The selected row is kept
+    /// between the parts so "fill the expected values" reaches it. Returns how many columns were added.
+    /// </summary>
+    public int AddTickedColumns(bool fillResponseValues, bool fillHeaderValues)
+    {
+        var keepId = SelectedRow?.CurrentDataId;
+        var keepTestcase = SelectedRow?.TestcaseIndex;
+        void Reselect() { if (keepId is not null) SelectedRow = VisibleRows.FirstOrDefault(r => r.CurrentDataId == keepId && r.TestcaseIndex == keepTestcase) ?? SelectedRow; }
+        var requested = TemplateColumns.Count(c => c.IsChosen) + ResponseFields.Count(f => f.IsChosen) + ResponseHeaderChoices.Count(h => h.IsChosen);
+        if (requested == 0) { ShowStatus("Nothing was ticked, so no columns were added.", isError: false); return 0; }
+        var added = 0;
+        RunBatch("add columns", () =>
+        {
+            added += AddTemplateColumns(); Reselect();
+            added += AddResponseFields(fillResponseValues); Reselect();
+            added += AddResponseHeaders(fillHeaderValues); Reselect();
+            return added;
+        });
+        ShowStatus($"Added {added} {(added == 1 ? "column" : "columns")}.", isError: false);
+        return added;
+    }
+
     internal void ShowStatusMessage(string message) => ShowStatus(message, isError: false);
 
     /// <summary>Lists the <c>_variable_</c> placeholders of the testcase's templates that have no column yet (all steps of the instance in instance view).</summary>

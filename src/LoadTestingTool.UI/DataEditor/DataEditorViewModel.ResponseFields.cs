@@ -110,11 +110,18 @@ public sealed partial class DataEditorViewModel
     [ObservableProperty] private string _responseHeadersNote = string.Empty;
 
     /// <summary>Lists the HTTP response headers of a step's newest stored run that have no expected column yet.</summary>
-    public void FindResponseHeaders(string step)
+    public void FindResponseHeaders(string step, string? sampleFile = null)
     {
         ResponseHeaderChoices.Clear();
         if (step.Length == 0) { ResponseHeadersNote = "Choose a step."; return; }
-        var stored = ResponseSamples.LatestHeaders(HistoryFolderPath, step, SelectedRow?.CurrentDataId);
+        (List<ResponseSamples.HeaderSample> Headers, string Source)? stored;
+        if (sampleFile is not null)
+        {
+            try { stored = (ResponseSamples.ParseHeaderLines(File.ReadAllText(sampleFile)), $"sample file {Path.GetFileName(sampleFile)}"); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { ResponseHeadersNote = $"Could not read the file: {ex.Message}"; return; }
+            if (stored.Value.Headers.Count == 0) { ResponseHeadersNote = "The file has no header lines (Name: value)."; return; }
+        }
+        else stored = ResponseSamples.LatestHeaders(HistoryFolderPath, step, SelectedRow?.CurrentDataId);
         if (stored is null) { ResponseHeadersNote = $"No stored response headers for {step}. Run the testcase with the request history on (it keeps the headers), then open this again."; return; }
         foreach (var header in stored.Value.Headers)
         {

@@ -101,4 +101,38 @@ public class ResponseHeaderTests
         editor.FindTemplateColumns("CreateCustomer");
         Assert.Equal(["CreateCustomer.newField"], editor.TemplateColumns.Select(c => c.Header));
     }
+
+    [Fact]
+    public void A_sample_file_of_header_lines_stands_in_for_a_stored_run_and_status_lines_are_ignored()
+    {
+        using var dir = new TempDir();
+        var editor = new DataEditorViewModel(Samples.CreateLarge(dir, rows: 2), "Customers");
+        var sample = dir.Combine("headers.txt");
+        File.WriteAllText(sample, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nX-Trace: abc\r\n\r\n");
+        editor.FindResponseHeaders("CreateCustomer", sample);
+        Assert.Equal([("Content-Type", "application/json"), ("X-Trace", "abc")], editor.ResponseHeaderChoices.Select(h => (h.Name, h.Value)));
+        Assert.Contains("headers.txt", editor.ResponseHeadersNote);
+    }
+
+    [Fact]
+    public void Adding_from_all_three_tabs_is_one_undo_step()
+    {
+        using var dir = new TempDir();
+        var editor = Open(dir);
+        Directory.CreateDirectory(dir.Combine("Templates"));
+        File.WriteAllText(System.IO.Path.Combine(dir.Combine("Templates"), "create.json"), "{\"x\":\"_newField_\"}");
+        editor.FindTemplateColumns();
+        editor.FindResponseHeaders("CreateCustomer");
+        Assert.NotEmpty(editor.TemplateColumns);
+
+        var added = editor.AddTickedColumns(fillResponseValues: true, fillHeaderValues: true);
+
+        Assert.True(added >= 3);
+        Assert.Contains(editor.RequestLines, l => l.Title == "CreateCustomer.newField");
+        Assert.Contains(editor.ExpectedLines, l => l.Title == "CreateCustomer.responseHeader.X-Trace");
+        editor.UndoCommand.Execute(null);
+        Assert.DoesNotContain(editor.RequestLines, l => l.Title == "CreateCustomer.newField");
+        Assert.DoesNotContain(editor.ExpectedLines, l => l.Title.Contains("responseHeader"));
+        Assert.False(editor.CanUndo);   // exactly one step
+    }
 }
