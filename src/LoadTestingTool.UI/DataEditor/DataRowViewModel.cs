@@ -35,7 +35,8 @@ public sealed partial class StepNode(TestcaseItem owner, string name, int positi
 
     /// <summary>Result of the last run for this step.</summary>
     public RunBadge Run { get; } = new();
-    public string Name { get; } = name;
+    private string _name = name;
+    public string Name { get => _name; internal set { if (SetProperty(ref _name, value)) { OnPropertyChanged(nameof(Title)); } } }
     public int Position { get; } = position;
     public string Title => $"{Position} · {Name}";
 }
@@ -121,7 +122,17 @@ public sealed partial class TestcaseItem : ObservableObject
     public void UpdateSteps(IReadOnlyList<string> steps)
     {
         Steps = steps;
-        if (!StepNodes.Select(n => n.Name).SequenceEqual(steps)) RebuildStepNodes();
+        if (!StepNodes.Select(n => n.Name).SequenceEqual(steps))
+        {
+            // A rename keeps the tree's nodes (and its selection); only an add, remove or move rebuilds them.
+            if (StepNodes.Count == steps.Count)
+            {
+                var renamedOnly = StepNodes.Where((n, i) => n.Name != steps[i]).Count() == 1;
+                if (renamedOnly) { for (var i = 0; i < steps.Count; i++) { StepNodes[i].Name = steps[i]; StepNodes[i].EditText = steps[i]; } }
+                else RebuildStepNodes();
+            }
+            else RebuildStepNodes();
+        }
         OnPropertyChanged(nameof(Steps));
         OnPropertyChanged(nameof(Summary));
     }

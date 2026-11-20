@@ -164,7 +164,16 @@ public sealed class StepFormView : UserControl
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("120,*") };
         row.Children.Add(StepFieldHelp.Labelled(Text("Name", 12, Muted, vertical: VerticalAlignment.Center), StepFieldHelp.TextFor("stepname")));
         var box = new TextBox { Text = _step.Cells[0], HorizontalAlignment = HorizontalAlignment.Stretch };
-        void Commit() { var value = box.Text ?? string.Empty; if (value != _step.Cells[0]) _step.Cells[0] = value; }
+        var committing = false;
+        void Commit()
+        {
+            if (committing) return;   // Enter and the focus loss that follows must not rename twice
+            var value = (box.Text ?? string.Empty).Trim();
+            if (value == _step.Cells[0]) { if (box.Text != value) box.Text = value; return; }
+            committing = true;
+            try { _step.Cells[0] = value; }
+            finally { committing = false; }
+        }
         box.LostFocus += (_, _) => Commit();
         box.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Commit(); e.Handled = true; } else if (e.Key == Key.Escape) { box.Text = _step.Cells[0]; e.Handled = true; } };
         NotifyCollectionChangedEventHandler follow = (_, e) => { if (e.Action == NotifyCollectionChangedAction.Replace && e.NewStartingIndex == 0 && box.Text != _step.Cells[0]) box.Text = _step.Cells[0]; };

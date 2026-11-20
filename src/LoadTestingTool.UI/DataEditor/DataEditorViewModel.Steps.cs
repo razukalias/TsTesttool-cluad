@@ -199,22 +199,29 @@ public sealed partial class DataEditorViewModel
     }
 
     [RelayCommand]
-    private void RemoveStep()
+    private void RemoveStep() => RemoveStepRow(SelectedStep);
+
+    /// <summary>Removes the step called <paramref name="name"/> of the selected testcase (the one right-clicked in the tree), not whichever is selected.</summary>
+    public void RemoveStepNamed(string name)
+        => RemoveStepRow(StepRows.FirstOrDefault(r => string.Equals(r.CurrentName, name, StringComparison.OrdinalIgnoreCase)));
+
+    private void RemoveStepRow(StepRowViewModel? step)
     {
-        if (SelectedStep is not { } step) return;
+        if (step is null) return;
         var name = step.CurrentName;
         var index = StepRows.IndexOf(step);
         Record($"remove step {name}");
-        _document.Config.RemoveRow(step.Row);
+        var result = _document.RemoveStep(step.Row);
         StepRows.Remove(step);
+        if (ReferenceEquals(FocusedStep, step)) FocusedStep = null;
         SelectedStep = StepRows.Count == 0 ? null : StepRows[Math.Min(index, StepRows.Count - 1)];
         OnPropertyChanged(nameof(StepCountText));
         StepsChanged();
-        var leftovers = _document.Request.Headers.Concat(_document.Response.Headers)
-            .Any(h => h.Contains(name + ".", StringComparison.OrdinalIgnoreCase));
-        ShowStatus(leftovers
-            ? $"Removed step {name}. Its data columns remain in the request and response sheets."
-            : $"Removed step {name}.", isError: false);
+        var text = $"Removed step {name}";
+        if (result.ColumnsRemoved > 0) text += $" and its {result.ColumnsRemoved} data {(result.ColumnsRemoved == 1 ? "column" : "columns")} from the request and response sheets (Undo brings them back)";
+        text += ".";
+        if (result.ReferencesLeft > 0) text += $" {result.ReferencesLeft} {(result.ReferencesLeft == 1 ? "cell" : "cells")} still read its response at run time; change {(result.ReferencesLeft == 1 ? "it" : "them")}.";
+        ShowStatus(text, isError: result.ReferencesLeft > 0);
     }
 
     /// <summary>Keeps the testcase's step list current and flags the data columns for a rebuild.</summary>

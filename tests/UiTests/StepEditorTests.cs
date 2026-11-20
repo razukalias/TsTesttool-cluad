@@ -165,7 +165,7 @@ public class StepEditorTests
         vm.RemoveStepCommand.Execute(null);
 
         Assert.Equal(["FetchUser"], vm.StepRows.Select(s => s.Cells[0]));
-        Assert.Contains("data columns remain", vm.StatusMessage);
+        Assert.DoesNotContain(vm.Document.Request.Headers.Concat(vm.Document.Response.Headers), h => h.Contains("CreatePost.", StringComparison.OrdinalIgnoreCase));
         vm.SaveCommand.Execute(null);
         var names = new WorkbookReader().Read(path).Testcases.SelectMany(t => t.Steps).Select(s => s.StepName).ToList();
         Assert.DoesNotContain("CreatePost", names);

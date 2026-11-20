@@ -97,7 +97,7 @@ public partial class DataEditorWindow
                 menu.Items.Add(Item("Duplicate step", () => _shell.DuplicateStep(step)));
                 menu.Items.Add(CopyStepMenu(step));
                 menu.Items.Add(new Separator());
-                menu.Items.Add(Item("Remove step", () => _shell.Current?.RemoveStepCommand.Execute(null)));
+                menu.Items.Add(Item("Remove step", () => _shell.RemoveStep(step)));
                 break;
             default:
                 return null;

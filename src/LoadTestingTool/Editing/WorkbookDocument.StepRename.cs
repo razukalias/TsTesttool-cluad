@@ -5,8 +5,36 @@ namespace LoadTestingTool.Editing;
 /// <summary>What a step rename changed.</summary>
 public sealed record StepRenameResult(int ColumnsRenamed, int CellsRewritten, int ElsewhereMentions);
 
+/// <summary>What removing a step changed: the data columns taken out and the cells that still refer to the step.</summary>
+public sealed record StepRemoveResult(int ColumnsRemoved, int ReferencesLeft);
+
 public sealed partial class WorkbookDocument
 {
+    /// <summary>
+    /// Removes a step's config row and, when no other row uses the same step name, its <c>Step.field</c> request and response
+    /// data columns (they are emptied in the file on save). Cells that still read the step's response at run time
+    /// (<c>&lt;From_response_Step.…&gt;</c>) are counted, not changed.
+    /// </summary>
+    public StepRemoveResult RemoveStep(TableRow configRow)
+    {
+        var name = configRow.Get("stepname").Trim();
+        Config.RemoveRow(configRow);
+        var stillUsed = name.Length == 0 || Config.Rows.Any(r => !r.IsBlank && string.Equals(r.Get("stepname").Trim(), name, StringComparison.OrdinalIgnoreCase));
+        var removed = 0;
+        if (!stillUsed)
+            foreach (var table in new[] { Request, Response })
+                for (var i = table.ColumnCount - 1; i >= 0; i--)
+                    if (TryRenameHeader(table.Headers[i], name, "x", out _)) { table.RemoveColumn(i); removed++; }
+        var needle = "<From_response_" + name + ".";
+        var left = 0;
+        if (!stillUsed && name.Length > 0)
+            foreach (var table in new[] { Config, Request, Response })
+                foreach (var row in table.Rows.Where(r => !r.IsBlank))
+                    for (var i = 0; i < table.ColumnCount; i++)
+                        if (row.GetAt(i).Contains(needle, StringComparison.OrdinalIgnoreCase)) left++;
+        return new(removed, left);
+    }
+
     private static readonly char[] ForbiddenStepNameCharacters = ['.', '<', '>', '{', '}', '|', ',', ':'];
 
     /// <summary>

@@ -166,6 +166,31 @@ public sealed partial class DataEditorViewModel
     private void OnConfigCellEdited(SheetRowViewModel row, int cell, string value)
     {
         if (row.Row is null || row.Row.GetAt(cell) == value) return;
+        if (SheetHeaders[cell].Trim().Equals("stepname", StringComparison.OrdinalIgnoreCase) && row.Row.GetAt(cell).Trim().Length > 0)
+        {
+            // a step name is tied to its data columns and references, so rename them all, as the step form does
+            var old = row.Row.GetAt(cell).Trim();
+            var name = value.Trim();
+            if (name.Length == 0) { row.SetSilently(cell, old); ShowStatus("A step name cannot be empty.", isError: true); return; }
+            RaiseStepEdited(old);
+            Record($"rename step {old} to {name}");
+            try
+            {
+                var result = _document.RenameStep(old, name);
+                foreach (var other in SheetRows.Where(r => r.Row is not null && string.Equals(r.Row.Get("stepname").Trim(), name, StringComparison.OrdinalIgnoreCase)))
+                    if (other.Cells[cell] != name) other.SetSilently(cell, name);
+                _stepsStale = true;
+                StepsChanged();
+                ShowStatus(RenameSummary(old, name, result), isError: false);
+            }
+            catch (InvalidOperationException ex)
+            {
+                DiscardLastRecord();
+                row.SetSilently(cell, old);
+                ShowStatus(ex.Message, isError: true);
+            }
+            return;
+        }
         Record($"edit {SheetHeaders[cell]} in config");
         row.Row.SetAt(cell, value);
         StepsChanged();

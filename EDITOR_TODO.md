@@ -549,6 +549,12 @@ Example row:
   - Likely cause (not yet confirmed): the step-filter box sets `StepFilter` → `OnStepFilterChanged` → `BuildRows()` → `RefreshStepOptions()`, which clears and refills `StepFilterOptions` (DataEditorViewModel.cs, ~line 149) while that same box is still in the middle of its own selection update.
   - Idea for the fix: when the change comes from the user's own choice in the box, rebuild the rows but do not rebuild the options list; or post the options refresh to the dispatcher so it runs after the selection finished. Add a regression test that changes the step filter from the window and checks no error text appears.
 
+## Step remove and rename fixes (2026-11-20)
+- [x] Tree "Remove step" removes the right-clicked step (it used the selected one, so it often removed the top step).
+- [x] Removing a step now also removes its `Step.*` columns from the request and response sheets (undoable; saving empties them). Columns stay when another row still uses the same step name; run-time `<From_response_Step.…>` leftovers are counted in the message.
+- [x] Renaming a step in the config table view renames its data columns, references, dontrun and extractvariable cells like the form does (a clash or an empty name is refused and reverted).
+- [x] Renaming from the step form no longer rebuilds the tree nodes (selection stayed on a removed node) and no longer renames twice on Enter plus focus loss.
+
 ## Leftovers closed 2026-11-17
 - Per-run "Enable internal log" checkbox removed (it did nothing; the instance setting decides).
 - Resolved copies (ResolvedValues, Request) show `<from_filepath>name` for file cells instead of masked content; content is still never written.

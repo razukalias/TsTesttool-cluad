@@ -43,6 +43,19 @@ public sealed partial class EditorShellViewModel
         if (node is not null) SelectedNode = node;
     }
 
+    /// <summary>Removes the step that was right-clicked (not the selected one) with its data columns, then selects a neighbour.</summary>
+    public void RemoveStep(StepNode step)
+    {
+        if (EditorOf(step) is not { } editor) return;
+        Current = editor;
+        var owner = step.Owner;
+        if (!ReferenceEquals(editor.SelectedTestcase, owner)) editor.SelectedTestcase = owner;
+        var position = owner.StepNodes.IndexOf(step);
+        editor.RemoveStepNamed(step.Name);
+        if (owner.StepNodes.Count == 0) SelectedNode = owner;
+        else SelectedNode = owner.StepNodes[Math.Clamp(position, 0, owner.StepNodes.Count - 1)];
+    }
+
     /// <summary>Copies a testcase into another instance; the target keeps it unsaved until saved.</summary>
     public async Task CopyTestcaseToAsync(TestcaseItem testcase, InstanceNode target)
     {

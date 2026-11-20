@@ -94,6 +94,49 @@ public class StepNodeTests
         Assert.DoesNotContain(old, vm.SelectedTestcase.StepNodes.Select(n => n.Name));
         Assert.True(vm.IsDirty);
     }
+
+    [Fact]
+    public void Removing_a_step_from_the_tree_removes_the_clicked_step_and_its_data_columns()
+    {
+        using var dir = new TempDir();
+        var shell = Shell(dir, out _);
+        var testcase = shell.Instances[0].Testcases.FirstOrDefault(t => t.StepNodes.Count >= 2) ?? shell.Instances[0].Testcases[0];
+        shell.SelectedNode = testcase;
+        var vm = shell.Current!;
+        if (testcase.StepNodes.Count < 2) { vm.AddStepCommand.Execute(null); }
+        Assert.True(testcase.StepNodes.Count >= 2);
+        shell.SelectedNode = testcase.StepNodes[0];                 // the first step is selected ...
+        var target = testcase.StepNodes[^1];                        // ... but the last one is right-clicked
+        var name = target.Name;
+        var first = testcase.StepNodes[0].Name;
+        vm.Document.Request.EnsureColumn(name + ".field");
+        vm.Document.Response.EnsureColumn("{eq}" + name + ".status");
+        shell.RemoveStep(target);
+        Assert.DoesNotContain(name, testcase.StepNodes.Select(n => n.Name));
+        Assert.Equal(first, testcase.StepNodes[0].Name);
+        Assert.DoesNotContain(vm.Document.Request.Headers.Concat(vm.Document.Response.Headers), h => h.Contains(name + ".", StringComparison.OrdinalIgnoreCase));
+        vm.UndoCommand.Execute(null);
+        Assert.Contains(vm.Document.Request.Headers.Concat(vm.Document.Response.Headers), h => h.Contains(name + ".", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Renaming_a_step_in_the_config_table_renames_its_data_columns_and_keeps_the_tree_node()
+    {
+        using var dir = new TempDir();
+        var shell = Shell(dir, out _);
+        var testcase = shell.Instances[0].Testcases[0];
+        var vm = shell.Current!;
+        var node = testcase.StepNodes[0];
+        var old = node.Name;
+        vm.ActiveSheet = DataEditorViewModel.ConfigSheet;
+        var column = vm.SheetHeaders.ToList().FindIndex(h => h.Equals("stepname", StringComparison.OrdinalIgnoreCase));
+        var row = vm.SheetRows.First(r => r.Row!.Get("stepname") == old);
+        row.Cells[column] = "RenamedStep";
+        Assert.DoesNotContain(vm.Document.Request.Headers.Concat(vm.Document.Response.Headers), h => h.Contains(old + ".", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(vm.Document.Request.Headers.Concat(vm.Document.Response.Headers), h => h.StartsWith("RenamedStep.", StringComparison.OrdinalIgnoreCase) || h.Contains("}RenamedStep.", StringComparison.OrdinalIgnoreCase));
+        Assert.Same(node, testcase.StepNodes[0]);
+        Assert.Equal("RenamedStep", node.Name);
+    }
 }
 
 public class TreeInlineEditTests
