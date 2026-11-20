@@ -155,6 +155,19 @@ public class StepEditorTests
     }
 
     [Fact]
+    public void A_timeout_in_milliseconds_written_by_the_step_form_is_saved_and_read_by_the_runner()
+    {
+        using var dir = new TempDir();
+        var path = Samples.Copy(dir, Samples.IntegrationScenarios);
+        var vm = new DataEditorViewModel(path);
+        vm.StepRows[1].Write("timeoutms", "2");
+        vm.SaveCommand.Execute(null);
+
+        var step = new WorkbookReader().Read(path).Testcases.SelectMany(t => t.Steps).First(s => s.StepName == "CreatePost");
+        Assert.Equal(2, step.TimeoutMs);
+    }
+
+    [Fact]
     public void Removing_a_step_clears_it_and_keeps_the_other_rows_where_they_are()
     {
         using var dir = new TempDir();
