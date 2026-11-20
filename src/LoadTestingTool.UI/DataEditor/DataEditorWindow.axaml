@@ -393,6 +393,8 @@
             <Button Content="Backups…" Classes="tool" Click="OnBackupsClick" ToolTip.Tip="Restore this workbook from an earlier backup (filter by date and time)" />
             <Button Content="Save" Classes="primary" Click="OnSaveClick" MinHeight="32" MinWidth="84" ToolTip.Tip="Write the changes to the workbook (Ctrl+S)" />
           </StackPanel>
+          <!-- a fixed-height box, so the editor area below starts at the same place and has the same height in Table view, Config edit mode and Record view -->
+          <ScrollViewer Tag="toolbar-area" Height="200" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Spacing="4">
           <WrapPanel Orientation="Horizontal">
             <WrapPanel.Styles>
@@ -446,6 +448,7 @@
               </StackPanel>
             </WrapPanel>
           </StackPanel>
+          </ScrollViewer>
         </DockPanel>
       </Grid>
     </Border>

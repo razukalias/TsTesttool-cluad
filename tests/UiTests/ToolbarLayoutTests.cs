@@ -1,4 +1,5 @@
 using System.Reflection;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
@@ -124,6 +125,26 @@ public class ToolbarLayoutTests
         filter.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(MenuItem.ClickEvent));
         Assert.True(editor.ColumnFiltersVisible);
         Assert.Equal(editor.FilterColumnOptions[1], editor.NewFilterColumn);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_editor_area_starts_at_the_same_place_and_has_the_same_height_in_every_mode()
+    {
+        using var dir = new TempDir();
+        var (window, shell) = Open(dir);
+        var tops = new List<double>();
+        var heights = new List<double>();
+        foreach (var mode in new[] { 0, 1, 2, 0 })
+        {
+            shell.Current!.ViewModeIndex = mode;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            var combo = window.GetVisualDescendants().OfType<ComboBox>().Single(c => Equals(c.Tag, "view-mode"));
+            tops.Add(((Avalonia.Visual)combo).TranslatePoint(new Avalonia.Point(0, 0), window)!.Value.Y);
+            heights.Add(window.GetVisualDescendants().OfType<ScrollViewer>().Single(v => Equals(v.Tag, "toolbar-area")).Bounds.Height);
+        }
+        Assert.Single(tops.Select(t => Math.Round(t)).Distinct());
+        Assert.Single(heights.Distinct());
         window.Close();
     }
 }
