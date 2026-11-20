@@ -16,6 +16,20 @@ public sealed partial class ResponseFieldChoice(string step, ResponseField field
     [ObservableProperty] private bool _isChosen = true;
 }
 
+/// <summary>An HTTP response header that can become an expected-value column, <c>Step.responseHeader.Name</c>.</summary>
+public sealed partial class ResponseHeaderChoice(string step, string name, string value) : ObservableObject
+{
+    public string Step { get; } = step;
+    public string Name { get; } = name;
+    public string Value { get; } = value;
+    public string Path => LoadTestingTool.Execution.AssertionEngine.ResponseHeaderPrefix + Name;
+    public string Header => $"{Step}.{Path}";
+    public string Display => Value.Length == 0 ? Name : $"{Name}  =  {(Value.Length > 40 ? Value[..40] + "…" : Value)}";
+    // volatile headers (Date, Set-Cookie, Server-Timing …) make poor expectations, so they start unticked
+    [ObservableProperty] private bool _isChosen = !Volatile.Contains(name);
+    private static readonly HashSet<string> Volatile = new(["Date", "Set-Cookie", "Age", "ETag", "Last-Modified", "Expires", "Content-Length", "Server-Timing", "X-Request-Id", "X-Correlation-Id", "Traceparent", "Request-Context"], StringComparer.OrdinalIgnoreCase);
+}
+
 /// <summary>Expected fields and the From menu are filled from what a step answered in earlier runs (or a sample file).</summary>
 public sealed partial class DataEditorViewModel
 {
@@ -89,6 +103,49 @@ public sealed partial class DataEditorViewModel
                         row.Cells[column.CellIndex] = field.Value;
         }
         ShowStatus($"Added {chosen.Count} expected {(chosen.Count == 1 ? "column" : "columns")}{(fillSelectedRow ? " and filled them for the selected row" : string.Empty)}: {string.Join(", ", chosen.Take(4).Select(c => c.Header))}{(chosen.Count > 4 ? ", …" : string.Empty)}.", isError: false);
+        return chosen.Count;
+    }
+
+    public ObservableCollection<ResponseHeaderChoice> ResponseHeaderChoices { get; } = [];
+    [ObservableProperty] private string _responseHeadersNote = string.Empty;
+
+    /// <summary>Lists the HTTP response headers of a step's newest stored run that have no expected column yet.</summary>
+    public void FindResponseHeaders(string step)
+    {
+        ResponseHeaderChoices.Clear();
+        if (step.Length == 0) { ResponseHeadersNote = "Choose a step."; return; }
+        var stored = ResponseSamples.LatestHeaders(HistoryFolderPath, step, SelectedRow?.CurrentDataId);
+        if (stored is null) { ResponseHeadersNote = $"No stored response headers for {step}. Run the testcase with the request history on (it keeps the headers), then open this again."; return; }
+        foreach (var header in stored.Value.Headers)
+        {
+            var path = LoadTestingTool.Execution.AssertionEngine.ResponseHeaderPrefix + header.Name;
+            if (!_document.Response.Headers.Any(h => SamePath(h, step, path)) && ResponseHeaderChoices.All(c => !c.Name.Equals(header.Name, StringComparison.OrdinalIgnoreCase)))
+                ResponseHeaderChoices.Add(new ResponseHeaderChoice(step, header.Name, header.Value));
+        }
+        ResponseHeadersNote = ResponseHeaderChoices.Count == 0 ? $"Every header of {stored.Value.Source} already has an expected column." : $"{ResponseHeaderChoices.Count} headers from {stored.Value.Source}. Changing values such as Date or Set-Cookie start unticked.";
+    }
+
+    /// <summary>Adds the ticked headers as <c>{eq}Step.responseHeader.Name</c> columns; optionally fills the selected row's expected value.</summary>
+    public int AddResponseHeaders(bool fillSelectedRow)
+    {
+        var chosen = ResponseHeaderChoices.Where(h => h.IsChosen).ToList();
+        if (chosen.Count == 0) return 0;
+        var dataId = SelectedRow?.CurrentDataId;
+        var testcaseIndex = SelectedRow?.TestcaseIndex;
+        Record($"add {chosen.Count} expected response headers");
+        foreach (var header in chosen) _document.Response.EnsureColumn($"{{eq}}{header.Header}");
+        ResponseHeaderChoices.Clear();
+        MarkChanged();
+        BuildRows();
+        if (fillSelectedRow && dataId is not null)
+        {
+            SelectedRow = _allRows.FirstOrDefault(r => r.CurrentDataId == dataId && r.TestcaseIndex == testcaseIndex) ?? SelectedRow;
+            if (SelectedRow is { } row)
+                foreach (var header in chosen)
+                    if (Columns.FirstOrDefault(c => c.Group == ColumnGroup.Response && SamePathHeader(c.Title, header.Header)) is { } column)
+                        row.Cells[column.CellIndex] = header.Value;
+        }
+        ShowStatus($"Added {chosen.Count} expected response {(chosen.Count == 1 ? "header" : "headers")}{(fillSelectedRow ? " and filled them for the selected row" : string.Empty)}: {string.Join(", ", chosen.Take(4).Select(c => c.Header))}{(chosen.Count > 4 ? ", …" : string.Empty)}.", isError: false);
         return chosen.Count;
     }
 

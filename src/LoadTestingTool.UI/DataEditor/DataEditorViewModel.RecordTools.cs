@@ -17,8 +17,10 @@ public sealed partial class DataEditorViewModel
 {
     public ObservableCollection<TemplateColumnChoice> TemplateColumns { get; } = [];
 
+    internal void ShowStatusMessage(string message) => ShowStatus(message, isError: false);
+
     /// <summary>Lists the <c>_variable_</c> placeholders of the testcase's templates that have no column yet (all steps of the instance in instance view).</summary>
-    public void FindTemplateColumns()
+    public void FindTemplateColumns(string? onlyStep = null)
     {
         TemplateColumns.Clear();
         var rows = _document.Config.Rows.Where(r => !r.IsBlank && (SelectedTestcase is not { } t || WorkbookDocument.EffectiveIndex(r) == t.Index));
@@ -27,6 +29,7 @@ public sealed partial class DataEditorViewModel
             var step = row.Get("stepname").Trim();
             var template = row.Get("templetsource").Trim();
             if (step.Length == 0 || template.Length == 0) continue;
+            if (onlyStep is not null && !step.Equals(onlyStep, StringComparison.OrdinalIgnoreCase)) continue;
             string text;
             try
             {

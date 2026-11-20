@@ -96,6 +96,7 @@ public partial class DataEditorWindow
                 menu.Items.Add(Item("Rename", () => BeginTreeRename(tree, node)));
                 menu.Items.Add(Item("Duplicate step…", () => _shell.OpenDuplicateStepPanel(step)));
                 menu.Items.Add(CopyStepMenu(step));
+                menu.Items.Add(Item("Add columns from template / response…", () => _ = AddColumnsAsync(step)));
                 menu.Items.Add(new Separator());
                 menu.Items.Add(Item("Remove step", () => _shell.RemoveStep(step)));
                 break;
@@ -103,6 +104,13 @@ public partial class DataEditorWindow
                 return null;
         }
         return menu;
+    }
+
+    /// <summary>Opens the Add columns form for one step of the clicked step's instance.</summary>
+    private async Task AddColumnsAsync(StepNode step)
+    {
+        if (_shell.EditorFor(step) is not { } editor) return;
+        await new AddColumnsWindow(editor, step.Name).ShowDialog(this);
     }
 
     private async Task AddChildAsync(TreeView tree, object parent)

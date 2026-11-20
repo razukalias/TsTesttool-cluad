@@ -7,11 +7,15 @@ namespace LoadTestingTool.Execution;
 
 public sealed class AssertionEngine
 {
-    public IReadOnlyList<AssertionResult> Evaluate(string body, string contentType, IReadOnlyList<AssertionDefinition> definitions, string runId, string requestId, int? httpStatus = null, bool ignoreEmptyUnconfigured = false, bool assertOnlyResponse = false)
+    public const string ResponseHeaderPrefix = "responseHeader.";
+
+    public IReadOnlyList<AssertionResult> Evaluate(string body, string contentType, IReadOnlyList<AssertionDefinition> definitions, string runId, string requestId, int? httpStatus = null, bool ignoreEmptyUnconfigured = false, bool assertOnlyResponse = false, IReadOnlyDictionary<string, string>? responseHeaders = null)
     {
         if (definitions.Count == 0) return [];
         var values = Normalize(body, contentType).ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
         if (httpStatus.HasValue) values["statusCode"] = httpStatus.Value.ToString(CultureInfo.InvariantCulture);
+        // HTTP response headers are addressed as responseHeader.<Name> (Step.responseHeader.Content-Type); like statusCode they are metadata, never an "unexpected payload field".
+        if (responseHeaders is not null) foreach (var header in responseHeaders) values[ResponseHeaderPrefix + header.Key] = header.Value;
         // A blank equality cell represents an optional field: if the API omits
         // that path entirely, there is no value to validate and the assertion
         // should not fail. A non-blank expectation remains strict.
@@ -25,6 +29,7 @@ public sealed class AssertionEngine
         // unexpected payload field when no such assertion was configured.
         foreach (var unexpected in values.Keys.Where(path => !assertOnlyResponse
             && !path.Equals("statusCode", StringComparison.OrdinalIgnoreCase)
+            && !path.StartsWith(ResponseHeaderPrefix, StringComparison.OrdinalIgnoreCase)
             && !expectedPaths.Contains(path)
             && (!ignoreEmptyUnconfigured || !IsEmptyUnconfiguredField(values, path))))
             results.Add(Mismatch(runId, requestId, definitions[0], unexpected, values[unexpected], $"Unexpected response path '{unexpected}' returned by payload."));

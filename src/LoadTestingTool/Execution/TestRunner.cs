@@ -327,14 +327,14 @@ public sealed class TestRunner
             result.RequestHeaders = InternalLogger.RedactVariableValues(string.Join("; ", resolvedHeaders.Select(h => $"{h.Key}={h.Value}")), redactedVariables, variables); foreach (var h in resolvedHeaders) if (!h.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase) && !request.Headers.TryAddWithoutValidation(h.Key, h.Value)) request.Content?.Headers.TryAddWithoutValidation(h.Key, h.Value);
             _logger.Info($"STEP REQUEST [{requestId}]\nTYPE: HTTP\nSTEP: {step.StepName}\nENVIRONMENT: {environment}\nTARGET: {result.TargetUrl}\nMETHOD: {step.Verb}\nTEMPLATE: {step.TemplateSource}\nHEADERS:\n{result.RequestHeaders}\nDETAILS:\ncontentType={result.ContentType}\nBODY:\n{result.RequestBody}");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); timeout.CancelAfter(StepTimeout(step)); using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseContentRead, timeout.Token);
-            result.HttpStatus = (int)response.StatusCode; result.ResponseHeaders = string.Join("; ", response.Headers.Concat(response.Content.Headers).Select(h => $"{h.Key}={string.Join(",", h.Value)}")); result.ResponseBody = await response.Content.ReadAsStringAsync(timeout.Token);
+            result.HttpStatus = (int)response.StatusCode; var responseHeaderValues = response.Headers.Concat(response.Content.Headers).ToList(); result.ResponseHeaders = string.Join("\n", responseHeaderValues.Select(h => $"{h.Key}={string.Join(",", h.Value)}")); result.ResponseBody = await response.Content.ReadAsStringAsync(timeout.Token);
             PublishResponseValues(step.StepName, result.ResponseBody, result.ContentType, correlation);
             _logger.Info($"STEP RESPONSE [{requestId}]\nSTATUS: {result.HttpStatus}\nHEADERS:\n{result.ResponseHeaders}\nBODY:\n{result.ResponseBody}");
             if (step.AssertEnabled)
             {
                 var (plain, bugs) = BugTag.Strip(definitions, environment);
                 var resolvedDefinitions = await ResolveAssertionReferencesAsync(plain, correlation, requestReferences, executionContext, cancellationToken);
-                var evaluated = _assertions.Evaluate(result.ResponseBody, result.ContentType, resolvedDefinitions, run.RunId, requestId, result.HttpStatus, step.IgnoreEmpty, step.AssertOnlyResponse);
+                var evaluated = _assertions.Evaluate(result.ResponseBody, result.ContentType, resolvedDefinitions, run.RunId, requestId, result.HttpStatus, step.IgnoreEmpty, step.AssertOnlyResponse, responseHeaderValues.ToDictionary(h => h.Key, h => string.Join(",", h.Value), StringComparer.OrdinalIgnoreCase));
                 BugTag.Apply(evaluated, bugs);
                 result.Assertions.AddRange(evaluated);
             }

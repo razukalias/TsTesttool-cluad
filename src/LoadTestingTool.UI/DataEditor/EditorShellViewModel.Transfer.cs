@@ -65,6 +65,16 @@ public sealed partial class EditorShellViewModel
     }
 
     /// <summary>Removes the step that was right-clicked (not the selected one) with its data columns, then selects a neighbour.</summary>
+    /// <summary>Makes the step's instance and testcase current and returns its editor (null when it cannot be opened).</summary>
+    public DataEditorViewModel? EditorFor(StepNode step)
+    {
+        if (EditorOf(step) is not { } editor) return null;
+        Current = editor;
+        if (!ReferenceEquals(editor.SelectedTestcase, step.Owner)) editor.SelectedTestcase = step.Owner;
+        SelectedNode = step;
+        return editor;
+    }
+
     public void RemoveStep(StepNode step)
     {
         if (EditorOf(step) is not { } editor) return;

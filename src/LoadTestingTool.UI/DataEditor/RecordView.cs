@@ -106,7 +106,7 @@ public sealed class RecordView : UserControl
     {
         _body.Children.Clear();
         var head = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
-        if (_editor.SelectedRow is not null) { head.Children.Add(ResponseFieldsButton()); head.Children.Add(TemplateColumnsButton()); }
+        if (_editor.SelectedRow is not null) head.Children.Add(AddColumnsButton());
         head.Children.Add(new TextBlock { Text = _editor.RecordTitle, FontSize = 16, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center });
         _body.Children.Add(head);
         if (_editor.SelectedRow is null) return;
@@ -114,74 +114,16 @@ public sealed class RecordView : UserControl
         Section("EXPECTED RESPONSE", _editor.ExpectedLines);
     }
 
-    /// <summary>"Add expected fields from a response…": the JSON fields of a step's last stored response (or a sample file); ticked ones become expected columns.</summary>
-    private Button ResponseFieldsButton()
+    /// <summary>"Add columns…": one form with the Request (template placeholders), Response (fields of the last response) and Response header tabs.</summary>
+    private Button AddColumnsButton()
     {
-        var button = new Button { Content = "Add expected fields from a response…", Tag = "response-fields", HorizontalAlignment = HorizontalAlignment.Right, MinHeight = 32, Margin = new Thickness(8, 0, 0, 0) };
+        var button = new Button { Content = "Add columns…", Tag = "add-columns-open", HorizontalAlignment = HorizontalAlignment.Right, MinHeight = 32, Margin = new Thickness(8, 0, 0, 0) };
         DockPanel.SetDock(button, Dock.Right);
-        ToolTip.SetTip(button, "Pick a step, see the fields of its last response (or a sample file) as a flat list, and tick the ones to expect. No JSON path has to be typed");
-        var flyout = new Flyout { Placement = PlacementMode.BottomEdgeAlignedRight };
-        var steps = new ComboBox { MinWidth = 260, Tag = "response-step" };
-        var note = new TextBlock { Foreground = Brush.Parse("#8EA4BC"), FontSize = 11, TextWrapping = TextWrapping.Wrap, MaxWidth = 420, Tag = "response-note" };
-        var list = new StackPanel { Spacing = 2 };
-        var fill = new CheckBox { Content = "Fill the expected values for this row from the response", IsChecked = true, Tag = "response-fill" };
-        var pick = new Button { Content = "Choose a sample file…", Tag = "response-file" };
-        var add = new Button { Content = "Add ticked fields", Classes = { "primary" }, Tag = "response-add" };
-        void Load(string? file = null)
+        ToolTip.SetTip(button, "Create request columns from the template's _variable_ placeholders, and expected columns from the fields and HTTP headers of a step's last response");
+        button.Click += async (_, _) =>
         {
-            _editor.FindResponseFields(steps.SelectedItem as string ?? string.Empty, file);
-            list.Children.Clear();
-            foreach (var choice in _editor.ResponseFields)
-            {
-                var box = new CheckBox { Content = choice.Display, IsChecked = choice.IsChosen, Tag = "response-field", DataContext = choice };
-                box.IsCheckedChanged += (_, _) => choice.IsChosen = box.IsChecked == true;
-                list.Children.Add(box);
-            }
-            note.Text = _editor.ResponseFieldsNote;
-            add.IsVisible = fill.IsVisible = _editor.ResponseFields.Count > 0;
-        }
-        steps.SelectionChanged += (_, _) => Load();
-        pick.Click += async (_, _) =>
-        {
-            if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
-            var files = await storage.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions { Title = "Sample response", AllowMultiple = false });
-            if (files.Count > 0 && files[0].TryGetLocalPath() is { } path) Load(path);
+            if (TopLevel.GetTopLevel(this) is Window owner) await new AddColumnsWindow(_editor).ShowDialog(owner);
         };
-        add.Click += (_, _) => { flyout.Hide(); _editor.AddResponseFields(fill.IsChecked == true); };
-        flyout.Content = new StackPanel { Spacing = 8, Children = { new TextBlock { Text = "Step", Foreground = Brush.Parse("#8EA4BC"), FontSize = 11 }, steps, note, new ScrollViewer { MaxHeight = 300, Content = list }, fill, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { pick, add } } } };
-        flyout.Opened += (_, _) =>
-        {
-            steps.ItemsSource = _editor.ResponseSteps();
-            steps.SelectedItem = (steps.ItemsSource as IReadOnlyList<string>)?.LastOrDefault();
-            Load();
-        };
-        button.Flyout = flyout;
-        return button;
-    }
-
-    /// <summary>"Add columns from template…": the _variable_ placeholders of the testcase's templates that have no column yet, ticked ones are added.</summary>
-    private Button TemplateColumnsButton()
-    {
-        var button = new Button { Content = "Add columns from template…", Tag = "template-columns", HorizontalAlignment = HorizontalAlignment.Right, MinHeight = 32 };
-        DockPanel.SetDock(button, Dock.Right);
-        ToolTip.SetTip(button, "Lists the _variable_ placeholders in the step templates that have no data column yet; ticked ones are created as Step.variable");
-        var flyout = new Flyout { Placement = PlacementMode.BottomEdgeAlignedRight };
-        var list = new StackPanel { Spacing = 4 };
-        var add = new Button { Content = "Add ticked columns", Classes = { "primary" }, Tag = "template-columns-add" };
-        var empty = new TextBlock { Text = "Every placeholder in the templates already has a column.", Foreground = Brush.Parse("#8EA4BC"), IsVisible = false };
-        add.Click += (_, _) => { flyout.Hide(); _editor.AddTemplateColumns(); };
-        flyout.Content = new StackPanel { Spacing = 8, MinWidth = 320, Children = { list, empty, add } };
-        flyout.Opened += (_, _) =>
-        {
-            _editor.FindTemplateColumns();
-            list.Children.Clear();
-            foreach (var choice in _editor.TemplateColumns)
-                list.Children.Add(new CheckBox { Content = choice.Header, IsChecked = choice.IsChosen, Tag = "template-column", DataContext = choice });
-            foreach (var box in list.Children.OfType<CheckBox>()) box.IsCheckedChanged += (_, _) => ((TemplateColumnChoice)box.DataContext!).IsChosen = box.IsChecked == true;
-            empty.IsVisible = _editor.TemplateColumns.Count == 0;
-            add.IsVisible = _editor.TemplateColumns.Count > 0;
-        };
-        button.Flyout = flyout;
         return button;
     }
 

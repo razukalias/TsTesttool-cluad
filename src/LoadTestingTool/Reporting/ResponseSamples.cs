@@ -88,4 +88,58 @@ public static class ResponseSamples
         }
         return null;
     }
+
+    /// <summary>A header the server sent, as stored in the history (<c>Name=value</c>, one per line; older files used "; ").</summary>
+    public sealed record HeaderSample(string Name, string Value);
+
+    /// <summary>Splits the stored response-header text. Older history files joined the headers with "; ", which also appears inside values (<c>text/html; charset=utf-8</c>), so there a part only starts a new header when its name begins with an upper-case letter.</summary>
+    public static List<HeaderSample> ParseHeaders(string text)
+    {
+        var headers = new List<HeaderSample>();
+        if (string.IsNullOrWhiteSpace(text)) return headers;
+        var parts = text.Contains('\n') ? text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : text.Split("; ", StringSplitOptions.RemoveEmptyEntries);
+        var legacy = !text.Contains('\n');
+        foreach (var part in parts)
+        {
+            var equals = part.IndexOf('=');
+            var name = equals > 0 ? part[..equals].Trim() : string.Empty;
+            var startsHeader = name.Length > 0 && !name.Contains(' ') && (!legacy || char.IsUpper(name[0]) || headers.Count == 0);
+            if (startsHeader) headers.Add(new HeaderSample(name, part[(equals + 1)..].Trim()));
+            else if (headers.Count > 0) headers[^1] = headers[^1] with { Value = headers[^1].Value + "; " + part };
+        }
+        return headers;
+    }
+
+    /// <summary>The response headers of the newest stored run of a step (the row of <paramref name="preferredDataId"/> first).</summary>
+    public static (List<HeaderSample> Headers, string Source)? LatestHeaders(string historyFolder, string stepName, string? preferredDataId = null, int maxFiles = 60)
+    {
+        if (!Directory.Exists(historyFolder) || stepName.Length == 0) return null;
+        foreach (var file in new DirectoryInfo(historyFolder).EnumerateFiles("*.xlsx", SearchOption.AllDirectories)
+                     .Where(f => !f.Name.StartsWith("~$", StringComparison.Ordinal)).OrderByDescending(f => f.LastWriteTimeUtc).Take(maxFiles))
+        {
+            try
+            {
+                using var stream = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var book = new XLWorkbook(stream);
+                if (!book.TryGetWorksheet("RequestHistory", out var sheet)) continue;
+                var columns = sheet.FirstRowUsed()?.CellsUsed(c => !string.IsNullOrWhiteSpace(c.GetString())).ToDictionary(c => c.GetString().Trim().ToLowerInvariant(), c => c.Address.ColumnNumber);
+                if (columns is null || !columns.TryGetValue("stepname", out var stepColumn) || !columns.TryGetValue("responseheaders", out var headerColumn)) continue;
+                columns.TryGetValue("dataid", out var dataColumn);
+                (List<HeaderSample>, string)? any = null;
+                foreach (var row in sheet.RowsUsed().Skip(1).Reverse())
+                {
+                    if (!row.Cell(stepColumn).GetString().Equals(stepName, StringComparison.OrdinalIgnoreCase)) continue;
+                    var headers = ParseHeaders(row.Cell(headerColumn).GetString());
+                    if (headers.Count == 0) continue;
+                    var dataId = dataColumn > 0 ? row.Cell(dataColumn).GetString() : string.Empty;
+                    var found = (headers, $"{file.Name}, data ID {dataId}");
+                    if (preferredDataId is not null && dataId.Equals(preferredDataId, StringComparison.OrdinalIgnoreCase)) return found;
+                    any ??= found;
+                }
+                if (any is not null) return any;
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException) { /* a file that is open or damaged is skipped */ }
+        }
+        return null;
+    }
 }

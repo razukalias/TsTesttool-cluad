@@ -281,7 +281,8 @@ public class RecordToolsWindowTests
         var all = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Control>().ToList();
         Assert.Contains(all.OfType<TextBlock>(), t => Equals(t.Tag, "line-warning") && t.IsVisible && t.Text!.Contains("nosuchcolumn"));
         Assert.True(all.Count(c => Equals(c.Tag, "copy-to-rows")) >= 6);
-        Assert.Single(all, c => Equals(c.Tag, "template-columns"));
+        Assert.Single(all, c => Equals(c.Tag, "add-columns-open"));
+        Assert.DoesNotContain(all, c => Equals(c.Tag, "template-columns") || Equals(c.Tag, "response-fields"));   // merged into the one button
     }
 }
 
@@ -390,7 +391,7 @@ public class ResponseFieldsTests
 public class ResponseFieldsWindowTests
 {
     [AvaloniaFact]
-    public void The_record_view_has_the_response_fields_button_with_a_step_list_and_flat_field_list()
+    public void The_add_columns_form_has_request_response_and_response_header_tabs()
     {
         using var dir = new TempDir();
         var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 2), "Customers");
@@ -398,18 +399,19 @@ public class ResponseFieldsWindowTests
         window.Show();
         window.ViewModel.OpenRecordTabCommand.Execute(null);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        var view = Assert.IsType<RecordView>(window.FindControl<Border>("RecordHost")!.Child);
-        view.Draw();
 
-        var button = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Button>().Single(b => Equals(b.Tag, "response-fields"));
-        var flyout = Assert.IsType<Flyout>(button.Flyout);
-        flyout.ShowAt(button);
+        var form = new AddColumnsWindow(window.ViewModel);
+        form.Show();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-
-        var content = Assert.IsType<StackPanel>(flyout.Content);
-        var steps = content.GetVisualDescendants().OfType<ComboBox>().Single();
-        Assert.Equal(["CreateCustomer"], steps.ItemsSource!.Cast<string>());
-        Assert.Contains("No stored response", content.GetVisualDescendants().OfType<TextBlock>().Single(t => Equals(t.Tag, "response-note")).Text);
-        flyout.Hide();
+        Assert.Equal(["Request", "Response", "Response header"], form.GetVisualDescendants().OfType<TabItem>().Select(t => (string)t.Header!));   // only the selected tab's content is in the tree
+        form.SelectTab("Response");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var response = form.GetVisualDescendants().OfType<Control>().ToList();
+        Assert.Equal(["CreateCustomer"], response.OfType<ComboBox>().Single().ItemsSource!.Cast<string>());
+        Assert.Contains(response.OfType<TextBlock>(), t => Equals(t.Tag, "response-note") && t.Text!.Contains("No stored response"));
+        form.SelectTab("Response header");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Contains(form.GetVisualDescendants().OfType<TextBlock>(), t => Equals(t.Tag, "header-note") && t.Text!.Contains("No stored response headers"));
+        form.Close();
     }
 }
