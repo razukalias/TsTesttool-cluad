@@ -57,6 +57,13 @@ public sealed partial class DataEditorViewModel
         if (NewFilterColumn is null || !FilterColumnOptions.Contains(NewFilterColumn)) NewFilterColumn = FilterColumnOptions.FirstOrDefault(o => o != DataIdColumn) ?? DataIdColumn;
     }
 
+    /// <summary>Opens the column filters panel with this grid column chosen (from the column's right-click menu).</summary>
+    public void OpenColumnFilterFor(int cell)
+    {
+        if (cell >= 1 && cell <= Columns.Count) NewFilterColumn = ColumnLabel(Columns[cell - 1]);
+        ColumnFiltersVisible = true;
+    }
+
     [RelayCommand]
     private void ToggleColumnFilters() => ColumnFiltersVisible = !ColumnFiltersVisible;
 

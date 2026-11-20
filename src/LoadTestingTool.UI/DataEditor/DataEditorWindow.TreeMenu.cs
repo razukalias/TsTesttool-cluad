@@ -105,7 +105,34 @@ public partial class DataEditorWindow
             default:
                 return null;
         }
+        AddViewAndRunTools(menu);
         return menu;
+    }
+
+    /// <summary>The items every tree item shares: view mode, Re-run, Compare runs and Preview request (they act on the selected testcase of the clicked item's instance).</summary>
+    private void AddViewAndRunTools(ContextMenu menu)
+    {
+        if (_shell.Current is not { } editor) return;
+        menu.Items.Add(new Separator());
+        var modes = new MenuItem { Header = "View mode" };
+        for (var i = 0; i < editor.ViewModes.Count; i++)
+        {
+            var index = i;
+            var item = Item((editor.ViewModeIndex == i ? "✓  " : "     ") + editor.ViewModes[i], () => editor.ViewModeIndex = index);
+            item.Tag = "view-mode-" + i;
+            modes.Items.Add(item);
+        }
+        modes.Tag = "view-mode-menu";
+        menu.Items.Add(modes);
+        var rerun = Item("Re-run…", () => OnRerunClick(null, new Avalonia.Interactivity.RoutedEventArgs()), editor.SelectedTestcase is not null);
+        rerun.Tag = "tree-rerun";
+        menu.Items.Add(rerun);
+        var compare = Item("Compare runs…", () => editor.OpenHistoryCommand.Execute(null));
+        compare.Tag = "tree-compare";
+        menu.Items.Add(compare);
+        var preview = Item((editor.PreviewVisible ? "✓  " : "     ") + "Preview request", () => editor.PreviewVisible = !editor.PreviewVisible);
+        preview.Tag = "tree-preview";
+        menu.Items.Add(preview);
     }
 
     /// <summary>Opens the Add columns form for one step of the clicked step's instance.</summary>

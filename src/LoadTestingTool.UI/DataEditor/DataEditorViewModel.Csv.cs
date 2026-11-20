@@ -1,4 +1,5 @@
 using System.Text;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 namespace LoadTestingTool.UI.DataEditor;
@@ -8,6 +9,11 @@ public sealed partial class DataEditorViewModel
 {
     /// <summary>Raised when the view should ask for a CSV file; true = import, false = export.</summary>
     public event EventHandler<bool>? CsvFileRequested;
+
+    /// <summary>The choices of the CSV droplist; the button beside it runs the selected one.</summary>
+    public IReadOnlyList<string> CsvActions { get; } = ["Import CSV…", "Export CSV…"];
+    [ObservableProperty] private int _csvActionIndex;
+    [RelayCommand] private void RunCsvAction() { if (CsvActionIndex == 1) ExportCsvFile(); else ImportCsvFile(); }
 
     [RelayCommand] private void ImportCsvFile() => CsvFileRequested?.Invoke(this, true);
     [RelayCommand] private void ExportCsvFile() => CsvFileRequested?.Invoke(this, false);

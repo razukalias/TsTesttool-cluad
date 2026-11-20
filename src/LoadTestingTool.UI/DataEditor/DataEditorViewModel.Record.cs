@@ -7,7 +7,7 @@ namespace LoadTestingTool.UI.DataEditor;
 /// <summary>Record view: the selected data row shown vertically, each column as a line of value parts.</summary>
 public sealed partial class DataEditorViewModel
 {
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowData), nameof(ShowDataGrid), nameof(ShowSheetGrid), nameof(SheetSummary), nameof(IsOtherSheet))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowData), nameof(ShowDataGrid), nameof(ShowSheetGrid), nameof(SheetSummary), nameof(IsOtherSheet), nameof(ViewModeIndex))]
     private bool _showRecord;
 
     public ObservableCollection<RecordLineViewModel> RequestLines { get; } = [];

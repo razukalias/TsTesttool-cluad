@@ -221,6 +221,7 @@ public partial class DataEditorWindow
             menu.Items.Add(CountItem("Insert columns to the right", n => editor.OpenInsertColumns(left: false, n)));
             menu.Items.Add(Item("Rename header (or double-click it)", () => { if (this.FindControl<DataGrid>("Grid") is { } g) ShowRenameHeader(editor, cell, HeaderOf(g, cell) ?? g); }, !many));
             menu.Items.Add(Item("Rename / remove column…", () => editor.OpenEditColumnCommand.Execute(null), !many));
+            menu.Items.Add(Item(editor.ColumnFilters.Count == 0 ? "Filter rows by this column…" : $"Filter rows by this column… ({editor.ColumnFilters.Count} active)", () => editor.OpenColumnFilterFor(cell), !many));
             menu.Items.Add(Item(many ? $"Delete {cells.Count} columns" : "Delete column", () => { CommitPendingEdit(); editor.RemoveColumns(cells); }, danger: true));
             menu.Items.Add(new Separator());
             menu.Items.Add(Item(many ? $"Copy {cells.Count} columns{scope}" : $"Copy column{scope}", async () => { if (Clipboard is not null) await Clipboard.SetTextAsync(editor.CopyCellsText(cells, rows)); }));

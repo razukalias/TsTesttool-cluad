@@ -51,10 +51,25 @@ public sealed partial class DataEditorViewModel
         FocusedStep = null;   // the view mode (Table view or Config edit mode) stays as it was
     }
 
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowData), nameof(ShowDataGrid), nameof(ShowSheetGrid), nameof(SheetSummary), nameof(IsOtherSheet))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowData), nameof(ShowDataGrid), nameof(ShowSheetGrid), nameof(SheetSummary), nameof(IsOtherSheet), nameof(ViewModeIndex))]
     private bool _showSteps;
 
     public bool ShowData => !ShowSteps && !ShowRecord;
+
+    /// <summary>The choices of the view-mode droplist, in the order of <see cref="ViewModeIndex"/>.</summary>
+    public IReadOnlyList<string> ViewModes { get; } = ["▦  Table view", "⚙  Config edit mode", "☰  Record view"];
+
+    /// <summary>0 = Table view, 1 = Config edit mode, 2 = Record view; setting it switches the mode.</summary>
+    public int ViewModeIndex
+    {
+        get => ShowSteps ? 1 : ShowRecord ? 2 : 0;
+        set
+        {
+            if (value < 0 || value == ViewModeIndex) return;
+            if (value == 1) OpenStepsTab(); else if (value == 2) OpenRecordTab(); else OpenDataTab();
+            OnPropertyChanged();
+        }
+    }
     public string StepCountText => $"{StepRows.Count} {(StepRows.Count == 1 ? "step" : "steps")}";
 
     [RelayCommand]
