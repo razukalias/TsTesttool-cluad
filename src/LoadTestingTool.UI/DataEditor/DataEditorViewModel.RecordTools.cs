@@ -21,18 +21,18 @@ public sealed partial class DataEditorViewModel
     /// Adds the ticked template columns, response fields and response headers as one undo step. The selected row is kept
     /// between the parts so "fill the expected values" reaches it. Returns how many columns were added.
     /// </summary>
-    public int AddTickedColumns(bool fillResponseValues, bool fillHeaderValues)
+    public int AddTickedColumns(bool fillHeaderValues, ResponseColumnsSession? response = null)
     {
         var keepId = SelectedRow?.CurrentDataId;
         var keepTestcase = SelectedRow?.TestcaseIndex;
         void Reselect() { if (keepId is not null) SelectedRow = VisibleRows.FirstOrDefault(r => r.CurrentDataId == keepId && r.TestcaseIndex == keepTestcase) ?? SelectedRow; }
-        var requested = TemplateColumns.Count(c => c.IsChosen) + ResponseFields.Count(f => f.IsChosen) + ResponseHeaderChoices.Count(h => h.IsChosen);
+        var requested = TemplateColumns.Count(c => c.IsChosen) + ResponseHeaderChoices.Count(h => h.IsChosen) + (response?.Included.Count ?? 0);
         if (requested == 0) { ShowStatus("Nothing was ticked, so no columns were added.", isError: false); return 0; }
         var added = 0;
         RunBatch("add columns", () =>
         {
             added += AddTemplateColumns(); Reselect();
-            added += AddResponseFields(fillResponseValues); Reselect();
+            if (response is not null) { added += response.Apply(); Reselect(); }
             added += AddResponseHeaders(fillHeaderValues); Reselect();
             return added;
         });

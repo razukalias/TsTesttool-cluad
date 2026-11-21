@@ -309,71 +309,6 @@ public class ResponseFieldsTests
     }
 
     [Fact]
-    public void The_last_stored_response_is_listed_as_flat_dotted_fields_minus_those_that_already_have_a_column()
-    {
-        using var dir = new TempDir();
-        var editor = Open(dir);
-
-        editor.FindResponseFields("CreateCustomer");
-
-        Assert.Equal(["address.city", "items[0].sku", "items[1].sku"], editor.ResponseFields.Select(f => f.Path));   // id and name already have expected columns
-        Assert.Contains("run1.xlsx", editor.ResponseFieldsNote);
-        Assert.Equal("CreateCustomer.address.city", editor.ResponseFields[0].Header);
-    }
-
-    [Fact]
-    public void Ticked_fields_become_expected_columns_and_can_fill_the_selected_rows_values()
-    {
-        using var dir = new TempDir();
-        var editor = Open(dir);
-        editor.FindResponseFields("CreateCustomer");
-        editor.ResponseFields.Single(f => f.Path == "items[1].sku").IsChosen = false;
-
-        Assert.Equal(2, editor.AddResponseFields(fillSelectedRow: true));
-
-        Assert.True(editor.IsDirty);
-        var city = editor.ExpectedLines.Single(l => l.Title == "CreateCustomer.address.city");
-        Assert.Equal("eq", city.Verb);
-        Assert.Equal("Malmö", ValueParts.Format(city.Parts));
-        Assert.Equal("S1", ValueParts.Format(editor.ExpectedLines.Single(l => l.Title == "CreateCustomer.items[0].sku").Parts));
-        Assert.Equal("notempty", editor.ExpectedLines.Single(l => l.Title == "CreateCustomer.id").Verb);   // existing columns are left alone
-        Assert.DoesNotContain(editor.ExpectedLines, l => l.Title.Contains("items[1]"));
-        editor.FindResponseFields("CreateCustomer");
-        Assert.Equal(["items[1].sku"], editor.ResponseFields.Select(f => f.Path));   // the rest are done
-    }
-
-    [Fact]
-    public void Without_filling_only_the_columns_are_added()
-    {
-        using var dir = new TempDir();
-        var editor = Open(dir);
-        editor.FindResponseFields("CreateCustomer");
-        editor.AddResponseFields(fillSelectedRow: false);
-        Assert.Equal("", ValueParts.Format(editor.ExpectedLines.Single(l => l.Title == "CreateCustomer.address.city").Parts));
-    }
-
-    [Fact]
-    public void A_sample_file_can_stand_in_when_there_is_no_history()
-    {
-        using var dir = new TempDir();
-        var editor = Open(dir, withHistory: false);
-        editor.FindResponseFields("CreateCustomer");
-        Assert.Empty(editor.ResponseFields);
-        Assert.Contains("No stored response", editor.ResponseFieldsNote);
-
-        var sample = dir.Combine("sample.json");
-        File.WriteAllText(sample, "{\"token\":\"t-1\"}");
-        editor.FindResponseFields("CreateCustomer", sample);
-
-        Assert.Equal(["token"], editor.ResponseFields.Select(f => f.Path));
-        Assert.Contains("sample.json", editor.ResponseFieldsNote);
-
-        File.WriteAllText(sample, "<xml/>");
-        editor.FindResponseFields("CreateCustomer", sample);
-        Assert.Contains("not JSON", editor.ResponseFieldsNote);
-    }
-
-    [Fact]
     public void The_From_menu_lists_the_stored_responses_fields_with_the_step_name_in_front()
     {
         using var dir = new TempDir();
@@ -407,7 +342,7 @@ public class ResponseFieldsWindowTests
         form.SelectTab("Response");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         var response = form.GetVisualDescendants().OfType<Control>().ToList();
-        Assert.Equal(["CreateCustomer"], response.OfType<ComboBox>().Single().ItemsSource!.Cast<string>());
+        Assert.Equal(["CreateCustomer"], response.OfType<ComboBox>().First(c => Equals(c.Tag, "response-step")).ItemsSource!.Cast<string>());
         Assert.Contains(response.OfType<TextBlock>(), t => Equals(t.Tag, "response-note") && t.Text!.Contains("No stored response"));
         form.SelectTab("Response header");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();

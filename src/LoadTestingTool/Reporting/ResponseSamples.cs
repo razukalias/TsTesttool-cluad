@@ -89,6 +89,39 @@ public static class ResponseSamples
         return null;
     }
 
+    /// <summary>
+    /// The newest stored response body of a step for each data ID (history files newest first; the first body found for an ID wins), so every row of a testcase
+    /// can be filled from its own response. Bodies the history did not keep ("[omitted]") are skipped.
+    /// </summary>
+    public static Dictionary<string, ResponseSample> LatestPerDataId(string historyFolder, string stepName, int maxFiles = 60)
+    {
+        var found = new Dictionary<string, ResponseSample>(StringComparer.OrdinalIgnoreCase);
+        if (!Directory.Exists(historyFolder) || stepName.Length == 0) return found;
+        foreach (var file in new DirectoryInfo(historyFolder).EnumerateFiles("*.xlsx", SearchOption.AllDirectories)
+                     .Where(f => !f.Name.StartsWith("~$", StringComparison.Ordinal)).OrderByDescending(f => f.LastWriteTimeUtc).Take(maxFiles))
+        {
+            try
+            {
+                using var stream = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var book = new XLWorkbook(stream);
+                if (!book.TryGetWorksheet("RequestHistory", out var sheet)) continue;
+                var headers = sheet.FirstRowUsed()?.CellsUsed(c => !string.IsNullOrWhiteSpace(c.GetString())).ToDictionary(c => c.GetString().Trim().ToLowerInvariant(), c => c.Address.ColumnNumber);
+                if (headers is null || !headers.TryGetValue("stepname", out var stepColumn) || !headers.TryGetValue("responsebody", out var bodyColumn) || !headers.TryGetValue("dataid", out var dataColumn)) continue;
+                headers.TryGetValue("runid", out var runColumn);
+                foreach (var row in sheet.RowsUsed().Skip(1).Reverse())
+                {
+                    if (!row.Cell(stepColumn).GetString().Equals(stepName, StringComparison.OrdinalIgnoreCase)) continue;
+                    var body = row.Cell(bodyColumn).GetString();
+                    var dataId = row.Cell(dataColumn).GetString();
+                    if (string.IsNullOrWhiteSpace(body) || body == "[omitted]" || dataId.Length == 0 || found.ContainsKey(dataId)) continue;
+                    found[dataId] = new ResponseSample(body, runColumn > 0 ? row.Cell(runColumn).GetString() : string.Empty, dataId, file.Name);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException) { /* a file that is open or damaged is skipped */ }
+        }
+        return found;
+    }
+
     /// <summary>A header the server sent, as stored in the history (<c>Name=value</c>, one per line; older files used "; ").</summary>
     public sealed record HeaderSample(string Name, string Value);
 

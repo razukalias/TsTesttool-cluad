@@ -96,7 +96,7 @@ public partial class DataEditorWindow
                 menu.Items.Add(Item("Rename", () => BeginTreeRename(tree, node)));
                 menu.Items.Add(Item("Duplicate step…", () => _shell.OpenDuplicateStepPanel(step)));
                 menu.Items.Add(CopyStepMenu(step));
-                menu.Items.Add(Item("Add columns from template / response…", () => _ = AddColumnsAsync(step)));
+                menu.Items.Add(Item("Open template and response body…", () => _ = AddColumnsAsync(step)));
                 menu.Items.Add(new Separator());
                 menu.Items.Add(AddStepMenu("Add step after", step, EditorShellViewModel.StepPlacement.After, "tree-add-after"));
                 if (step.IsControl)

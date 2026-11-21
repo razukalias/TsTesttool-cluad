@@ -13,6 +13,7 @@ public sealed class AssertionEngine
     {
         if (definitions.Count == 0) return [];
         var values = Normalize(body, contentType).ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
+        AddCounts(body, contentType, definitions, values);
         if (httpStatus.HasValue) values["statusCode"] = httpStatus.Value.ToString(CultureInfo.InvariantCulture);
         // HTTP response headers are addressed as responseHeader.<Name> (Step.responseHeader.Content-Type); like statusCode they are metadata, never an "unexpected payload field".
         if (responseHeaders is not null) foreach (var header in responseHeaders) values[ResponseHeaderPrefix + header.Key] = header.Value;
@@ -34,6 +35,63 @@ public sealed class AssertionEngine
             && (!ignoreEmptyUnconfigured || !IsEmptyUnconfiguredField(values, path))))
             results.Add(Mismatch(runId, requestId, definitions[0], unexpected, values[unexpected], $"Unexpected response path '{unexpected}' returned by payload."));
         return results;
+    }
+
+    /// <summary>
+    /// A path ending in <c>#count</c> (<c>items.#count</c>, <c>customer.#count</c>) is the number of elements of that array or properties of that object. It is added only when
+    /// a header asks for it, so no other path of the response is reported as unexpected because of it.
+    /// </summary>
+    private static void AddCounts(string body, string contentType, IReadOnlyList<AssertionDefinition> definitions, Dictionary<string, string> values)
+    {
+        var wanted = definitions.Select(d => d.ResponsePath).Where(p => p.Equals(CountSegment, StringComparison.OrdinalIgnoreCase) || p.EndsWith("." + CountSegment, StringComparison.OrdinalIgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (wanted.Count == 0 || string.IsNullOrWhiteSpace(body) || contentType.Equals("xml", StringComparison.OrdinalIgnoreCase) || body.TrimStart().StartsWith('<')) return;
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            foreach (var path in wanted)
+            {
+                var basePath = path.Equals(CountSegment, StringComparison.OrdinalIgnoreCase) ? string.Empty : path[..^(CountSegment.Length + 1)];
+                if (TryFind(document.RootElement, basePath, out var element))
+                {
+                    if (element.ValueKind == JsonValueKind.Array) values[path] = element.GetArrayLength().ToString(CultureInfo.InvariantCulture);
+                    else if (element.ValueKind == JsonValueKind.Object) values[path] = element.EnumerateObject().Count().ToString(CultureInfo.InvariantCulture);
+                }
+            }
+        }
+        catch (JsonException) { /* not JSON: the count paths stay missing */ }
+    }
+
+    public const string CountSegment = "#count";
+
+    private static bool TryFind(JsonElement root, string path, out JsonElement element)
+    {
+        element = root;
+        if (path.Length == 0) return true;
+        foreach (var segment in path.Split('.'))
+        {
+            var name = segment;
+            var indexes = new List<int>();
+            var bracket = segment.IndexOf('[');
+            if (bracket >= 0)
+            {
+                name = segment[..bracket];
+                foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(segment[bracket..], @"\[(\d+)\]")) indexes.Add(int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture));
+            }
+            if (name.Length > 0)
+            {
+                if (element.ValueKind != JsonValueKind.Object) return false;
+                var found = false;
+                foreach (var property in element.EnumerateObject())
+                    if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) { element = property.Value; found = true; break; }
+                if (!found) return false;
+            }
+            foreach (var index in indexes)
+            {
+                if (element.ValueKind != JsonValueKind.Array || index >= element.GetArrayLength()) return false;
+                element = element[index];
+            }
+        }
+        return true;
     }
 
     private static bool IsOptionalMissing(AssertionDefinition definition, IReadOnlyDictionary<string, string> values)

@@ -125,9 +125,9 @@ public class ResponseHeaderTests
         editor.FindResponseHeaders("CreateCustomer");
         Assert.NotEmpty(editor.TemplateColumns);
 
-        var added = editor.AddTickedColumns(fillResponseValues: true, fillHeaderValues: true);
+        var added = editor.AddTickedColumns(fillHeaderValues: true);
 
-        Assert.True(added >= 3);
+        Assert.True(added >= 2);
         Assert.Contains(editor.RequestLines, l => l.Title == "CreateCustomer.newField");
         Assert.Contains(editor.ExpectedLines, l => l.Title == "CreateCustomer.responseHeader.X-Trace");
         editor.UndoCommand.Execute(null);

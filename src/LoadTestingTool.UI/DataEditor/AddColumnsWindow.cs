@@ -7,9 +7,9 @@ using Avalonia.Platform.Storage;
 namespace LoadTestingTool.UI.DataEditor;
 
 /// <summary>
-/// One form for creating data columns from what a step already shows: the template's _variable_ placeholders (Request),
-/// the fields of the last response (Response) and the HTTP headers the server sent (Response header). It is opened from
-/// Record view and from the right-click menu of a step in the tree; ticked items of all three tabs are added together.
+/// The "Template and response" window: creates data columns from what a step already shows. Request: the template's _variable_ placeholders. Response: the JSON of a
+/// row's response as a tree to tick and flatten, with a verb per header (<see cref="ResponseColumnsPane"/>). Response header: the HTTP headers the server sent.
+/// It is opened from Record view and from the right-click menu of a step in the tree; ticked items of all three tabs are added together as one undo step.
 /// </summary>
 public sealed class AddColumnsWindow : Window
 {
@@ -17,10 +17,8 @@ public sealed class AddColumnsWindow : Window
     private readonly string? _onlyStep;
     private readonly StackPanel _requestList = new() { Spacing = 2 };
     private readonly TextBlock _requestNote = new() { Foreground = Brush.Parse("#8EA4BC"), FontSize = 11, TextWrapping = TextWrapping.Wrap, Tag = "request-note" };
-    private readonly ComboBox _responseStep = new() { MinWidth = 260, Tag = "response-step" };
-    private readonly TextBlock _responseNote = new() { Foreground = Brush.Parse("#8EA4BC"), FontSize = 11, TextWrapping = TextWrapping.Wrap, Tag = "response-note" };
-    private readonly StackPanel _responseList = new() { Spacing = 2 };
-    private readonly CheckBox _responseFill = new() { Content = "Fill the expected values for this row from the response", IsChecked = true, Tag = "response-fill" };
+    private readonly ResponseColumnsPane _responsePane;
+    private readonly ComboBox _headerVerb = new() { MinWidth = 100, Tag = "header-default-verb" };
     private readonly ComboBox _headerStep = new() { MinWidth = 260, Tag = "header-step" };
     private readonly TextBlock _headerNote = new() { Foreground = Brush.Parse("#8EA4BC"), FontSize = 11, TextWrapping = TextWrapping.Wrap, Tag = "header-note" };
     private readonly StackPanel _headerList = new() { Spacing = 2 };
@@ -31,18 +29,19 @@ public sealed class AddColumnsWindow : Window
     {
         _editor = editor;
         _onlyStep = onlyStep;
-        Title = onlyStep is null ? "Add columns" : $"Add columns for {onlyStep}";
-        Width = 560;
-        Height = 560;
-        MinHeight = 380;
+        Title = onlyStep is null ? "Template and response" : $"Template and response · {onlyStep}";
+        Width = 1180;
+        Height = 760;
+        MinWidth = 760;
+        MinHeight = 440;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         var steps = editor.ResponseSteps();
-        foreach (var box in new[] { _responseStep, _headerStep })
-        {
-            box.ItemsSource = steps;
-            box.SelectedItem = onlyStep is not null && steps.Contains(onlyStep, StringComparer.OrdinalIgnoreCase) ? steps.First(s => s.Equals(onlyStep, StringComparison.OrdinalIgnoreCase)) : steps.LastOrDefault();
-        }
-        _responseStep.SelectionChanged += (_, _) => LoadResponse();
+        _responsePane = new ResponseColumnsPane(editor, steps, onlyStep);
+        _headerStep.ItemsSource = steps;
+        _headerStep.SelectedItem = onlyStep is not null && steps.Contains(onlyStep, StringComparer.OrdinalIgnoreCase) ? steps.First(s => s.Equals(onlyStep, StringComparison.OrdinalIgnoreCase)) : steps.LastOrDefault();
+        _headerVerb.ItemsSource = DataEditorViewModel.AssertionVerbs;
+        _headerVerb.SelectedItem = "eq";
+        _headerVerb.SelectionChanged += (_, _) => { if (_headerVerb.SelectedItem is string verb) { foreach (var choice in _editor.ResponseHeaderChoices) choice.Verb = verb; LoadHeaderList(); } };
         _headerStep.SelectionChanged += (_, _) => LoadHeaders();
         var pickHeaders = new Button { Content = "Choose a sample file…", Tag = "header-file" };
         pickHeaders.Click += async (_, _) =>
@@ -52,17 +51,9 @@ public sealed class AddColumnsWindow : Window
             if (files.Count > 0 && files[0].TryGetLocalPath() is { } path) LoadHeaders(path);
         };
 
-        var pick = new Button { Content = "Choose a sample file…", Tag = "response-file" };
-        pick.Click += async (_, _) =>
-        {
-            if (StorageProvider is not { } storage) return;
-            var files = await storage.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions { Title = "Sample response", AllowMultiple = false });
-            if (files.Count > 0 && files[0].TryGetLocalPath() is { } path) LoadResponse(path);
-        };
-
         _tabs.Items.Add(new TabItem { Header = "Request", Tag = "tab-request", Content = Tab(_requestNote, _requestList) });
-        _tabs.Items.Add(new TabItem { Header = "Response", Tag = "tab-response", Content = Tab(Labeled("Step", _responseStep), _responseNote, _responseList, _responseFill, pick) });
-        _tabs.Items.Add(new TabItem { Header = "Response header", Tag = "tab-header", Content = Tab(Labeled("Step", _headerStep), _headerNote, _headerList, _headerFill, pickHeaders) });
+        _tabs.Items.Add(new TabItem { Header = "Response", Tag = "tab-response", Content = new Border { Margin = new Thickness(0, 6, 0, 0), Child = _responsePane } });
+        _tabs.Items.Add(new TabItem { Header = "Response header", Tag = "tab-header", Content = Tab(Labeled("Step", _headerStep), Labeled("Verb for the headers", _headerVerb), _headerNote, _headerList, _headerFill, pickHeaders) });
 
         var add = new Button { Content = "Add ticked columns", Classes = { "primary" }, Tag = "add-columns", MinWidth = 140 };
         var close = new Button { Content = "Close", MinWidth = 80, IsCancel = true };
@@ -73,7 +64,6 @@ public sealed class AddColumnsWindow : Window
         Content = new DockPanel { Margin = new Thickness(16), Children = { buttons, _tabs } };
 
         LoadRequest();
-        LoadResponse();
         LoadHeaders();
     }
 
@@ -106,24 +96,32 @@ public sealed class AddColumnsWindow : Window
             : $"{_editor.TemplateColumns.Count} placeholders in the template have no data column yet; ticked ones are created as Step.variable.";
     }
 
-    private void LoadResponse(string? file = null)
-    {
-        _editor.FindResponseFields(_responseStep.SelectedItem as string ?? string.Empty, file);
-        Fill(_responseList, _editor.ResponseFields, c => c.Display, c => c.IsChosen, (c, on) => c.IsChosen = on, "response-field");
-        _responseNote.Text = _editor.ResponseFieldsNote;
-        _responseFill.IsVisible = _editor.ResponseFields.Count > 0;
-    }
-
     private void LoadHeaders(string? file = null)
     {
         _editor.FindResponseHeaders(_headerStep.SelectedItem as string ?? string.Empty, file);
-        Fill(_headerList, _editor.ResponseHeaderChoices, c => c.Display, c => c.IsChosen, (c, on) => c.IsChosen = on, "header-choice");
+        LoadHeaderList();
         _headerNote.Text = _editor.ResponseHeadersNote;
         _headerFill.IsVisible = _editor.ResponseHeaderChoices.Count > 0;
     }
 
+    /// <summary>One row per HTTP header: a tick and the verb it is compared with.</summary>
+    private void LoadHeaderList()
+    {
+        _headerList.Children.Clear();
+        foreach (var choice in _editor.ResponseHeaderChoices)
+        {
+            var box = new CheckBox { Content = choice.Display, IsChecked = choice.IsChosen, Tag = "header-choice", VerticalAlignment = VerticalAlignment.Center };
+            box.IsCheckedChanged += (_, _) => choice.IsChosen = box.IsChecked == true;
+            var verb = new ComboBox { ItemsSource = DataEditorViewModel.AssertionVerbs, SelectedItem = choice.Verb, MinWidth = 96, FontSize = 12, Tag = "header-verb" };
+            verb.SelectionChanged += (_, _) => { if (verb.SelectedItem is string v) choice.Verb = v; };
+            _headerList.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { verb, box } });
+        }
+    }
+
     /// <summary>Adds the ticked items of every tab as one undo step.</summary>
-    public void AddTicked() => _editor.AddTickedColumns(_responseFill.IsChecked == true, _headerFill.IsChecked == true);
+    public void AddTicked() => _editor.AddTickedColumns(_headerFill.IsChecked == true, _responsePane.Session);
+
+    internal ResponseColumnsPane ResponsePane => _responsePane;
 
     internal void SelectTab(string header) => _tabs.SelectedItem = _tabs.Items.OfType<TabItem>().First(t => (string?)t.Header == header);
 }
