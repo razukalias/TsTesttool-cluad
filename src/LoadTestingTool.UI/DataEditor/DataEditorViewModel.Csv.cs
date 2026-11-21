@@ -8,16 +8,11 @@ namespace LoadTestingTool.UI.DataEditor;
 // CSV import and export of the selected testcase's data rows.
 public sealed partial class DataEditorViewModel
 {
-    /// <summary>Raised when the view should ask for a CSV file; true = import, false = export.</summary>
-    public event EventHandler<bool>? CsvFileRequested;
-
     /// <summary>The choices of the CSV droplist; the button beside it runs the selected one.</summary>
-    public IReadOnlyList<string> CsvActions { get; } = ["Import CSV…", "Export CSV…"];
+    public IReadOnlyList<string> CsvActions { get; } = ["Import…", "Export CSV…", "Export Excel…"];
     [ObservableProperty] private int _csvActionIndex;
-    [RelayCommand] private void RunCsvAction() { if (CsvActionIndex == 1) ExportCsvFile(); else ImportCsvFile(); }
+    [RelayCommand] private void RunCsvAction() { if (CsvActionIndex == 1) ExportCsvFile(); else if (CsvActionIndex == 2) ExportExcelFile(); else OpenImport(); }
 
-    [RelayCommand] private void ImportCsvFile() => CsvFileRequested?.Invoke(this, true);
-    [RelayCommand] private void ExportCsvFile() => CsvFileRequested?.Invoke(this, false);
 
     /// <summary>Every row of the selected testcase (not just the filtered ones): Data ID, then the shown columns by their titles.</summary>
     public string BuildCsv()

@@ -53,7 +53,7 @@ public class ToolbarLayoutTests
         Assert.DoesNotContain(texts, t => t.StartsWith("Column filters"));
         Assert.DoesNotContain(window.GetVisualDescendants().OfType<ToggleButton>(), b => b.Content as string == "Preview request");
         var csv = window.GetVisualDescendants().OfType<ComboBox>().Single(c => Equals(c.Tag, "csv-action"));
-        Assert.Equal(new[] { "Import CSV…", "Export CSV…" }, csv.ItemsSource!.Cast<string>().ToArray());
+        Assert.Equal(new[] { "Import…", "Export CSV…", "Export Excel…" }, csv.ItemsSource!.Cast<string>().ToArray());
         Assert.Single(window.GetVisualDescendants().OfType<Button>(), b => Equals(b.Tag, "csv-run"));
         window.Close();
     }
@@ -64,12 +64,15 @@ public class ToolbarLayoutTests
         using var dir = new TempDir();
         var (window, shell) = Open(dir);
         var editor = shell.Current!;
-        var asked = new List<bool>();
-        editor.CsvFileRequested += (_, import) => asked.Add(import);
+        var asked = new List<string>();
+        editor.ImportRequested += (_, _) => asked.Add("import");
+        editor.ExportRequested += (_, request) => asked.Add(request.Format + "-export");
         editor.RunCsvActionCommand.Execute(null);
         editor.CsvActionIndex = 1;
         editor.RunCsvActionCommand.Execute(null);
-        Assert.Equal(new[] { true, false }, asked.ToArray());
+        editor.CsvActionIndex = 2;
+        editor.RunCsvActionCommand.Execute(null);
+        Assert.Equal(new[] { "import", "csv-export", "xlsx-export" }, asked.ToArray());
         window.Close();
     }
 

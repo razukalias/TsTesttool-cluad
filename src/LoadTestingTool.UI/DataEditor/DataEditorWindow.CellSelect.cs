@@ -182,6 +182,8 @@ public sealed partial class DataEditorWindow
             editor.PasteIntoSelection(ClipboardTable.Parse(text));
         }, count > 0));
         edit.Items.Add(Item("Clear", () => { CommitPendingEdit(); editor.SetSelectedCells(string.Empty); }, count > 0));
+        edit.Items.Add(Item("Export selected cells to CSV…", () => editor.RequestExport("csv", true), count > 0));
+        edit.Items.Add(Item("Export selected cells to Excel…", () => editor.RequestExport("xlsx", true), count > 0));
         menu.Items.Add(edit);
         menu.Items.Add(new Separator());
         // The row actions sit in the main menu

@@ -127,7 +127,8 @@ public partial class DataEditorWindow : Window
             _subscribed.StepColumnsChanged -= OnStepColumnsChanged;
             _subscribed.PropertyChanged -= OnEditorPropertyChanged;
             _subscribed.RevealColumnRequested -= OnRevealColumn;
-            _subscribed.CsvFileRequested -= OnCsvFileRequested;
+            _subscribed.ImportRequested -= OnImportRequested;
+            _subscribed.ExportRequested -= OnExportRequested;
             _subscribed.EditTemplateRequested -= OnEditTemplateRequested;
             _subscribed.NewTestcaseRequested -= OnNewTestcaseRequested;
             _subscribed.RunStarted -= OnRunStarted;
@@ -141,7 +142,8 @@ public partial class DataEditorWindow : Window
         _subscribed.StepColumnsChanged += OnStepColumnsChanged;
         _subscribed.PropertyChanged += OnEditorPropertyChanged;
         _subscribed.RevealColumnRequested += OnRevealColumn;
-        _subscribed.CsvFileRequested += OnCsvFileRequested;
+        _subscribed.ImportRequested += OnImportRequested;
+        _subscribed.ExportRequested += OnExportRequested;
         _subscribed.EditTemplateRequested += OnEditTemplateRequested;
         _subscribed.NewTestcaseRequested += OnNewTestcaseRequested;
         _subscribed.RunStarted += OnRunStarted;
@@ -227,41 +229,56 @@ public partial class DataEditorWindow : Window
         new TemplateEditorWindow(request.TemplatesFolder, request.Source, request.StepType, request.Saved, editor?.InstanceName, request.Testcase, request.Step, request.Variables).Show(this);
     }
 
-    private async void OnCsvFileRequested(object? sender, bool import)
+    private async void OnImportRequested(object? sender, EventArgs e)
+    {
+        if (sender is not DataEditorViewModel editor) return;
+        try
+        {
+            CommitPendingEdit();
+            var window = new ImportWindow(editor);
+            await window.ShowDialog(this);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            editor.ReportStatus("Import failed: " + ex.Message, isError: true);
+        }
+    }
+
+    private async void OnExportRequested(object? sender, ExportRequest request)
     {
         if (sender is not DataEditorViewModel editor || StorageProvider is null) return;
         try
         {
-            var csv = new Avalonia.Platform.Storage.FilePickerFileType("CSV files") { Patterns = ["*.csv", "*.txt"] };
-            if (import)
+            var excel = request.Format == "xlsx";
+            var type = excel ? new Avalonia.Platform.Storage.FilePickerFileType("Excel files") { Patterns = ["*.xlsx"] }
+                             : new Avalonia.Platform.Storage.FilePickerFileType("CSV files") { Patterns = ["*.csv", "*.txt"] };
+            CommitPendingEdit();
+            var table = editor.ExportTable(request.SelectionOnly);
+            var file = await StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
             {
-                var files = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions { Title = "Import CSV into " + editor.SelectedTestcase?.Name, FileTypeFilter = [csv], AllowMultiple = false });
-                if (files.Count == 0) return;
-                await using var stream = await files[0].OpenReadAsync();
-                using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true);
-                CommitPendingEdit();
-                editor.ImportCsv(await reader.ReadToEndAsync());
+                Title = (request.SelectionOnly ? "Export the selected cells to " : "Export to ") + (excel ? "Excel" : "CSV"),
+                SuggestedFileName = (editor.ExportBaseName + (request.SelectionOnly ? "-selection" : string.Empty)).Replace(' ', '_') + (excel ? ".xlsx" : ".csv"),
+                DefaultExtension = excel ? "xlsx" : "csv",
+                FileTypeChoices = [type],
+            });
+            if (file is null) return;
+            await using var stream = await file.OpenWriteAsync();
+            if (excel)
+            {
+                var temp = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".xlsx");
+                try { DataEditorViewModel.WriteXlsx(temp, editor.SelectedTestcase?.Name ?? editor.ActiveSheet, table); await using var source = File.OpenRead(temp); await source.CopyToAsync(stream); }
+                finally { try { File.Delete(temp); } catch (IOException) { } }
             }
             else
             {
-                var file = await StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
-                {
-                    Title = "Export rows to CSV",
-                    SuggestedFileName = DataEditorViewModel.CsvFileName(editor.InstanceName, editor.SelectedTestcase?.Name ?? "testcase"),
-                    DefaultExtension = "csv",
-                    FileTypeChoices = [csv],
-                });
-                if (file is null) return;
-                CommitPendingEdit();
-                await using var stream = await file.OpenWriteAsync();
                 await using var writer = new StreamWriter(stream, DataEditorViewModel.CsvEncoding);
-                await writer.WriteAsync(editor.BuildCsv());
-                editor.ReportStatus($"Exported {editor.SelectedTestcase?.RowCount} rows to {file.Name}.");
+                await writer.WriteAsync(ClipboardTable.Format(table.Select(r => (IEnumerable<string>)r), ','));
             }
+            editor.ReportStatus($"Exported {table.Count - 1} {(table.Count == 2 ? "row" : "rows")} to {file.Name}.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            editor.ReportStatus("CSV failed: " + ex.Message, isError: true);
+            editor.ReportStatus("Export failed: " + ex.Message, isError: true);
         }
     }
 

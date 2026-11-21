@@ -55,6 +55,10 @@ public partial class DataEditorWindow
         }, editor.SelectedTestcase is not null));
         menu.Items.Add(Item("Fix duplicate Data IDs", () => editor.FixDuplicateDataIds(), editor.SelectedTestcase is not null));
         menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Import rows or columns from Excel / CSV…", () => editor.OpenImportCommand.Execute(null), editor.CanImport));
+        menu.Items.Add(Item("Export the table to CSV…", () => editor.RequestExport("csv", false), editor.SelectedTestcase is not null));
+        menu.Items.Add(Item("Export the table to Excel…", () => editor.RequestExport("xlsx", false), editor.SelectedTestcase is not null));
+        menu.Items.Add(new Separator());
         menu.Items.Add(ColourItem("Highlight row", haveRow,
             hex => editor.FormatCells(RowCells(editor, selected()), f => f with { Fill = hex }, "Highlighted row"),
             () => editor.FormatCells(RowCells(editor, selected()), f => f with { Fill = null }, "Cleared highlight")));
@@ -264,6 +268,10 @@ public partial class DataEditorWindow
             CommitPendingEdit();
             editor.PasteSheetRowsBelow(ClipboardTable.Parse(text));
         }));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Import rows or columns from Excel / CSV…", () => editor.OpenImportCommand.Execute(null), editor.CanImport));
+        menu.Items.Add(Item("Export the sheet to CSV…", () => editor.RequestExport("csv", false)));
+        menu.Items.Add(Item("Export the sheet to Excel…", () => editor.RequestExport("xlsx", false)));
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("Remove row", () => editor.RemoveSheetRowCommand.Execute(null), haveRow, danger: true));
         return menu;

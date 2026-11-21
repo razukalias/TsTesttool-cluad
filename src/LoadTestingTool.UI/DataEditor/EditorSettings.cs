@@ -11,6 +11,9 @@ public sealed class EditorSettings
     /// <summary>Per workbook, the sheets whose tab is hidden in Table view (empty or missing = all sheets).</summary>
     public Dictionary<string, List<string>> HiddenSheets { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The last choices made importing a file of this name into a testcase or sheet, so importing it again starts where the last import ended.</summary>
+    public Dictionary<string, ImportChoice> ImportChoices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     public static string FilePath { get; set; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TSLoadTestingTool", "data-editor.json");
 
@@ -38,4 +41,22 @@ public sealed class EditorSettings
         {
         }
     }
+}
+
+/// <summary>What the Import window remembers per file name: the part of the file, the mode and the hand-made column mapping (by header name, so it survives column changes).</summary>
+public sealed class ImportChoice
+{
+    public string Sheet { get; set; } = string.Empty;
+    public string Range { get; set; } = string.Empty;
+    public int HeaderRow { get; set; } = 1;
+    public string Mode { get; set; } = nameof(ImportMode.AppendRows);
+    public string Match { get; set; } = nameof(ImportMatch.ByHeader);
+    public string RowMatch { get; set; } = nameof(ImportRowMatch.DataId);
+    public string Placement { get; set; } = nameof(ImportPlacement.End);
+    public bool CreateUnmatched { get; set; }
+    public bool ClearOnEmpty { get; set; }
+    public string? Step { get; set; }
+    public bool Expected { get; set; }
+    public string Verb { get; set; } = "eq";
+    public Dictionary<string, string> Manual { get; set; } = [];
 }
