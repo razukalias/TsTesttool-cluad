@@ -1,7 +1,12 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Input;
 using Avalonia.Media;
+using AvaloniaEdit;
+using AvaloniaEdit.CodeCompletion;
+using AvaloniaEdit.Document;
+using AvaloniaEdit.Editing;
 using LoadTestingTool.Execution;
 
 namespace LoadTestingTool.UI.DataEditor;
@@ -27,12 +32,27 @@ public sealed class ConditionBuilderWindow : Window
     private readonly TextBlock _status = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, Tag = "cond-status" };
     private readonly Button _ok = new() { Content = "Use this condition", Classes = { "accent" }, Tag = "cond-ok" };
     private bool _loading;
+    private readonly TextEditor _script = new() { ShowLineNumbers = true, FontFamily = new FontFamily("Consolas"), FontSize = 14, Foreground = Brush.Parse("#E3EDF9"), MinHeight = 200, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto };
+    private readonly Control _wizardPane;
+    private readonly Control _scriptPane;
+    private readonly Avalonia.Controls.Primitives.ToggleButton _wizardMode = new() { Content = "Wizard", Tag = "cond-mode-wizard" };
+    private readonly Avalonia.Controls.Primitives.ToggleButton _scriptMode = new() { Content = "C# script", Tag = "cond-mode-script" };
+    private CompletionWindow? _completion;
+    private bool _scriptActive;
+
+    /// <summary>True while the C# script is the condition (otherwise the rows are).</summary>
+    public bool ScriptMode => _scriptActive;
+
+    /// <summary>The script's code without the cs: prefix.</summary>
+    public string ScriptText { get => _script.Text ?? string.Empty; set => _script.Text = value; }
 
     /// <summary>The condition text to write into the step, or null when the window was cancelled.</summary>
     public string? Result { get; private set; }
 
     /// <summary>The condition as the rows stand now.</summary>
-    public string CurrentText => ConditionParts.Build(_rows.Select((r, i) => r.ToPart(i == 0)));
+    public string CurrentText => _scriptActive ? (ScriptText.Trim().Length == 0 ? string.Empty : ConditionScript.Prefix + " " + ScriptText.Trim()) : RowsText;
+
+    private string RowsText => ConditionParts.Build(_rows.Select((r, i) => r.ToPart(i == 0)));
 
     public int RowCount => _rows.Count;
 
@@ -55,7 +75,8 @@ public sealed class ConditionBuilderWindow : Window
         MinHeight = 380;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        var parts = ConditionParts.Parse(initial);
+        var startsAsScript = ConditionScript.IsScript(initial);
+        var parts = startsAsScript ? [] : ConditionParts.Parse(initial);
         OpenedAsRows = parts is not null;
         _loading = true;
         if (parts is { Count: > 0 }) foreach (var part in parts) AddRow(part);
@@ -81,18 +102,109 @@ public sealed class ConditionBuilderWindow : Window
         for (var i = 0; i < heads.Length; i++) { var h = new TextBlock { Text = heads[i], FontSize = 11, Foreground = Brush.Parse("#8EA4BC"), Margin = new Thickness(4, 0, 0, 0) }; Grid.SetColumn(h, i); header.Children.Add(h); }
 
         var layout = new DockPanel { Margin = new Thickness(14) };
+        var wizard = new DockPanel();
         DockPanel.SetDock(help, Dock.Top);
         DockPanel.SetDock(header, Dock.Top);
+        wizard.Children.Add(help);
+        wizard.Children.Add(header);
+        wizard.Children.Add(new ScrollViewer { Content = new StackPanel { Spacing = 8, Children = { _rowsPanel, add } }, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
+        _wizardPane = wizard;
+
+        var scriptHelp = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = Brush.Parse("#8EA4BC"),
+            Text = "For conditions the rows cannot express. Write C# that ends with a true/false expression (or use return). Type  _  to list the variables, or  <  to list values of earlier steps and the data row. "
+                 + "Helpers: Is(\"gt\", a, b) with any condition verb, True(x), Has(\"name\"), Num(\"name\"), V(\"name\"); System.Linq and Regex are available. A value inside quotes becomes its text, outside quotes a string.",
+        };
+        DockPanel.SetDock(scriptHelp, Dock.Top);
+        var convert = new Button { Content = "Fill from the wizard rows", Tag = "cond-convert", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 6, 0, 6) };
+        ToolTip.SetTip(convert, "Replaces the script with C# that means the same as the rows");
+        convert.Click += (_, _) => { _script.Text = ConditionScript.FromParts(_rows.Select((r, i) => r.ToPart(i == 0))); Refresh(); };
+        DockPanel.SetDock(convert, Dock.Top);
+        var script = new DockPanel();
+        script.Children.Add(scriptHelp);
+        script.Children.Add(convert);
+        script.Children.Add(new Border { Child = _script, BorderBrush = Brush.Parse("#2A3B52"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4) });
+        _scriptPane = script;
+        _script.TextArea.TextEntered += OnScriptTextEntered;
+        _script.TextChanged += (_, _) => Refresh();
+        _script.Document.TextChanged += (_, _) => Refresh();
+
+        var modes = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 0, 0, 8), Children = { _wizardMode, _scriptMode } };
+        ToolTip.SetTip(_scriptMode, "Write the condition as C# code, like the condition of an if or while in a program");
+        ToolTip.SetTip(_wizardMode, "Build the condition from rows");
+        _wizardMode.Click += (_, _) => SetMode(false);
+        _scriptMode.Click += (_, _) => SetMode(true);
+        DockPanel.SetDock(modes, Dock.Top);
         DockPanel.SetDock(buttons, Dock.Bottom);
         var result = new StackPanel { Spacing = 4, Margin = new Thickness(0, 10, 0, 10), Children = { new TextBlock { Text = "THE CONDITION", FontSize = 11, Foreground = Brush.Parse("#8EA4BC") }, _preview, _status } };
         DockPanel.SetDock(result, Dock.Bottom);
-        layout.Children.Add(help);
-        layout.Children.Add(header);
+        layout.Children.Add(modes);
         layout.Children.Add(buttons);
         layout.Children.Add(result);
-        layout.Children.Add(new ScrollViewer { Content = new StackPanel { Spacing = 8, Children = { _rowsPanel, add } }, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled });
+        layout.Children.Add(new Panel { Children = { _wizardPane, _scriptPane } });
+        if (startsAsScript) _script.Text = ConditionScript.Body(initial!);
+        _scriptActive = startsAsScript;
+        ApplyMode();
         Content = layout;
         Refresh();
+    }
+
+    /// <summary>Switches between the rows and the C# script. Going to the script for the first time with rows filled in offers their C# translation.</summary>
+    public void SetMode(bool script)
+    {
+        if (script && !_scriptActive && ScriptText.Trim().Length == 0 && RowsText.Length > 0)
+            _script.Text = ConditionScript.FromParts(_rows.Select((r, i) => r.ToPart(i == 0)));
+        _scriptActive = script;
+        ApplyMode();
+        Refresh();
+    }
+
+    private void ApplyMode()
+    {
+        _wizardPane.IsVisible = !_scriptActive;
+        _scriptPane.IsVisible = _scriptActive;
+        _wizardMode.IsChecked = !_scriptActive;
+        _scriptMode.IsChecked = _scriptActive;
+    }
+
+    /// <summary>What the completion list offers after the typed character: "_" lists the variables as _name_, "&lt;" the values of earlier steps and the data row as &lt;From_…&gt;. Nothing else is offered.</summary>
+    public IReadOnlyList<(string Text, string Description)> CompletionItems(char trigger)
+    {
+        var items = new List<(string, string)>();
+        if (trigger == '_')
+            foreach (var name in _loopVariables().Where(n => n.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+                items.Add(($"_{name}_", name.Equals("env", StringComparison.OrdinalIgnoreCase) ? "The selected environment." : $"The value of {name} in the loop this step is in."));
+        else if (trigger == '<')
+        {
+            foreach (var t in _responseTargets().Distinct(StringComparer.OrdinalIgnoreCase)) items.Add((ResponseValuePicker.ReferenceFor(t), "From the response of an earlier step."));
+            foreach (var t in _dataTargets().Distinct(StringComparer.OrdinalIgnoreCase)) items.Add(($"<From_request_{t}_r>", "A column of the data row that is running."));
+        }
+        return items;
+    }
+
+    private void OnScriptTextEntered(object? sender, TextInputEventArgs e)
+    {
+        if (e.Text is not ("_" or "<")) return;
+        var area = _script.TextArea;
+        var offset = area.Caret.Offset;
+        if (e.Text == "_" && offset >= 2 && (char.IsLetterOrDigit(area.Document.GetCharAt(offset - 2)) || area.Document.GetCharAt(offset - 2) == '_')) return;
+        var items = CompletionItems(e.Text[0]);
+        if (items.Count == 0) return;
+        _completion = new CompletionWindow(area) { StartOffset = offset - 1, CloseWhenCaretAtBeginning = true };
+        foreach (var (text, description) in items) _completion.CompletionList.CompletionData.Add(new ScriptCompletion(text, description));
+        _completion.Closed += (_, _) => _completion = null;
+        _completion.Show();
+    }
+
+    private sealed class ScriptCompletion(string text, string description) : ICompletionData
+    {
+        public string Text => text;
+        public object Content => text;
+        public object Description => description;
+        public IImage? Image => null;
+        public double Priority => 0;
+        public void Complete(TextArea textArea, ISegment completionSegment, EventArgs insertionRequestEventArgs) => textArea.Document.Replace(completionSegment, text);
     }
 
     /// <summary>Adds a row for a comparison (the wizard's ＋ does this; tests use it too).</summary>
@@ -123,6 +235,13 @@ public sealed class ConditionBuilderWindow : Window
         if (_loading) return;
         var text = CurrentText;
         _preview.Text = text;
+        if (_scriptActive)
+        {
+            var scriptProblem = text.Length == 0 ? "Write a condition, for example  Is(\"gt\", <From_response_Step.count_r>, \"3\")." : ConditionScript.Check(text, _loopVariables());
+            if (scriptProblem is not null) { _status.Text = "⚠ " + scriptProblem; _status.Foreground = Brush.Parse("#F6C76B"); _ok.IsEnabled = false; }
+            else { _status.Text = "✓ The script compiles. It runs, with the real values, when the step runs; it must give true or false."; _status.Foreground = Brush.Parse("#39D39B"); _ok.IsEnabled = true; }
+            return;
+        }
         var problem = ConditionEvaluator.Check(text);
         if (problem is not null) { _status.Text = "⚠ " + problem; _status.Foreground = Brush.Parse("#F6C76B"); _ok.IsEnabled = false; return; }
         _ok.IsEnabled = text.Length > 0;

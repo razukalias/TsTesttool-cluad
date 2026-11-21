@@ -212,7 +212,13 @@ public sealed class TestRunner
                         var resolved = await TextAsync(text);
                         return long.TryParse(resolved, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var number) ? number : throw new InvalidDataException($"'{key}' must be a whole number, but it is '{resolved}'.");
                     }
-                    async Task<bool> ConditionAsync() => ConditionEvaluator.Evaluate(await TextAsync(control.Condition));
+                    async Task<bool> ConditionTextAsync(string? text)
+                    {
+                        if (!ConditionScript.IsScript(text)) return ConditionEvaluator.Evaluate(await TextAsync(text ?? string.Empty));
+                        var names = correlation.Keys.Concat(loopVars.Keys).Append("env").ToList();
+                        return await ConditionScript.EvaluateAsync(text!, names, TextAsync, token);
+                    }
+                    async Task<bool> ConditionAsync() => await ConditionTextAsync(control.Condition);
                     var totalMs = control.ResponseTimeoutMs > 0 ? control.ResponseTimeoutMs : control.TimeoutSeconds > 0 ? control.TimeoutSeconds * 1000L : 0L;
                     var watch = System.Diagnostics.Stopwatch.StartNew();
                     // 0 = next round, 1 = leave the loop, 2 = stop the data row, 3 = the whole loop took longer than its timeout
@@ -236,7 +242,7 @@ public sealed class TestRunner
                             var position = 0;
                             var skipWhen = config.GetValueOrDefault("skipwhen");
                             var stopWhen = config.GetValueOrDefault("stopwhen");
-                            async Task<bool> MetAsync(string? text) => !string.IsNullOrWhiteSpace(text) && ConditionEvaluator.Evaluate(await TextAsync(text));
+                            async Task<bool> MetAsync(string? text) => !string.IsNullOrWhiteSpace(text) && await ConditionTextAsync(text);
                             foreach (var value in values)
                             {
                                 loopVars[variable] = value;

@@ -762,4 +762,11 @@ Tree icons (2026-11-21): a small line icon sits at the far left of every tree ro
 - Grammar: `not` binds tightest, then `and`, then `xor`, then `or` (`! && ^ ||` also work); brackets group.
 - **Behaviour change:** unquoted `and`, `or`, `xor`, `not` inside a value are now operators. Quote such values (`"or"`).
 - `stopwhen` is checked after each round, `skipwhen` before each round (log lines `LOOP STOP` / `LOOP SKIP`).
-- Still to do (phase C): a C# script mode (`cs:` prefix) with variable-only completion.
+
+## C# script conditions (tree phase C)
+- The condition wizard has a **Wizard / C# script** switch. A script condition is stored as `cs: <code>` in the condition (or stopwhen / skipwhen) and works for If, While, For and ForEach.
+- The script ends with a true/false expression, or uses `return`. Helpers: `Is("gt", a, b)` (any condition verb), `True(x)`, `Has("name")`, `Num("name")`, `V("name")`; `System`, `System.Linq`, `System.Collections.Generic` and `Regex` are imported.
+- `<From_…>` references and `_variable_` names (only names the run really knows) are replaced before the script runs: inside quotes by their text, elsewhere by a string.
+- Typing `_` in the editor lists only variables; typing `<` lists only step and data-row values (`<From_response_…_r>`, `<From_request_…_r>`).
+- "Fill from the wizard rows" translates the rows into the same C#; there is no way back from a script to rows.
+- A script that does not compile, does not give true/false or runs over 10 seconds fails only its control step with the line and message; the workbook check shows compile errors as warnings.

@@ -87,7 +87,7 @@ public static class WorkbookValidator
         else if (type is StepType.If or StepType.While)
         {
             var condition = Text(row, "condition");
-            if (!condition.StartsWith("cs:", StringComparison.OrdinalIgnoreCase) && LoadTestingTool.Execution.ConditionEvaluator.Check(condition) is { } problem)
+            if ((LoadTestingTool.Execution.ConditionScript.IsScript(condition) ? LoadTestingTool.Execution.ConditionScript.Check(condition) : LoadTestingTool.Execution.ConditionEvaluator.Check(condition)) is { } problem)
                 Add(problems, ProblemSeverity.Warning, table, row, problem);
         }
         if (type == StepType.For && !config.ContainsKey("to") && !config.ContainsKey("count"))

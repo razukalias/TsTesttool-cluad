@@ -167,6 +167,65 @@ public class ConditionBuilderTests
     }
 }
 
+public class ConditionScriptModeTests
+{
+    private static ConditionBuilderWindow Show(string? initial)
+    {
+        var window = new ConditionBuilderWindow(() => ["Login.statusCode", "Login.token"], () => ["Login.user"], () => ["i", "env"], initial);
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        return window;
+    }
+    private static T Named<T>(Avalonia.Controls.Control root, string tag) where T : Avalonia.Controls.Control => Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(root).OfType<T>().First(c => Equals(c.Tag, tag));
+
+    [AvaloniaFact]
+    public void A_script_condition_opens_in_script_mode_and_the_result_keeps_the_cs_prefix()
+    {
+        var window = Show("cs: Is(\"gt\", <From_response_Login.statusCode_r>, \"199\")");
+        Assert.True(window.ScriptMode);
+        Assert.Equal("Is(\"gt\", <From_response_Login.statusCode_r>, \"199\")", window.ScriptText);
+        Assert.Equal("cs: Is(\"gt\", <From_response_Login.statusCode_r>, \"199\")", window.CurrentText);
+        Assert.Contains("compiles", Named<TextBlock>(window, "cond-status").Text);
+        Assert.True(Named<Button>(window, "cond-ok").IsEnabled);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Switching_to_the_script_translates_the_rows_and_a_broken_script_is_reported_with_its_line()
+    {
+        var window = Show("<From_response_Login.statusCode_r> eq 200 and not x empty");
+        Assert.False(window.ScriptMode);
+        window.SetMode(true);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(window.ScriptMode);
+        Assert.Contains("Is(\"eq\", \"<From_response_Login.statusCode_r>\", \"200\") && !Is(\"empty\", \"x\")", window.ScriptText);
+        window.ScriptText = "var a = 1;\nreturn a +;";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var status = Named<TextBlock>(window, "cond-status").Text!;
+        Assert.StartsWith("⚠", status);
+        Assert.Contains("line 2", status);
+        Assert.False(Named<Button>(window, "cond-ok").IsEnabled);
+        window.SetMode(false);   // the rows are still there
+        Assert.False(window.ScriptMode);
+        Assert.Equal(2, window.RowCount);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Completion_offers_only_variables_after_an_underscore_and_only_step_and_data_values_after_a_bracket()
+    {
+        var window = Show("cs: true");
+        var variables = window.CompletionItems('_');
+        Assert.Equal(["_env_", "_i_"], variables.Select(v => v.Text).ToList());
+        var values = window.CompletionItems('<').Select(v => v.Text).ToList();
+        Assert.Contains("<From_response_Login.statusCode_r>", values);
+        Assert.Contains("<From_request_Login.user_r>", values);
+        Assert.All(values, v => Assert.StartsWith("<From_", v));
+        Assert.Empty(window.CompletionItems('x'));
+        window.Close();
+    }
+}
+
 public class ConditionBuilderScreenshots
 {
     [AvaloniaFact]
@@ -178,6 +237,9 @@ public class ConditionBuilderScreenshots
         window.Show();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Avalonia.Headless.HeadlessWindowExtensions.CaptureRenderedFrame(window)!.Save(System.IO.Path.Combine(outDir, "wizard.png"));
+        window.SetMode(true);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Avalonia.Headless.HeadlessWindowExtensions.CaptureRenderedFrame(window)!.Save(System.IO.Path.Combine(outDir, "wizard-script.png"));
         window.Close();
     }
 }

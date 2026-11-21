@@ -94,6 +94,58 @@ public class ControlFlowTests
     private static string Ok(string path) => "{\"ok\":true,\"items\":[\"x\",\"y\"]}";
 
     [Fact]
+    public async Task A_csharp_condition_can_use_references_variables_and_code()
+    {
+        async Task<List<string>> PathsFor(string condition)
+        {
+            var path = Build(new TempDir(),
+                new Step("First", Url: "/first"),
+                new Step("Check", "If", Condition: condition),
+                new Step("Then1", Parent: "Check", Url: "/then"),
+                new Step("Else1", Parent: "Check:else", Url: "/else"));
+            return (await RunAsync(path, Ok)).Paths;
+        }
+        Assert.Equal(["/first", "/then"], await PathsFor("cs: <From_response_First.items_r>.Contains(\"y\") && !string.IsNullOrEmpty(<From_response_First.ok_r>)"));
+        Assert.Equal(["/first", "/else"], await PathsFor("cs: <From_response_First.items_r>.Contains(\"zzz\")"));
+        Assert.Equal(["/first", "/then"], await PathsFor("cs:\n var n = <From_response_First.items_r>.Length;\n return n > 3;"));
+    }
+
+    [Fact]
+    public async Task A_csharp_loop_condition_stops_a_for_loop()
+    {
+        using var dir = new TempDir();
+        var path = Build(dir,
+            new Step("Loop", "For", Config: "from=1;to=9;stopwhen=cs: int.Parse(_i_) * 2 >= 6"),
+            new Step("Each", Parent: "Loop", Url: "/n/_i_"));
+        var (_, paths, _) = await RunAsync(path, Ok);
+        Assert.Equal(["/n/1", "/n/2", "/n/3"], paths);
+    }
+
+    [Fact]
+    public async Task A_csharp_condition_that_does_not_compile_or_is_not_true_or_false_fails_only_that_step()
+    {
+        var bad = await RunAsync(Build(new TempDir(), new Step("Bad", "If", Condition: "cs: 1 +"), new Step("After", Url: "/after")), Ok);
+        Assert.Empty(bad.Paths);
+        Assert.Contains(bad.Run.Testcases.SelectMany(t => t.Requests), r => (r.ErrorMessage ?? "").Contains("does not compile"));
+        var num = await RunAsync(Build(new TempDir(), new Step("Num", "If", Condition: "cs: 42"), new Step("After", Url: "/after")), Ok);
+        Assert.Contains(num.Run.Testcases.SelectMany(t => t.Requests), r => (r.ErrorMessage ?? "").Contains("must give true or false"));
+    }
+
+    [Fact]
+    public void Script_placeholders_are_found_outside_comments_and_replaced_by_their_text_in_strings()
+    {
+        var code = "// <From_response_A.x_r> in a comment\n_i_ == \"<From_response_A.y_r>\" && V(\"_i_\") != _j_";
+        var found = ConditionScript.Find(code, ["i"]);
+        Assert.Equal(["_i_", "<From_response_A.y_r>", "_i_"], found.Select(f => f.Text).ToList());   // _j_ is not a variable; the comment is skipped
+        Assert.Equal([false, true, true], found.Select(f => f.InString).ToList());
+        var rewritten = ConditionScript.Rewrite(code, found, p => p.Text == "_i_" ? "3" : "say \"hi\"", out var values);
+        Assert.Contains("V(\"_i_\") == \"say \\\"hi\\\"\" && V(\"3\") != _j_", rewritten);
+        Assert.Equal("3", values["_i_"]);
+        Assert.Null(ConditionScript.Check("cs: V(\"a\") == \"b\""));
+        Assert.Contains("line 1", ConditionScript.Check("cs: 1 +"));
+    }
+
+    [Fact]
     public async Task If_runs_its_steps_when_the_condition_holds_and_the_else_steps_when_it_does_not()
     {
         using var dir = new TempDir();

@@ -80,3 +80,21 @@ public class ConditionPartsTests
         Assert.Equal("a eq 1 and b eq 2", ConditionParts.Build([new("", false, 0, false, "a", "eq", "1", 0), new("", false, 0, false, "b", "eq", "2", 0)]));
     }
 }
+
+public class ConditionScriptConversionTests
+{
+    [Theory]
+    [InlineData("<From_response_A.s_r> eq 200", true)]
+    [InlineData("1 eq 1 and not ( 2 gt 3 or x empty )", true)]
+    [InlineData("1 eq 2 or 5 gt 3 xor 1 eq 1", false)]
+    [InlineData("abc notempty and \"\" empty", true)]
+    [InlineData("yes", true)]
+    public async Task A_wizard_condition_converted_to_csharp_gives_the_same_answer(string text, bool expected)
+    {
+        var parts = ConditionParts.Parse(text)!;
+        var code = ConditionScript.FromParts(parts);
+        Assert.Null(ConditionScript.Check("cs: " + code));
+        Assert.Equal(ConditionEvaluator.Evaluate(text.Replace("<From_response_A.s_r>", "200")), await ConditionScript.EvaluateAsync("cs: " + code, [], t => Task.FromResult(t.StartsWith("<From") ? "200" : t)));
+        Assert.Equal(expected, ConditionEvaluator.Evaluate(text.Replace("<From_response_A.s_r>", "200")));
+    }
+}
