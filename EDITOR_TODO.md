@@ -845,3 +845,30 @@ Today help is scattered: ⓘ step-type guides (`StepTypeGuide`), a few "Help" bu
 3. Chapters 3, 5, 6, 7 (workbook, assertions, step types, control steps), moving the existing texts in.
 4. Per-window Help buttons and field tooltips, window by window, ticking the inventory.
 5. Remaining chapters, reference tables (generated from code where possible: verbs, tokens, stepconfig keys), export of `USER_MANUAL.md`/PDF, example-validation tests.
+
+## Instances, new step types, local servers and lists (added 2026-11-21, not started)
+
+### Script autocomplete (checked: only partly there)
+Today the C# condition editor completes only `_variable_` names and `<From_…>` step/data values, and the Template editor completes `_variables_` and `runscript(`; there is **no C# completion** (helpers, members, keywords) in any script box.
+- [ ] **C# autocomplete** in the condition editor (`cs:`), the Script step (Inline box and `.csx` template editor) and `<runscript(...)>` parameters: helpers `Is(`, `True(`, `Has(`, `Num(`, `V(` with their signature and a one-line help; the imported namespaces (`System`, `System.Linq`, `System.Collections.Generic`, `Regex`) with their common members after `.`; C# keywords and snippets (`if`, `foreach`, `return`, `var`, a multi-line condition template); the saved output/loop variables as `_name_`. Popup, filtering and accept keys the same as the other editors (Enter/Tab/mouse, stays until accepted).
+- [ ] Parameter hints while typing `Is("`: the list of condition verbs; and show the compile error under the box while typing (same check the workbook validation uses).
+- [ ] Tests: popup opens on `.` and on a letter, filters, inserts, does not open inside a string or comment; every helper in the list really exists in the script host (so the list cannot rot).
+
+### Instances: refresh, create with all folders, learning instance
+- [ ] **Refresh instances button** in the instance list (main window / instance manager): re-reads `appsettings.json` and rescans the instances folder, keeps the selection, shows what was added/removed. Also refreshes automatically when the window gets focus again (optional setting).
+- [ ] **Create an instance creates everything it needs:** the workbook (config, request, response, environments sheets), and the folders `Templates`, `Files`, `History`, `Logs`, `Results`, `backup`, plus a starter `empty.json` template and a short `README.md`. A check on open that creates any folder that is missing, and says so. Test: a new instance runs a first step with no manual folder work.
+- [ ] **"Create a sample instance covering all steps" (test or learn):** an option in the create dialog that builds an instance with one working testcase per step type — HTTP, GraphQL, CaseQL, SQL, File, Script, WCF, ActionManual — and the control steps (If, While, For, ForEach), request data, expected columns, `#count`, templates and files, each with a note column explaining what it shows. It points at the local servers below, so it runs with no internet. Replaces the hand-made ControlFlowScenarios / ComplexResponses as the "learn" entry point (they stay as test instances).
+
+### New step type: WCF service
+- [ ] **WCF step** (SOAP): Target URL (endpoint), SOAP action, binding (basicHttp / wsHttp, optional message security), SOAP version 1.1 / 1.2, optional WSDL URL, request body from a template (XML envelope or just the body), credentials / headers from the step config, timeout. Response is read as XML: assertions on XPath-like paths and SOAP faults reported as the failure message; `statusCode`, response headers and `#count` behave as for HTTP. Step form fields, the ⓘ guide with an example, validation, history/log entries (secrets masked), tests against the local WCF server below, and the same editor/wizard integration as the other types.
+- [ ] Decide: WSDL import (list the operations and generate the template) as a second slice.
+
+### Run local test servers (HTTP, GraphQL, SQL, WCF)
+- [ ] A **"Local test servers"** window (and a CLI `--serve`) that starts and stops built-in servers for trying the tool without internet: **HTTP/REST** (the `/orders`, `/customers`, `/echo`, `/poll` endpoints now in `server.py`, ported so no Python is needed), **GraphQL** (a small schema with queries and a mutation), **WCF/SOAP** (an echo and an order service with a WSDL), and **SQL** (an embedded SQLite database with sample tables behind a ready connection profile; decide whether SQL Server LocalDB is also offered on Windows). Shows port, status, request log, start/stop, and "Use in instance" (sets the URLs / connection profile of the sample instance).
+- [ ] Ports configurable, bind to 127.0.0.1 only, stop on exit, never started silently.
+
+### `<from_filepath_…>` file picker
+- [ ] In the cell wizard (✦) for `<from_filepath>` and `<from_filepath_base64>`: a **Pick file…** button that opens the file picker **in the instance's `Files` folder by default**, writes the token with a path relative to `Files` when the file is inside it (full path otherwise, with a note), and shows the size and a preview of the first lines (never for base64). Also available from the Record view and the Add columns form. Test: default folder, relative path result, file outside `Files`.
+
+### Pagination of history lists
+- [ ] Every history list (history explorer, run list, request history, log lists, saved runs, comparison picker) gets **pagination, 100 rows per page**: page controls (first / previous / next / last, "page 3 of 17", jump to page), the total count, and a page-size setting (50 / 100 / 250, default 100). Sorting and filters apply to the whole list, not to the page; the selection and "select all" say clearly whether they mean the page or all results. Large histories load a page at a time (no full load into memory). Tests with 1 000+ rows: page count, edges, filter then page, sort across pages.
