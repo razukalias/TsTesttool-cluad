@@ -68,8 +68,7 @@ public sealed class InstanceBuilderWindow : Window
             var name = _name.Text!.Trim();
             var folder = Path.GetFullPath(Path.Combine(_defaultRoot, name));
             if (Directory.Exists(folder) && Directory.EnumerateFileSystemEntries(folder).Any()) throw new InvalidOperationException("The target folder already exists and is not empty.");
-            Directory.CreateDirectory(folder);
-            foreach (var sub in new[] { "Templates", "Queries", "Scripts", "Inputs", "Artifacts", "History", "Logs", "Results" }) Directory.CreateDirectory(Path.Combine(folder, sub));
+            DataEditor.InstanceOperations.EnsureFolders(folder);
             var workbookPath = Path.Combine(folder, _workbookName);
             using (var workbook = new XLWorkbook())
             {
@@ -77,7 +76,7 @@ public sealed class InstanceBuilderWindow : Window
                 workbook.SaveAs(workbookPath);
             }
             File.WriteAllText(Path.Combine(folder, "Templates", "login.json"), "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}\n");
-            File.WriteAllText(Path.Combine(folder, "README.md"), $"# {name}\n\nCreated by LoadTestingTool. Open the DataEngine workbook or use the guided editor.\n");
+            File.WriteAllText(Path.Combine(folder, "README.md"), $"# {name}\n\nCreated by LoadTestingTool. Open the DataEngine workbook or use the guided editor.\n\nFolders: Templates (request bodies), Files (read by <from_filepath>), Queries, Scripts, Inputs, Artifacts, History, Logs, Results.\n");
             CreatedFolder = folder; Close();
         }
         catch (Exception ex) { _message.Text = $"Could not create instance: {ex.Message}"; _create.IsEnabled = false; }

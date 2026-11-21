@@ -184,6 +184,7 @@
           <TextBlock Classes="caption" Text="INSTANCES" VerticalAlignment="Center" Margin="0,0,8,0" />
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
             <Button x:Name="NewInstanceButton" Content="＋" Classes="treemove" FontSize="13" ToolTip.Tip="New instance: a blank workbook with its folders" />
+            <Button x:Name="RefreshInstancesButton" Content="⟳" Classes="treemove" FontSize="13" ToolTip.Tip="Refresh instances: pick up instance folders added or removed outside the editor, and create any missing standard folders" />
             <Button x:Name="DuplicateInstanceButton" Content="⧉" Classes="treemove" FontSize="13" ToolTip.Tip="Duplicate the selected instance (workbook, templates and files; no results or logs)" />
           </StackPanel>
           <Button Grid.Column="3" Content="Refresh results" Command="{Binding RefreshResultsCommand}" IsEnabled="{Binding !IsLoadingResults}" MinHeight="28" Padding="10,2" FontSize="12" />

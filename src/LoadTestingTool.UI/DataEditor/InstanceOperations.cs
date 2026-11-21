@@ -6,6 +6,26 @@ public static class InstanceOperations
     // Output of earlier runs; a copy starts clean.
     private static readonly HashSet<string> NotCopied = new(["Results", "Logs", "History", ".runtime"], StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The folders every instance needs; <c>Files</c> is where <c>&lt;from_filepath&gt;</c> reads from.</summary>
+    public static readonly string[] RequiredFolders = ["Templates", "Files", "Queries", "Scripts", "Inputs", "Artifacts", "History", "Logs", "Results"];
+
+    /// <summary>Creates the folders of an instance that are missing (and a starter <c>empty.json</c> template when Templates is new). Returns the names it created.</summary>
+    public static IReadOnlyList<string> EnsureFolders(string folder)
+    {
+        var created = new List<string>();
+        Directory.CreateDirectory(folder);
+        foreach (var name in RequiredFolders)
+        {
+            var path = Path.Combine(folder, name);
+            if (Directory.Exists(path)) continue;
+            Directory.CreateDirectory(path);
+            created.Add(name);
+        }
+        var starter = Path.Combine(folder, "Templates", "empty.json");
+        if (created.Contains("Templates") && !File.Exists(starter)) File.WriteAllText(starter, "{}\n");
+        return created;
+    }
+
     /// <summary>The workbook of an instance folder: the preferred name if present, otherwise the only/first .xlsx.</summary>
     public static string? FindWorkbook(string folder, string preferredName)
     {

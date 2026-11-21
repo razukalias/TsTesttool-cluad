@@ -17,6 +17,7 @@ public sealed partial class EditorShellViewModel
     {
         var workbook = InstanceOperations.FindWorkbook(folder, _environmentSettings?.WorkbookName ?? "DataEngine.xlsx");
         if (workbook is null) { Current?.Notify($"{name} has no workbook (.xlsx) to open.", true); return null; }
+        InstanceOperations.EnsureFolders(folder);
         var node = new InstanceNode(name, workbook);
         Instances.Add(node);
         if (_environmentSettings is { } settings)
@@ -56,5 +57,41 @@ public sealed partial class EditorShellViewModel
         var name = System.IO.Path.GetFileName(folder);
         if (settings.RegisterInstance(name, null) is { } failed) { Current?.Notify(failed, true); return null; }
         return AddInstance(name, folder);
+    }
+
+    /// <summary>
+    /// Re-reads the instances folder: instance folders with a workbook that the tree does not show yet are added (and registered), and instances whose workbook is gone are removed
+    /// unless they have unsaved edits. Missing standard folders are created. Returns a one-line summary.
+    /// </summary>
+    public string RefreshInstances()
+    {
+        if (_environmentSettings is not { } settings) return "Refreshing instances is not available here.";
+        var root = settings.InstancesRoot;
+        if (!Directory.Exists(root)) return $"The instances folder does not exist: {root}";
+        var known = Instances.Select(i => System.IO.Path.GetFullPath(System.IO.Path.GetDirectoryName(i.Path)!)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var added = new List<string>();
+        var problems = new List<string>();
+        foreach (var folder in Directory.GetDirectories(root).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+        {
+            var full = System.IO.Path.GetFullPath(folder);
+            if (known.Contains(full) || InstanceOperations.FindWorkbook(full, settings.WorkbookName) is null) continue;
+            var name = System.IO.Path.GetFileName(full);
+            if (settings.RegisterInstance(name, null) is { } failed) { problems.Add($"{name}: {failed}"); continue; }
+            if (AddInstance(name, full) is not null) added.Add(name);
+        }
+        var removed = new List<string>();
+        var kept = new List<string>();
+        foreach (var node in Instances.ToList())
+        {
+            if (File.Exists(node.Path)) { InstanceOperations.EnsureFolders(System.IO.Path.GetDirectoryName(node.Path)!); continue; }
+            if (node.Editor?.IsDirty == true) { kept.Add(node.Name); continue; }
+            Instances.Remove(node); removed.Add(node.Name);
+        }
+        if (SelectedNode is null || (SelectedNode is InstanceNode sel && !Instances.Contains(sel))) SelectedNode = Instances.FirstOrDefault();
+        var parts = new List<string>();
+        parts.Add(added.Count == 0 && removed.Count == 0 ? "Instances are up to date." : $"Instances refreshed: {added.Count} added{(added.Count > 0 ? " (" + string.Join(", ", added) + ")" : "")}, {removed.Count} removed{(removed.Count > 0 ? " (" + string.Join(", ", removed) + ")" : "")}.");
+        if (kept.Count > 0) parts.Add($"{string.Join(", ", kept)}: the workbook is gone but there are unsaved edits, so it stays until you save or close it.");
+        if (problems.Count > 0) parts.Add("Could not add: " + string.Join("; ", problems));
+        return string.Join(" ", parts);
     }
 }

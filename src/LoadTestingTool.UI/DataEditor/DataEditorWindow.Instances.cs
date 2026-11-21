@@ -11,8 +11,15 @@ public partial class DataEditorWindow
     private void InitInstanceButtons()
     {
         if (this.FindControl<Button>("NewInstanceButton") is { } create) create.Click += async (_, _) => await NewInstanceAsync();
+        if (this.FindControl<Button>("RefreshInstancesButton") is { } refresh) refresh.Click += (_, _) => RefreshInstancesNow();
         if (this.FindControl<Button>("DuplicateInstanceButton") is { } copy)
             copy.Click += async (_, _) => await DuplicateInstanceAsync(_shell.InstanceFor(_shell.SelectedNode));
+    }
+
+    internal void RefreshInstancesNow()
+    {
+        var message = _shell.RefreshInstances();
+        (_shell.Current ?? _shell.Instances.FirstOrDefault(i => i.Editor is not null)?.Editor)?.Notify(message, false);
     }
 
     /// <summary>The same builder the dashboard uses: name and template, then a ready folder and workbook.</summary>
