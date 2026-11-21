@@ -61,7 +61,9 @@ public class ControlFlowTests
 
     private static string Build(TempDir dir, params Step[] steps) => Build(dir, null, steps);
 
-    private static string Build(TempDir dir, string? dontrun, params Step[] steps)
+    private static string Build(TempDir dir, string? dontrun, params Step[] steps) => Build(dir, dontrun, null, steps);
+
+    private static string Build(TempDir dir, string? dontrun, Action<ClosedXML.Excel.IXLWorksheet>? requestSheet, params Step[] steps)
     {
         Directory.CreateDirectory(dir.Combine("Templates"));
         File.WriteAllText(System.IO.Path.Combine(dir.Combine("Templates"), "t.json"), "{}");
@@ -78,6 +80,7 @@ public class ControlFlowTests
                 config.Cell(row, 9).Value = s.Parent; config.Cell(row, 10).Value = s.Condition; config.Cell(row, 11).Value = s.Config;
             }
             if (dontrun is not null) request.Cell(2, 4).Value = dontrun;   // row of D1
+            requestSheet?.Invoke(request);
         });
     }
 
@@ -180,6 +183,30 @@ public class ControlFlowTests
 
         var none = await RunAsync(Build(new TempDir(), new Step("Only", Url: "/only"), new Step("Check", "If", Condition: "<From_response_@lastround.Only.id_r> eq A7")), Json);
         Assert.Contains(none.Run.Testcases.SelectMany(t => t.Requests), r => (r.ErrorMessage ?? "").Contains("no previous round"));
+    }
+
+    [Fact]
+    public async Task A_loop_or_condition_can_read_a_cell_of_the_data_row_that_is_running()
+    {
+        var path = Build(new TempDir(), null, request => { request.Cell(1, 5).Value = "limit"; request.Cell(2, 5).Value = 2; },
+            new Step("Loop", "For", Config: "from=1;to=<From_request_limit_r>"),
+            new Step("Each", Parent: "Loop", Url: "/n/_i_"),
+            new Step("Check", "If", Condition: "<From_request_limit_r> eq 2"),
+            new Step("Yes", Parent: "Check", Url: "/yes"));
+        var (_, paths, _) = await RunAsync(path, Ok);
+        Assert.Equal(["/n/1", "/n/2", "/yes"], paths);
+    }
+
+    [Fact]
+    public void The_ControlFlowScenarios_instance_has_no_workbook_problems()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !Directory.Exists(System.IO.Path.Combine(dir.FullName, "Instances", "ControlFlowScenarios"))) dir = dir.Parent;
+        Assert.NotNull(dir);
+        var path = System.IO.Path.Combine(dir!.FullName, "Instances", "ControlFlowScenarios", "ControlFlowScenarios.xlsx");
+        var problems = LoadTestingTool.Editing.WorkbookValidator.Validate(LoadTestingTool.Editing.WorkbookDocument.Load(path));
+        Assert.DoesNotContain(problems, p => p.Severity == LoadTestingTool.Editing.ProblemSeverity.Error);
+        Assert.Equal(10, new LoadTestingTool.Excel.WorkbookReader().Read(path).Testcases.Count);
     }
 
     [Fact]

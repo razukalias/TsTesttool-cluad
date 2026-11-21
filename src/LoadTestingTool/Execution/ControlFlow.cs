@@ -244,9 +244,11 @@ public static class ConditionEvaluator
         char? quote = null;
         var hasToken = false;
         var quoted = false;
-        foreach (var c in text)
+        for (var at = 0; at < text.Length; at++)
         {
+            var c = text[at];
             if (quote is { } q) { if (c == q) quote = null; else current.Append(c); continue; }
+            if (c == '!' && !hasToken && at + 1 < text.Length && text[at + 1] == '(') { parts.Add(new Token("!", false)); continue; }   // "!(" is "not ("
             if (c is '"' or '\'') { quote = c; hasToken = true; quoted = true; continue; }
             if (char.IsWhiteSpace(c)) { if (hasToken) { parts.Add(new Token(current.ToString(), quoted)); current.Clear(); hasToken = false; quoted = false; } continue; }
             current.Append(c); hasToken = true;

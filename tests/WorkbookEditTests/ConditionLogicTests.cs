@@ -75,6 +75,14 @@ public class ConditionLogicTests
     }
 
     [Fact]
+    public void A_bang_glued_to_a_bracket_means_not()
+    {
+        Assert.True(ConditionEvaluator.Evaluate("!(1 eq 2)"));
+        Assert.False(ConditionEvaluator.Evaluate("!( 1 eq 1 )"));
+        Assert.True(ConditionEvaluator.Evaluate("3 gte 3 && !( A7 eq B ) || 1 eq 2"));
+    }
+
+    [Fact]
     public void Check_reads_a_good_condition_without_evaluating_it()
     {
         Assert.Null(ConditionEvaluator.Check("<From_response_A.b_r> eq 1 and (_x_ gt 2 or not _y_ empty)"));

@@ -235,6 +235,9 @@ public sealed class WorkbookReader
             if (m.Groups[3].Value.Equals("r", StringComparison.OrdinalIgnoreCase))
             {
                 if (sheetName.Equals("response", StringComparison.OrdinalIgnoreCase) && header.Contains('.', StringComparison.Ordinal)) return m.Value;
+                // The config sheet has one row per step, not per data row: a reference to the request data row is left in the text
+                // (a condition, a loop's To/Items, a URL) and read from the data row that is running.
+                if (sheetName.Equals("request", StringComparison.OrdinalIgnoreCase) && currentSheet.Name.Equals("config", StringComparison.OrdinalIgnoreCase)) return m.Value;
                 if (!currentRowNumber.HasValue) throw new InvalidDataException($"Cannot resolve corresponding row for <From_{sheetName}_{header}_r> without an active workbook row.");
                 var correspondingRow = CorrespondingRow(workbook, currentSheet, currentSheet.Row(currentRowNumber.Value), sheetName);
                 return Cell(workbook, sheetName, header, correspondingRow, compiledCellCache, resolving);
