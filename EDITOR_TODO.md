@@ -831,6 +831,14 @@ Today help is scattered: ⓘ step-type guides (`StepTypeGuide`), a few "Help" bu
 - [ ] Record view, record view fields and header verb button; Template and response (done: window Help only, fields still to do); Import window (sheet, range, header row, placement, remembered choices); Export; Condition builder (every operator with an example); Assertion editor; Instance builder/configuration; Environment manager; History settings; Run selection.
 - [ ] First-run hint: a dismissible "New here? Open the quick start" banner, and "Help ▸ What's new" listing recent additions (from this file's Done sections).
 
+### 2b. Help for errors, logs and maintenance
+- [ ] **Error catalogue:** every message the editor, wizard and runner can show (validation errors, "Unexpected response path", missing column/template/step, locked or corrupt workbook, import problems, HTTP/SQL/file/script step failures, timeouts, crash-protection warnings) gets a stable **code** (e.g. `E-RESP-001`), a plain explanation, the usual causes, the fix, and an example. Messages show the code and a **"What does this mean?"** link that opens the catalogue entry. A test fails when a thrown/shown message has no catalogue entry.
+- [ ] **Logs explained:** a manual chapter and a Help button on the log windows for each log: `Logs/` run log, internal log, `ui-hang.log`, history logs, result files. For each: where it is, how to read a line, the levels, the fields (run id, request id, step), what is normal, what to send when reporting a bug, and how to filter in the log viewer. Example lines with their meaning.
+- [ ] **Failure reading guide:** how to read a failed run: Overview, Failed cells, AssertionHistory columns (verb, expected, actual, failure message), Bugs tab, history comparison; "why did my testcase fail" decision list.
+- [ ] **Maintenance:** chapter and Help on Storage cleanup, Backups (what is kept, restore, retention), history retention and history sheets, archiving old runs, workbook repair/reload, instance registry and moving an instance, upgrading, appsettings.json keys, what is safe to delete. Each action says what it deletes and whether it can be undone.
+- [ ] **Health and diagnostics:** a "Diagnostics" page in the Help centre (versions, instance paths, last errors, log folder links, "Copy diagnostics" for bug reports), and crash-protection explained (what the protection does, where `ui-hang.log` is, how to report a hang).
+- [ ] **Backup/restore and recovery recipes:** step-by-step for common incidents (workbook will not open, run stuck, history too big, wrong data saved, how to undo a bulk edit after Save).
+
 ### 3. Order of work
 1. Help centre window + Markdown resources + F1 plumbing + one chapter (Quick start) to prove the pipeline, with tests (opens, search finds text, every page loads).
 2. Inventory checklist and the `FieldHelp` table with the completeness test.
