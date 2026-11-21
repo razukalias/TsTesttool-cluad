@@ -88,7 +88,7 @@ public partial class DataEditorWindow
                 menu.Items.Add(Item("Duplicate testcase…", () => _shell.OpenTestcasePanel((TestcaseItem)node, delete: false)));
                 menu.Items.Add(CopyTestcaseMenu((TestcaseItem)node));
                 menu.Items.Add(new Separator());
-                menu.Items.Add(Item("Add step", () => _ = AddChildAsync(tree, node)));
+                menu.Items.Add(AddStepMenu("Add step", node, EditorShellViewModel.StepPlacement.End, "tree-add-step"));
                 menu.Items.Add(new Separator());
                 menu.Items.Add(Item("Delete testcase…", () => _shell.OpenTestcasePanel((TestcaseItem)node, delete: true)));
                 break;
@@ -97,10 +97,32 @@ public partial class DataEditorWindow
                 menu.Items.Add(Item("Duplicate step…", () => _shell.OpenDuplicateStepPanel(step)));
                 menu.Items.Add(CopyStepMenu(step));
                 menu.Items.Add(Item("Add columns from template / response…", () => _ = AddColumnsAsync(step)));
-                menu.Items.Add(NestMenu(step));
-                if (step.Depth > 0) menu.Items.Add(Item("Move out (one level)", () => _shell.PutStepInside(step, null, oneLevelOut: true)));
                 menu.Items.Add(new Separator());
-                menu.Items.Add(Item("Remove step", () => _shell.RemoveStep(step)));
+                menu.Items.Add(AddStepMenu("Add step after", step, EditorShellViewModel.StepPlacement.After, "tree-add-after"));
+                if (step.IsControl)
+                {
+                    menu.Items.Add(AddStepMenu(step.TypeName == "If" ? "Add child step (then)" : "Add child step", step, EditorShellViewModel.StepPlacement.Inside, "tree-add-child"));
+                    if (step.TypeName == "If") menu.Items.Add(AddStepMenu("Add child step (else)", step, EditorShellViewModel.StepPlacement.InsideElse, "tree-add-else"));
+                }
+                menu.Items.Add(NestMenu(step));
+                if (step.Depth > 0)
+                {
+                    var parentName = step.Owner.StepNodes.TakeWhile(n => !ReferenceEquals(n, step)).LastOrDefault(n => n.Depth == step.Depth - 1)?.Name;
+                    var outItem = Item(parentName is null ? "Remove from parent" : $"Remove from parent ({parentName})", () => _shell.PutStepInside(step, null, oneLevelOut: true));
+                    outItem.Tag = "tree-remove-from-parent";
+                    menu.Items.Add(outItem);
+                }
+                menu.Items.Add(new Separator());
+                var inside = step.IsControl ? ChildCount(step) : 0;
+                var remove = Item(inside > 0 ? $"Remove step (its {inside} child {(inside == 1 ? "step moves" : "steps move")} out one level)" : "Remove step", () => _shell.RemoveStep(step));
+                remove.Tag = "tree-remove";
+                menu.Items.Add(remove);
+                if (inside > 0)
+                {
+                    var removeAll = Item($"Remove step and its {inside} child {(inside == 1 ? "step" : "steps")}", () => _shell.RemoveStepWithChildren(step));
+                    removeAll.Tag = "tree-remove-with-children";
+                    menu.Items.Add(removeAll);
+                }
                 break;
             default:
                 return null;
@@ -137,6 +159,29 @@ public partial class DataEditorWindow
 
     /// <summary>Opens the Add columns form for one step of the clicked step's instance.</summary>
     /// <summary>"Put inside ▸": the If, While, For and ForEach steps of the testcase (an If also offers its else branch).</summary>
+    /// <summary>How many steps sit inside the control step (at any depth): the nodes right after it that are deeper.</summary>
+    private static int ChildCount(StepNode step)
+    {
+        var nodes = step.Owner.StepNodes;
+        var at = nodes.IndexOf(step);
+        var count = 0;
+        for (var i = at + 1; i < nodes.Count && nodes[i].Depth > step.Depth; i++) count++;
+        return count;
+    }
+
+    /// <summary>"Add step ▸" with one entry per step type; the new step is selected with its name ready to type.</summary>
+    private MenuItem AddStepMenu(string header, object context, EditorShellViewModel.StepPlacement placement, string tag)
+    {
+        var menu = new MenuItem { Header = header, Tag = tag };
+        foreach (var type in StepOptions.StepTypes)
+        {
+            var item = Item(type, () => { if (_shell.AddStepOfType(context, type, placement) is { } node && this.FindControl<TreeView>("Tree") is { } tree) BeginTreeRename(tree, node); });
+            item.Tag = tag + "-" + type;
+            menu.Items.Add(item);
+        }
+        return menu;
+    }
+
     private MenuItem NestMenu(StepNode step)
     {
         var menu = new MenuItem { Header = "Put inside" };

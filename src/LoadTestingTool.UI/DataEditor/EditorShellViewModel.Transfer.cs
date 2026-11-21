@@ -33,6 +33,43 @@ public sealed partial class EditorShellViewModel
         return node;
     }
 
+    /// <summary>Where "Add step" puts the new step relative to the right-clicked item.</summary>
+    public enum StepPlacement { End, After, Inside, InsideElse }
+
+    /// <summary>Right-click "Add step ▸ type": at the end of a testcase, right after a step, or inside a control step (its else branch for an If). Selects the new step.</summary>
+    public StepNode? AddStepOfType(object context, string type, StepPlacement placement)
+    {
+        TestcaseItem? owner = context as TestcaseItem ?? (context as StepNode)?.Owner;
+        if (owner is null || EditorOf(owner) is not { } editor) return null;
+        Current = editor;
+        if (!ReferenceEquals(editor.SelectedTestcase, owner)) editor.SelectedTestcase = owner;
+        var step = context as StepNode;
+        var name = placement switch
+        {
+            StepPlacement.After when step is not null => editor.AddStepOfType(type, afterStep: step.Name),
+            StepPlacement.Inside when step is not null => editor.AddStepOfType(type, parent: step.Name),
+            StepPlacement.InsideElse when step is not null => editor.AddStepOfType(type, parent: step.Name, elseBranch: true),
+            _ => editor.AddStepOfType(type),
+        };
+        if (name is null) return null;
+        owner.IsExpanded = true;
+        var node = owner.StepNodes.FirstOrDefault(n => string.Equals(n.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (node is not null) SelectedNode = node;
+        return node;
+    }
+
+    /// <summary>Right-click "Remove step and its children".</summary>
+    public void RemoveStepWithChildren(StepNode step)
+    {
+        if (EditorOf(step) is not { } editor) return;
+        Current = editor;
+        var owner = step.Owner;
+        if (!ReferenceEquals(editor.SelectedTestcase, owner)) editor.SelectedTestcase = owner;
+        var position = owner.StepNodes.IndexOf(step);
+        editor.RemoveStepWithChildrenNamed(step.Name);
+        SelectedNode = owner.StepNodes.Count == 0 ? owner : owner.StepNodes[Math.Clamp(position, 0, owner.StepNodes.Count - 1)];
+    }
+
     /// <summary>Duplicate or delete on the right-clicked testcase (not on whichever one was selected before): selects it, then opens the panel.</summary>
     public void OpenTestcasePanel(TestcaseItem testcase, bool delete)
     {

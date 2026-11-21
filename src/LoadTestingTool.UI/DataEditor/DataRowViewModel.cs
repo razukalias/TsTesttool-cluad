@@ -38,7 +38,9 @@ public sealed partial class StepNode(TestcaseItem owner, string name, int positi
     private string _name = name;
     public string Name { get => _name; internal set { if (SetProperty(ref _name, value)) { OnPropertyChanged(nameof(Title)); } } }
     public int Position { get; } = position;
-    public string Title => $"{Position} · {Name}{(IsControl ? $"  ({TypeName})" : string.Empty)}{(InElse ? "  · else" : string.Empty)}";
+    /// <summary>The outline number (2, 2.1, 2.2.1); the plain position until the nesting is known.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))] private string _number = string.Empty;
+    public string Title => $"{(Number.Length > 0 ? Number : Position.ToString())} · {Name}{(IsControl ? $"  ({TypeName})" : string.Empty)}{(InElse ? "  · else" : string.Empty)}";
 
     /// <summary>How deep the step sits inside If, While, For and ForEach steps (0 = top level).</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Indent)), NotifyPropertyChangedFor(nameof(Title))] private int _depth;
@@ -154,6 +156,8 @@ public sealed partial class TestcaseItem : ObservableObject
     {
         if (_nesting is null || _nesting.Count != StepNodes.Count) return;
         for (var i = 0; i < StepNodes.Count; i++) StepNodes[i].ApplyNesting(_nesting[i]);
+        var numbers = StepNumbering.Compute(_nesting.Select(n => n.Depth).ToList());
+        for (var i = 0; i < StepNodes.Count; i++) StepNodes[i].Number = numbers[i];
     }
 
     public void UpdateSteps(IReadOnlyList<string> steps, IReadOnlyList<StepNesting>? nesting = null)

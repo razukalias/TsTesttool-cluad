@@ -110,6 +110,7 @@ public sealed partial class DataEditorViewModel
             foreach (var row in _document.Config.Rows.Where(r => !r.IsBlank))
                 StepRows.Add(new StepRowViewModel(row, StepColumns, OnStepEdited, _document.Config) { Editor = this });
         foreach (var step in StepRows) step.IsExpanded = open.Contains(step.CurrentName);
+        ApplyStepNumbers();
         FocusedStep = focused is null ? null : StepRows.FirstOrDefault(r => string.Equals(r.CurrentName, focused, StringComparison.OrdinalIgnoreCase));
         StepColumnsChanged?.Invoke(this, EventArgs.Empty);
         OnPropertyChanged(nameof(StepCountText));
@@ -249,6 +250,7 @@ public sealed partial class DataEditorViewModel
         {
             var info = _document.GetTestcases().FirstOrDefault(t => t.Index == testcase.Index);
             if (info is not null) testcase.UpdateSteps(info.Steps, info.Nesting);
+            ApplyStepNumbers();
         }
         _dataStale = true;
         MarkChanged();

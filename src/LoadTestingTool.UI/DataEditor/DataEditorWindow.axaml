@@ -729,14 +729,14 @@
                 <ItemsControl ItemsSource="{Binding StepRows}" IsVisible="{Binding NoFocusedStep}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:StepRowViewModel">
-                      <Border Classes="stepcard" Margin="0,0,0,8">
+                      <Border Classes="stepcard" Margin="{Binding CardMargin}">
                         <StackPanel>
                           <Grid ColumnDefinitions="*,Auto">
                           <Button Tag="toggle" Classes="stepheader" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                            <Grid ColumnDefinitions="Auto,22,34,Auto,Auto,*,Auto">
+                            <Grid ColumnDefinitions="Auto,22,48,Auto,Auto,*,Auto">
                               <Viewbox Width="16" Height="16" Margin="0,0,0,0" VerticalAlignment="Center"><Canvas Width="24" Height="24"><Path Data="{Binding IconData}" Stroke="#8EA4BC" StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" /></Canvas></Viewbox>
                               <TextBlock Grid.Column="1" Text="{Binding IsExpanded, Converter={x:Static vm:StepConverters.Chevron}}" Foreground="#8EA4BC" VerticalAlignment="Center" Margin="4,0,0,0" ToolTip.Tip="Open or close this step" />
-                              <TextBlock Grid.Column="2" Text="{Binding Position}" Foreground="#8EA4BC" VerticalAlignment="Center" />
+                              <TextBlock Grid.Column="2" Text="{Binding NumberText}" Foreground="#8EA4BC" VerticalAlignment="Center" />
                               <TextBlock Grid.Column="3" Text="{Binding CurrentName}" FontWeight="SemiBold" Foreground="#E3EDF9" VerticalAlignment="Center" Margin="0,0,12,0" />
                               <TextBlock Grid.Column="4" Text="{Binding TypeText}" Foreground="#6FB7FF" VerticalAlignment="Center" Margin="0,0,12,0" />
                               <TextBlock Grid.Column="5" Text="{Binding SummaryText}" Foreground="#8EA4BC" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />

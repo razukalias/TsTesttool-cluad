@@ -56,7 +56,15 @@ public sealed partial class StepRowViewModel : ObservableObject, IFormattedRow, 
     [ObservableProperty] private bool _isExpanded;
 
     /// <summary>1-based place in the testcase.</summary>
-    [ObservableProperty] private int _position;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(NumberText))] private int _position;
+
+    /// <summary>Outline number (2, 2.1, 2.2.1); empty until the nesting is known.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(NumberText))] private string _number = string.Empty;
+    public string NumberText => Number.Length > 0 ? Number : Position.ToString();
+
+    /// <summary>How deep the step sits inside control steps; indents its card.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(CardMargin))] private int _depth;
+    public Avalonia.Thickness CardMargin => new(Depth * 20, 0, 0, 8);
 
     /// <summary>The form's content; null while collapsed, so closed steps cost nothing.</summary>
     public object? ExpandedContent => IsExpanded ? this : null;

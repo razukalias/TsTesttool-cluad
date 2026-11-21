@@ -96,6 +96,71 @@ public sealed partial class WorkbookDocument
         Reorder(rows, ordered, contents);
     }
 
+    /// <summary>
+    /// Adds a step of the given type to a testcase: as the last step inside <paramref name="parentName"/> (the else branch of an If when
+    /// <paramref name="elseBranch"/>), right after <paramref name="afterStep"/> at the same level, or at the end of the testcase.
+    /// Refuses before changing anything when the parent is not a control step or the nesting would pass 5 levels.
+    /// </summary>
+    public TableRow AddStep(int testcaseIndex, string testcaseName, string name, string type, string? parentName = null, bool elseBranch = false, string? afterStep = null)
+    {
+        parentName = parentName?.Trim() ?? string.Empty;
+        var rows = RowsOf(Config, testcaseIndex).Where(r => !r.IsBlank).ToList();
+        TableRow? anchor = null;
+        if (parentName.Length > 0)
+        {
+            var parent = rows.FirstOrDefault(r => r.Get("stepname").Trim().Equals(parentName, StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidOperationException($"There is no step named '{parentName}' in this testcase.");
+            if (!IsControlRow(parent)) throw new InvalidOperationException($"'{parentName}' is not an If, While, For or ForEach step, so nothing can be added inside it.");
+            if (elseBranch && !StepTypeParser.Parse(parent.Get("steptype")).Equals(StepType.If)) throw new InvalidOperationException($"Only an If step has an else branch; '{parentName}' does not.");
+            if (GetNesting(testcaseIndex).First(n => n.Name.Equals(parentName, StringComparison.OrdinalIgnoreCase)).Depth + 2 > 5) throw new InvalidOperationException("Control steps can be nested at most 5 levels deep.");
+        }
+        else if (!string.IsNullOrWhiteSpace(afterStep))
+            anchor = rows.FirstOrDefault(r => r.Get("stepname").Trim().Equals(afterStep.Trim(), StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidOperationException($"There is no step named '{afterStep}' in this testcase.");
+
+        var row = Config.AddRow();
+        row.Set("testcaseindex", testcaseIndex.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        row.Set("testcase", testcaseName);
+        row.Set("stepname", name);
+        row.Set("steptype", type);
+        row.Set("stage", "Test");
+        row.Set("enabled", "True");
+        if (parentName.Length > 0) SetStepParent(row, parentName, elseBranch);
+        else if (anchor is not null) PlaceStepAfter(row, anchor);
+        return row;
+    }
+
+    /// <summary>Puts a step at the same level as <paramref name="anchor"/>, right after it and after everything inside it.</summary>
+    public void PlaceStepAfter(TableRow step, TableRow anchor)
+    {
+        var rows = RowsOf(Config, EffectiveIndex(step)).Where(r => !r.IsBlank).ToList();
+        var contents = rows.ToDictionary(r => r, r => Enumerable.Range(0, Config.ColumnCount).Select(r.GetAt).ToArray());
+        step.Set("parent", anchor.Get("parent"));
+        contents[step] = Enumerable.Range(0, Config.ColumnCount).Select(step.GetAt).ToArray();
+        var block = Subtree(rows, step);
+        var rest = rows.Where(r => !block.Contains(r)).ToList();
+        var at = rest.FindLastIndex(Subtree(rest, anchor).Contains) + 1;
+        Reorder(rows, rest.Take(at).Concat(block).Concat(rest.Skip(at)).ToList(), contents);
+    }
+
+    /// <summary>The steps inside a control step, at any depth (empty for any other step).</summary>
+    public IReadOnlyList<string> StepsInside(TableRow step)
+    {
+        var rows = RowsOf(Config, EffectiveIndex(step)).Where(r => !r.IsBlank).ToList();
+        return Subtree(rows, step).Where(r => !ReferenceEquals(r, step)).Select(r => r.Get("stepname").Trim()).ToList();
+    }
+
+    /// <summary>Removes a step together with every step inside it (and their data columns, as <see cref="RemoveStep"/> does).</summary>
+    public StepRemoveResult RemoveStepWithContents(TableRow step)
+    {
+        var rows = RowsOf(Config, EffectiveIndex(step)).Where(r => !r.IsBlank).ToList();
+        int columns = 0, references = 0;
+        foreach (var row in Subtree(rows, step).AsEnumerable().Reverse())
+        {
+            var result = RemoveStep(row);
+            columns += result.ColumnsRemoved; references += result.ReferencesLeft;
+        }
+        return new(columns, references);
+    }
+
     private string TopAncestor(List<TableRow> rows, TableRow step)
     {
         var current = step;
