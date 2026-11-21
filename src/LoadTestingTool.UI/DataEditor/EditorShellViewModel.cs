@@ -16,6 +16,8 @@ public sealed partial class InstanceNode : ObservableObject
         Path = path;
     }
 
+    public string IconData => TreeIcons.Instance;
+
     public string Name { get; }
 
     /// <summary>The name as the tree shows it: without the default "DataEngine_" prefix (the real name, folder and file keep it).</summary>

@@ -44,7 +44,10 @@ public sealed partial class StepNode(TestcaseItem owner, string name, int positi
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Indent)), NotifyPropertyChangedFor(nameof(Title))] private int _depth;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))] private bool _isControl;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))] private bool _inElse;
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))] private string _typeName = string.Empty;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(Title)), NotifyPropertyChangedFor(nameof(IconData))] private string _typeName = string.Empty;
+
+    /// <summary>The line icon of the step type, as path data.</summary>
+    public string IconData => TreeIcons.ForStep(TypeName);
     public Avalonia.Thickness Indent => new(Depth * 16, 1, 0, 1);
     public string Kind => IsControl ? TypeName : string.Empty;
 
@@ -53,6 +56,8 @@ public sealed partial class StepNode(TestcaseItem owner, string name, int positi
 
 public sealed partial class TestcaseItem : ObservableObject
 {
+    public string IconData => TreeIcons.Testcase;
+
     public TestcaseItem(TestcaseInfo info, int rowCount)
     {
         Index = info.Index;

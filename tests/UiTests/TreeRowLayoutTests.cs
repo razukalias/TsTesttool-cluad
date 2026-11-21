@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using System.Linq;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
@@ -41,5 +42,37 @@ public class TreeRowLayoutTests
             Assert.True(check.TranslatePoint(new Avalonia.Point(0, 0), window)!.Value.X > title.TranslatePoint(new Avalonia.Point(0, 0), window)!.Value.X, $"{row.DataContext}");
         }
         window.Close();
+    }
+}
+
+public class TreeIconTests
+{
+    [AvaloniaFact]
+    public void Every_step_type_has_its_own_icon_and_unknown_types_get_the_http_one()
+    {
+        var names = new[] { "HTTP", "GraphQL", "CaseQL", "SQL", "File", "Script", "ActionManual", "If", "For" };
+        var icons = names.Select(TreeIcons.ForStep).ToList();
+        Assert.Equal(names.Length, icons.Distinct().Count());
+        Assert.Equal(TreeIcons.ForStep("For"), TreeIcons.ForStep("While"));
+        Assert.Equal(TreeIcons.ForStep("For"), TreeIcons.ForStep("ForEach"));
+        Assert.Equal(TreeIcons.ForStep("HTTP"), TreeIcons.ForStep(""));
+        Assert.NotEqual(TreeIcons.Instance, TreeIcons.Testcase);
+        foreach (var icon in icons.Append(TreeIcons.Instance).Append(TreeIcons.Testcase)) Assert.NotNull(Avalonia.Media.Geometry.Parse(icon));
+    }
+
+    [AvaloniaFact]
+    public void The_tree_nodes_carry_their_icon_and_a_step_follows_its_type()
+    {
+        using var dir = new TempDir();
+        var shell = new EditorShellViewModel([("Sample", Samples.CreateLarge(dir, rows: 3))]);
+        Assert.Equal(TreeIcons.Instance, shell.Instances[0].IconData);
+        var testcase = shell.Instances[0].Testcases[0];
+        Assert.Equal(TreeIcons.Testcase, testcase.IconData);
+        shell.SelectedNode = testcase;
+        var editor = shell.Current!;
+        var name = testcase.StepNodes[0].Name;
+        Assert.Equal(TreeIcons.ForStep("HTTP"), testcase.StepNodes[0].IconData);
+        editor.StepRows.First(r => r.CurrentName == name).Write("steptype", "For");
+        Assert.Equal(TreeIcons.ForStep("For"), testcase.StepNodes[0].IconData);
     }
 }

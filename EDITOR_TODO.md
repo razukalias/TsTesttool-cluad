@@ -736,3 +736,4 @@ Same-size editor area (2026-11-21): the box above the view-mode droplist (title-
 
 Show options (2026-11-21): the five checkboxes (Show every column, Failed rows only, Failed columns only, Bug columns only, Failed cells only) are one "Show" droplist; tick several, the title lists what is on.
 Tree rows (2026-11-21): the instance name sits right after the collapse button; the tick boxes of instances, testcases and steps are at the right end of the row; a collapsed instance shows only its name (the lines under it show while expanded).
+Tree icons (2026-11-21): a small line icon sits at the far left of every tree row, in front of the collapse button (workbook, testcase, and one per step type: HTTP, GraphQL, CaseQL, SQL, File, Script, ActionManual, If, loops). Leaf rows show the icon where the collapse button would be.
