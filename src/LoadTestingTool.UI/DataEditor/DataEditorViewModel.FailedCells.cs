@@ -17,12 +17,29 @@ public sealed partial class DataEditorViewModel
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowFailedCellsList), nameof(ShowTableGrid))]
     private bool _showFailedCells;
 
+    /// <summary>The title of the "Show" droplist: the options that are on, or "Show: default" when none is.</summary>
+    public string ShowOptionsTitle
+    {
+        get
+        {
+            var on = new List<string>();
+            if (ShowAllColumns) on.Add("Every column");
+            if (ShowFailedOnly) on.Add("Failed rows");
+            if (ShowFailedColumns) on.Add("Failed columns");
+            if (ShowBugColumns) on.Add("Bug columns");
+            if (ShowFailedCells) on.Add("Failed cells");
+            return on.Count == 0 ? "Show: default ▾" : "Show: " + string.Join(", ", on) + " ▾";
+        }
+    }
+
     public bool ShowFailedCellsList => ShowFailedCells && ShowDataGrid;
     public bool ShowTableGrid => ShowDataGrid && !ShowFailedCells;
 
     protected override void OnPropertyChanged(PropertyChangedEventArgs e)
     {
         base.OnPropertyChanged(e);
+        if (e.PropertyName is nameof(ShowAllColumns) or nameof(ShowFailedOnly) or nameof(ShowFailedColumns) or nameof(ShowBugColumns) or nameof(ShowFailedCells))
+            base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowOptionsTitle)));
         if (e.PropertyName == nameof(ShowDataGrid)) { base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowTableGrid))); base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowFailedCellsList))); }
     }
 

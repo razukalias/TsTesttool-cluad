@@ -147,4 +147,25 @@ public class ToolbarLayoutTests
         Assert.Single(heights.Distinct());
         window.Close();
     }
+
+    [AvaloniaFact]
+    public void The_show_droplist_titles_the_options_that_are_on_and_holds_the_five_checkboxes()
+    {
+        using var dir = new TempDir();
+        var (window, shell) = Open(dir);
+        var editor = shell.Current!;
+        var button = window.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Tag, "show-options"));
+        Assert.Equal("Show: default ▾", button.Content);
+        editor.ShowBugColumns = true;
+        editor.ShowAllColumns = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("Show: Every column, Bug columns ▾", button.Content);
+        editor.ShowAllColumns = false;
+        editor.ShowBugColumns = false;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("Show: default ▾", button.Content);
+        var panel = Assert.IsType<StackPanel>(Assert.IsType<Flyout>(button.Flyout).Content);
+        Assert.Equal(new[] { "Show every column", "Failed rows only", "Failed columns only", "Bug columns only", "Failed cells only" }, panel.Children.OfType<CheckBox>().Select(c => c.Content as string).ToArray());
+        window.Close();
+    }
 }
