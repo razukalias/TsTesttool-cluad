@@ -10,37 +10,68 @@ public sealed partial class MainWindow
     private readonly StackPanel _bugItems = new() { Orientation = Orientation.Vertical, Margin = new Avalonia.Thickness(12) };
     private readonly StackPanel _bugStats = new() { Orientation = Orientation.Vertical };
     private readonly StackPanel _bugList = new() { Orientation = Orientation.Vertical };
-    private readonly HashSet<string> _bugCollapsed = new(StringComparer.OrdinalIgnoreCase);
-    private (string Testcase, string? Step)? _bugFilter;
+    private readonly HashSet<string> _bugOpen = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _bugSeen = new(StringComparer.OrdinalIgnoreCase);
+    private (string Instance, string Testcase, string? Step)? _bugFilter;
     private TabItem _bugsTab = null!;
+    private TextBlock _bugStatsNote = null!;
+    private List<BugStatNode>? _bugStatRoots;
+    private bool _bugScanning;
 
-    /// <summary>The Bugs tab. Top: how many known bugs each instance, testcase and step holds. Below: the bugs of the run, optionally narrowed by a count button.</summary>
+    /// <summary>Reads every instance's workbook (off the UI thread) and shows the bug tags per instance, testcase and step. Runs at start and when Refresh is pressed.</summary>
+    private async void RefreshBugStatistics()
+    {
+        if (_bugScanning) return;
+        _bugScanning = true;
+        _bugStatsNote?.SetCurrentValue(TextBlock.TextProperty, "Reading the workbooks…");
+        try
+        {
+            var sources = _instances.Select(i => (i.Name, i.WorkbookPath)).ToList();
+            var roots = await Task.Run(() => sources.Select(x => BugStatistics.Build(x.Name, BugStatistics.Scan(x.WorkbookPath))).ToList());
+            _bugStatRoots = roots;
+            foreach (var root in roots) if (_bugSeen.Add(root.Name) && root.Count > 0) _bugOpen.Add(root.Name);   // an instance with bugs starts open, once
+        }
+        finally { _bugScanning = false; }
+        RefreshBugList();
+    }
+
+    /// <summary>The Bugs tab. Top: how many bug tags each instance, testcase and step holds (all instances, read from the workbooks). Below: the bugs of the selected instance's run, optionally narrowed by a count button.</summary>
     private void RefreshBugList()
     {
         if (_bugItems.Children.Count == 0)
         {
-            _bugItems.Children.Add(DashboardStyle.Text("STATISTICS · KNOWN BUGS PER INSTANCE, TESTCASE AND STEP", 11, true, DashboardStyle.Muted));
-            _bugItems.Children.Add(new Border { Margin = new Avalonia.Thickness(0, 6, 0, 14), Child = _bugStats });
-            _bugItems.Children.Add(DashboardStyle.Text("KNOWN BUGS OF THIS RUN", 11, true, DashboardStyle.Muted));
+            var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            header.Children.Add(DashboardStyle.Text("STATISTICS · BUG TAGS IN ALL INSTANCES (no run needed)", 11, true, DashboardStyle.Muted));
+            var refresh = DashboardStyle.Action("↻ Refresh", RefreshBugStatistics);
+            refresh.Margin = new Avalonia.Thickness(0); refresh.Padding = new Avalonia.Thickness(10, 4); refresh.Tag = "bug-refresh";
+            ToolTip.SetTip(refresh, "Read the workbooks again, so bug tags you added or removed show here");
+            Grid.SetColumn(refresh, 1); header.Children.Add(refresh);
+            _bugStatsNote = DashboardStyle.Text("", 12, false, DashboardStyle.Muted);
+            _bugItems.Children.Add(header);
+            _bugItems.Children.Add(new Border { Margin = new Avalonia.Thickness(0, 6, 0, 14), Child = new StackPanel { Children = { _bugStatsNote, _bugStats } } });
+            _bugItems.Children.Add(DashboardStyle.Text("KNOWN BUGS OF THIS RUN · SELECTED INSTANCE", 11, true, DashboardStyle.Muted));
             _bugItems.Children.Add(new Border { Margin = new Avalonia.Thickness(0, 6, 0, 0), Child = _bugList });
         }
+        if (!_bugScanning && (_bugStatRoots is null || _bugStatRoots.Count != _instances.Count)) RefreshBugStatistics();   // first time, and when instances were added or removed
         _bugStats.Children.Clear();
         _bugList.Children.Clear();
         var all = _selectedInstance is null ? [] : ScopedAssertions(_selectedInstance).ToList();
         var bugs = all.Where(a => a.KnownBug).ToList();
-        var known = bugs.Count(b => b.Result == "KNOWN_BUG");
-        if (_bugsTab is not null) _bugsTab.Header = $"Bugs ({known})";
 
-        var root = BugStatistics.Build(_selectedInstance?.Name ?? "", all);
-        if (_selectedInstance is null || all.Count == 0) _bugStats.Children.Add(DashboardStyle.Text("Nothing has run yet.", 12, false, DashboardStyle.Muted));
-        else
+        var total = _bugStatRoots?.Sum(r => r.Count) ?? 0;
+        if (_bugsTab is not null) _bugsTab.Header = _bugStatRoots is null ? "Bugs" : $"Bugs ({total})";
+        if (_bugStatRoots is not null) _bugStatsNote.Text = _bugStatRoots.Count == 0 ? "No instances." : $"{total} bug tag(s) in {_bugStatRoots.Count(r => r.Count > 0)} of {_bugStatRoots.Count} instance(s).";
+        foreach (var root in _bugStatRoots ?? [])
         {
-            _bugStats.Children.Add(StatRow(root, 0, false));
+            var open = _bugOpen.Contains(root.Name);
+            _bugStats.Children.Add(StatRow(root, 0, open));
+            if (!open) continue;
             foreach (var testcase in root.Children)
             {
-                var collapsed = _bugCollapsed.Contains(testcase.Name);
-                _bugStats.Children.Add(StatRow(testcase, 1, collapsed));
-                if (!collapsed) foreach (var step in testcase.Children) _bugStats.Children.Add(StatRow(step, 2, false));
+                var key = root.Name + "/" + testcase.Name;
+                var testcaseOpen = _bugOpen.Contains(key);
+                _bugStats.Children.Add(StatRow(testcase, 1, testcaseOpen));
+                if (testcaseOpen) foreach (var step in testcase.Children) _bugStats.Children.Add(StatRow(step, 2, false));
             }
         }
 
@@ -58,25 +89,31 @@ public sealed partial class MainWindow
         foreach (var bug in bugs.OrderBy(b => b.Result == "KNOWN_BUG" ? 0 : 1).ThenBy(b => b.Testcase).ThenBy(b => b.ExcelRowNumber)) _bugList.Children.Add(CreateBugRow(bug));
     }
 
-    /// <summary>One statistics line: kind, name (testcases open and close), and a "⚑ n" button that narrows the list below. No button when the item has no bugs.</summary>
-    private Control StatRow(BugStatNode node, int level, bool collapsed)
+    /// <summary>One statistics line: kind, name (instances and testcases open and close), and a "⚑ n" button that selects the instance and narrows the list below. No button when the item has no bug tags.</summary>
+    private Control StatRow(BugStatNode node, int level, bool open)
     {
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("70,*,Auto"), Margin = new Avalonia.Thickness(level * 18, 2, 0, 2), Tag = "bug-stat-" + node.Kind };
         grid.Children.Add(DashboardStyle.Text(node.Kind, 11, false, DashboardStyle.Muted));
         Control name;
-        if (node.Kind == "Testcase")
+        if (node.Kind != "Step")
         {
-            var toggle = new Button { Content = (collapsed ? "▸ " : "▾ ") + node.Name, Padding = new Avalonia.Thickness(0), Background = Avalonia.Media.Brushes.Transparent, BorderThickness = new Avalonia.Thickness(0), FontSize = 12, Tag = "bug-stat-toggle" };
-            toggle.Click += (_, _) => { if (!_bugCollapsed.Remove(node.Name)) _bugCollapsed.Add(node.Name); RefreshBugList(); };
+            var key = node.Kind == "Instance" ? node.Name : node.Instance + "/" + node.Name;
+            var toggle = new Button { Content = (open ? "▾ " : "▸ ") + node.Name, Padding = new Avalonia.Thickness(0), Background = Avalonia.Media.Brushes.Transparent, BorderThickness = new Avalonia.Thickness(0), FontSize = 12, Tag = "bug-stat-toggle" };
+            toggle.Click += (_, _) => { if (!_bugOpen.Remove(key)) _bugOpen.Add(key); RefreshBugList(); };
             name = toggle;
         }
-        else name = DashboardStyle.Text(node.Name, 12, node.Kind == "Instance", node.Count == 0 && node.Kind == "Step" ? DashboardStyle.Muted : null);
+        else name = DashboardStyle.Text(node.Name, 12, false, node.Count == 0 ? DashboardStyle.Muted : null);
         Grid.SetColumn(name, 1); grid.Children.Add(name);
         if (node.Count > 0)
         {
             var button = new Button { Content = $"⚑ {node.Count}", Padding = new Avalonia.Thickness(9, 3), FontSize = 12, Tag = "bug-count", MinHeight = 0 };
-            ToolTip.SetTip(button, node.Kind == "Instance" ? "Show all known bugs of this instance" : "Show only the known bugs of this " + node.Kind.ToLowerInvariant());
-            button.Click += (_, _) => { _bugFilter = node.Testcase is null ? null : (node.Testcase, node.Step); RefreshBugList(); };
+            ToolTip.SetTip(button, "Select this instance and show only its known bugs of this " + node.Kind.ToLowerInvariant());
+            button.Click += (_, _) =>
+            {
+                if (_instances.FirstOrDefault(i => i.Name == node.Instance) is { } instance && !ReferenceEquals(instance, _selectedInstance)) { _selectedInstance = instance; _instanceList.SelectedItem = instance; ShowDetails(instance); }
+                _bugFilter = node.Testcase is null ? null : (node.Instance, node.Testcase, node.Step);
+                RefreshBugList();
+            };
             Grid.SetColumn(button, 2); grid.Children.Add(button);
         }
         return grid;
