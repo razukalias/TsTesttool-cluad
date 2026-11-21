@@ -262,11 +262,12 @@
         <TreeView x:Name="Tree" Padding="0,0,14,0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ItemsSource="{Binding VisibleInstances}" SelectedItem="{Binding SelectedNode, Mode=TwoWay}" Background="Transparent">
           <TreeView.DataTemplates>
             <TreeDataTemplate DataType="vm:InstanceNode" ItemsSource="{Binding Testcases}">
-              <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,3,0,3">
-                <CheckBox Classes="treecheck" IsChecked="{Binding ChosenState, Mode=TwoWay}" IsEnabled="{Binding IsLoaded}" ToolTip.Tip="Tick to run this instance's testcases together with the other ticked items" />
-                <Ellipse Grid.Column="1" Width="8" Height="8" Margin="0,0,8,0" Fill="{Binding DirtyColor}" IsVisible="{Binding IsDirty}" />
-                <StackPanel Grid.Column="2" Spacing="1">
+              <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,3,0,3">
+                <Ellipse Width="8" Height="8" Margin="0,0,6,0" Fill="{Binding DirtyColor}" IsVisible="{Binding IsDirty}" />
+                <CheckBox Grid.Column="3" Classes="treecheck" Margin="6,0,0,0" IsChecked="{Binding ChosenState, Mode=TwoWay}" IsEnabled="{Binding IsLoaded}" ToolTip.Tip="Tick to run this instance's testcases together with the other ticked items" />
+                <StackPanel Grid.Column="1" Spacing="1">
                   <TextBlock Text="{Binding DisplayName}" FontWeight="Bold" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
+                  <StackPanel Spacing="1" IsVisible="{Binding $parent[TreeViewItem].IsExpanded}">
                   <TextBlock Text="{Binding Subtitle}" FontSize="11" Foreground="#8EA4BC" TextTrimming="CharacterEllipsis" />
                   <TextBlock Text="{Binding RunSummary}" FontSize="11" Foreground="#6F87A1" TextWrapping="Wrap" />
                   <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding HasEnvironments}">
@@ -278,8 +279,9 @@
                     <TextBlock Text="Rows" FontSize="11" Foreground="#6F87A1" />
                     <TextBlock Text="{Binding Execution.Summary}" FontSize="11" Foreground="#C9D8EA" TextTrimming="CharacterEllipsis" />
                   </StackPanel>
+                  </StackPanel>
                 </StackPanel>
-                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Top">
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">
                   <Button Classes="treemove" Content="✎" FontSize="12" IsVisible="{Binding HasRunSettings}" ToolTip.Tip="Edit this instance's environments and row execution (empty boxes use the global value)">
                     <Button.Flyout>
                       <Flyout Placement="BottomEdgeAlignedRight">
@@ -320,11 +322,11 @@
               </Grid>
             </TreeDataTemplate>
             <DataTemplate DataType="vm:StepNode">
-              <Grid ColumnDefinitions="Auto,*,Auto" Margin="{Binding Indent}">
-                <CheckBox Classes="treecheck" IsChecked="{Binding IsChosen, Mode=TwoWay}" ToolTip.Tip="Tick to run this step on its own" />
-                <TextBlock Grid.Column="1" Text="{Binding Title}" IsVisible="{Binding IsNotEditing}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                <TextBox Grid.Column="1" Classes="treeedit" Text="{Binding EditText, Mode=TwoWay}" IsVisible="{Binding IsEditing}" FontSize="12" MinHeight="24" Padding="4,2" />
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" IsVisible="{Binding IsNotEditing}">
+              <Grid ColumnDefinitions="*,Auto,Auto" Margin="{Binding Indent}">
+                <CheckBox Grid.Column="2" Classes="treecheck" Margin="6,0,0,0" IsChecked="{Binding IsChosen, Mode=TwoWay}" ToolTip.Tip="Tick to run this step on its own" />
+                <TextBlock Text="{Binding Title}" IsVisible="{Binding IsNotEditing}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <TextBox Classes="treeedit" Text="{Binding EditText, Mode=TwoWay}" IsVisible="{Binding IsEditing}" FontSize="12" MinHeight="24" Padding="4,2" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0" IsVisible="{Binding IsNotEditing}">
                   <Button Classes="status" Tag="status" IsVisible="{Binding Run.HasStatus}" ToolTip.Tip="{Binding Run.Tooltip}">
                     <StackPanel Orientation="Horizontal" Spacing="4">
                       <TextBlock Text="{Binding Run.Icon}" Foreground="{Binding Run.Tint}" FontWeight="Bold" FontSize="13" />
@@ -340,15 +342,15 @@
               </Grid>
             </DataTemplate>
             <TreeDataTemplate DataType="vm:TestcaseItem" ItemsSource="{Binding StepNodes}">
-              <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,3">
-                <CheckBox Classes="treecheck" VerticalAlignment="Top" IsChecked="{Binding ChosenState, Mode=TwoWay}" ToolTip.Tip="Tick to run this testcase together with the other ticked items" />
-                <StackPanel Grid.Column="1" Spacing="1">
+              <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,3">
+                <CheckBox Grid.Column="2" Classes="treecheck" Margin="6,0,0,0" VerticalAlignment="Top" IsChecked="{Binding ChosenState, Mode=TwoWay}" ToolTip.Tip="Tick to run this testcase together with the other ticked items" />
+                <StackPanel Spacing="1">
                   <TextBlock Text="{Binding Title}" IsVisible="{Binding IsNotEditing}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                   <TextBox Classes="treeedit" Text="{Binding EditText, Mode=TwoWay}" IsVisible="{Binding IsEditing}" FontWeight="SemiBold" MinHeight="26" Padding="4,2" />
                   <TextBlock Text="{Binding Summary}" FontSize="11" Foreground="#8EA4BC" />
                   <TextBlock Text="{Binding ResultText}" IsVisible="{Binding HasResults}" Foreground="{Binding ResultColor}" FontSize="11" FontWeight="SemiBold" />
                 </StackPanel>
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" VerticalAlignment="Top" IsVisible="{Binding IsNotEditing}">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0" VerticalAlignment="Top" IsVisible="{Binding IsNotEditing}">
                   <Button Classes="treemove" Tag="add" Content="＋" FontSize="12" ToolTip.Tip="Add a step to this testcase" />
                   <Button Classes="status" Tag="status" IsVisible="{Binding Run.HasStatus}" ToolTip.Tip="{Binding Run.Tooltip}">
                     <StackPanel Orientation="Horizontal" Spacing="4">
