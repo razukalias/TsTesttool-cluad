@@ -318,10 +318,10 @@ public class ConditionBuilderScreenshots
         window.Close();
         using var dir = new TempDir();
         var editorWindow = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 3), null);
-        editorWindow.Width = 1300; editorWindow.Height = 1000; editorWindow.Show();
+        editorWindow.Width = 1300; editorWindow.Height = 2300; editorWindow.Show();
         editorWindow.Shell.Current!.ShowSteps = true;
         editorWindow.Shell.SelectedNode = editorWindow.Shell.Instances[0].Testcases[0].StepNodes[0];
-        editorWindow.Shell.Current!.FocusedStep!.Write("stepconfig", "outputs=orderId=id,token=auth.token");
+        editorWindow.Shell.Current!.FocusedStep!.Write("stepconfig", "{\"outputs\":\"orderId=id,token=auth.token\"}");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Avalonia.Headless.HeadlessWindowExtensions.CaptureRenderedFrame(editorWindow)!.Save(System.IO.Path.Combine(outDir, "outputs-form.png"));
         editorWindow.Close();

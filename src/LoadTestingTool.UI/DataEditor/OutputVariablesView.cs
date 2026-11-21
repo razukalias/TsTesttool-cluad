@@ -64,10 +64,16 @@ public sealed class OutputVariablesView : StackPanel
         var pick = new Button { Content = "⋯", Tag = "output-pick", Padding = new Thickness(8, 2), Margin = new Thickness(4, 0, 0, 0) };
         ToolTip.SetTip(pick, "Choose a field of this step's response");
         var remove = new Button { Content = "✕", Tag = "output-remove", Padding = new Thickness(6, 2), Margin = new Thickness(4, 0, 0, 0) };
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto,Auto") };
-        var eq = new TextBlock { Text = "=", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0) };
-        Control[] parts = [nameBox, eq, sourceBox, pick, remove];
-        for (var i = 0; i < parts.Length; i++) { Grid.SetColumn(parts[i], i); row.Children.Add(parts[i]); }
+        // narrow form column: the name on its own line, the source (with ⋯ and ✕) under it
+        nameBox.Width = double.NaN;
+        nameBox.HorizontalAlignment = HorizontalAlignment.Stretch;
+        nameBox.Watermark = "variable name, used as _name_";
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto"), Margin = new Thickness(0, 0, 0, 6) };
+        Grid.SetColumnSpan(nameBox, 3);
+        Grid.SetRow(sourceBox, 1); Grid.SetColumn(sourceBox, 0); sourceBox.Margin = new Thickness(0, 3, 0, 0);
+        Grid.SetRow(pick, 1); Grid.SetColumn(pick, 1);
+        Grid.SetRow(remove, 1); Grid.SetColumn(remove, 2);
+        row.Children.Add(nameBox); row.Children.Add(sourceBox); row.Children.Add(pick); row.Children.Add(remove);
         _rows.Children.Add(row);
         _fields.Add((nameBox, sourceBox));
         // written when a box is left (adding the StepConfig column rebuilds the form, which must not happen in the middle of typing)
@@ -106,7 +112,13 @@ public sealed class OutputVariablesView : StackPanel
         Check();
         if (text == written) return;
         _loading = true;
-        try { _step.Write("stepconfig", ControlStepSettings.WithKey(_step.Value("stepconfig"), "outputs", text)); }
+        try
+        {
+            var next = ControlStepSettings.WithKey(_step.Value("stepconfig"), "outputs", text);
+            // the type's own settings card edits the StepConfig as a JSON object: keep it one
+            if (!next.TrimStart().StartsWith('{') && next.Length > 0) next = System.Text.Json.JsonSerializer.Serialize(ControlConfig.Parse(next));
+            _step.Write("stepconfig", next);
+        }
         finally { _loading = false; }
     }
 
