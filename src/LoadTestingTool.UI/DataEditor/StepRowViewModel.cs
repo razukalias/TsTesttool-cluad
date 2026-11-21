@@ -71,6 +71,15 @@ public sealed partial class StepRowViewModel : ObservableObject, IFormattedRow, 
     }
 
     public string TypeText => Value("steptype");
+
+    /// <summary>The line icon of the step's type, shown at the left of its card.</summary>
+    public string IconData => TreeIcons.ForStep(TypeText);
+
+    // The buttons on the step's card header act on this step, not on whichever step is selected.
+    [CommunityToolkit.Mvvm.Input.RelayCommand] private void MoveUp() => Editor?.MoveStepRow(this, -1);
+    [CommunityToolkit.Mvvm.Input.RelayCommand] private void MoveDown() => Editor?.MoveStepRow(this, 1);
+    [CommunityToolkit.Mvvm.Input.RelayCommand] private void Duplicate() => Editor?.OpenDuplicateStep(CurrentName);
+    [CommunityToolkit.Mvvm.Input.RelayCommand] private void Remove() => Editor?.RemoveStepRow(this);
     public bool IsStepEnabled => Value("enabled").Trim().ToLowerInvariant() is not ("false" or "0" or "no" or "off");
     public string EnabledText => IsStepEnabled ? "enabled" : "disabled";
     public string EnabledColor => IsStepEnabled ? "#39D39B" : "#F6C76B";
@@ -91,6 +100,7 @@ public sealed partial class StepRowViewModel : ObservableObject, IFormattedRow, 
     private void NotifySummary()
     {
         OnPropertyChanged(nameof(TypeText));
+        OnPropertyChanged(nameof(IconData));
         OnPropertyChanged(nameof(IsStepEnabled));
         OnPropertyChanged(nameof(EnabledText));
         OnPropertyChanged(nameof(EnabledColor));

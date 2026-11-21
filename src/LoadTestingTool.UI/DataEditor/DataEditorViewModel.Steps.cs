@@ -223,7 +223,7 @@ public sealed partial class DataEditorViewModel
     public void RemoveStepNamed(string name)
         => RemoveStepRow(StepRows.FirstOrDefault(r => string.Equals(r.CurrentName, name, StringComparison.OrdinalIgnoreCase)));
 
-    private void RemoveStepRow(StepRowViewModel? step)
+    public void RemoveStepRow(StepRowViewModel? step)
     {
         if (step is null) return;
         var name = step.CurrentName;

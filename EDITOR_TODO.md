@@ -737,3 +737,9 @@ Same-size editor area (2026-11-21): the box above the view-mode droplist (title-
 Show options (2026-11-21): the five checkboxes (Show every column, Failed rows only, Failed columns only, Bug columns only, Failed cells only) are one "Show" droplist; tick several, the title lists what is on.
 Tree rows (2026-11-21): the instance name sits right after the collapse button; the tick boxes of instances, testcases and steps are at the right end of the row; a collapsed instance shows only its name (the lines under it show while expanded).
 Tree icons (2026-11-21): a small line icon sits at the far left of every tree row, in front of the collapse button (workbook, testcase, and one per step type: HTTP, GraphQL, CaseQL, SQL, File, Script, ActionManual, If, loops). Leaf rows show the icon where the collapse button would be.
+
+## Step card buttons and sheet tab bar (done)
+- **Config edit mode, step cards:** each card header now starts with the step-type icon (same icons as the tree), then the ▸/▾ open-close arrow, and ends with ▲ ▼ (run earlier/later), ⧉ duplicate (opens the same "Duplicate step" panel as the tree menu) and 🗑 remove (same as before: data columns removed, Undo brings them back, warns about references). The buttons act on their own card, not on the selected step.
+- **Config edit mode toolbar:** Add step, Move step up/down, Remove step, Find & replace, Show its columns and the "Table view" toggle of the cards header are gone (adding a step: ＋ on the testcase in the tree).
+- **Table view:** "Sheets ▾" (which sheets are shown) and "＋" (add sheet) moved into the sheet tab bar, after the tabs. The tree is unchanged in every mode.
+- Still open: Find & replace is reachable only from Table view now; other-sheet buttons (＋ Columns…, Rename/Remove column) unchanged.

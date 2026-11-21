@@ -270,9 +270,12 @@ public sealed partial class DataEditorViewModel
     [RelayCommand]
     private void MoveStepDown() => MoveStep(1);
 
-    private void MoveStep(int direction)
+    private void MoveStep(int direction) => MoveStepRow(SelectedStep, direction);
+
+    /// <summary>Moves one step a place earlier (-1) or later (1) among the testcase's steps.</summary>
+    public void MoveStepRow(StepRowViewModel? step, int direction)
     {
-        if (SelectedStep is not { } step) return;
+        if (step is null) return;
         var position = StepRows.IndexOf(step);
         Record($"move step {step.CurrentName} {(direction < 0 ? "up" : "down")}");
         if (!_document.MoveStep(step.Row, direction))
