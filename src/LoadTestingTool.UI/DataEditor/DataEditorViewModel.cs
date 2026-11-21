@@ -476,6 +476,20 @@ public sealed partial class DataEditorViewModel : ObservableObject
         ShowStatus($"Removed row {row.CurrentDataId}. Reload to bring it back until you save.", isError: false);
     }
 
+    /// <summary>Numbers the later rows of every Data ID a testcase holds twice or more (all testcases), on the request and response sheets. One Undo step.</summary>
+    [RelayCommand]
+    public void FixDuplicateDataIds()
+    {
+        Record("fix duplicate Data IDs");
+        var renames = _document.FixDuplicateDataIds();
+        if (renames.Count == 0) { DiscardLastRecord(); ShowStatus("No Data ID appears twice in a testcase.", isError: false); return; }
+        var keep = SelectedTestcase?.Index;
+        LoadTestcases(keep);
+        MarkChanged();
+        var shown = string.Join(", ", renames.Take(5).Select(r => $"{r.Old} → {r.New}"));
+        ShowStatus($"Renamed {renames.Count} duplicate Data ID{(renames.Count == 1 ? "" : "s")}: {shown}{(renames.Count > 5 ? $" (+{renames.Count - 5} more)" : "")}. Undo puts them back.", isError: false);
+    }
+
     private string NextDataId(TestcaseItem testcase)
     {
         var ids = _document.GetDataIds(testcase.Index);

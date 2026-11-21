@@ -148,7 +148,7 @@ public static class WorkbookValidator
                 continue;
             }
             if (!keys.Add((index, dataId.ToLowerInvariant())))
-                Add(problems, duplicateSeverity, table, row, $"Duplicate row for testcaseindex + dataid: {index} + {dataId}.");
+                Add(problems, duplicateSeverity, table, row, $"Duplicate row for testcaseindex + dataid: {index} + {dataId}. In the data editor, right-click a row ▸ Fix duplicate Data IDs numbers the later ones.");
         }
         return keys;
     }

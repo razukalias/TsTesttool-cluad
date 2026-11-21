@@ -110,7 +110,7 @@ public class BulkEditTests
     }
 
     [Fact]
-    public void Cells_past_the_last_column_and_clashing_ids_are_skipped_not_fatal()
+    public void Cells_past_the_last_column_are_skipped_and_a_clashing_id_is_numbered_not_refused()
     {
         using var dir = new TempDir();
         var vm = new DataEditorViewModel(Samples.CreateLarge(dir, rows: 3));
@@ -120,9 +120,9 @@ public class BulkEditTests
         Assert.Equal("v1", vm.VisibleRows[0].Cells[last]);
         Assert.Contains("2 skipped", vm.StatusMessage);
 
-        vm.PasteBlock(0, 0, ClipboardTable.Parse("CUST002")); // already taken
-        Assert.Equal("CUST001", vm.VisibleRows[0].Cells[0]);
-        Assert.Contains("Nothing changed", vm.StatusMessage);
+        vm.PasteBlock(0, 0, ClipboardTable.Parse("CUST002")); // already taken: gets the next free number
+        Assert.Equal("CUST004", vm.VisibleRows[0].Cells[0]);
+        Assert.Contains("CUST002 → CUST004", vm.StatusMessage);
     }
 
     [Fact]

@@ -53,6 +53,7 @@ public partial class DataEditorWindow
             CommitPendingEdit();
             editor.PasteRowsBelow(ClipboardTable.Parse(text));
         }, editor.SelectedTestcase is not null));
+        menu.Items.Add(Item("Fix duplicate Data IDs", () => editor.FixDuplicateDataIds(), editor.SelectedTestcase is not null));
         menu.Items.Add(new Separator());
         menu.Items.Add(ColourItem("Highlight row", haveRow,
             hex => editor.FormatCells(RowCells(editor, selected()), f => f with { Fill = hex }, "Highlighted row"),

@@ -1,3 +1,4 @@
+using LoadTestingTool.Editing;
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -55,12 +56,22 @@ public sealed partial class DataEditorViewModel
 
         ClearRowFilters();
         Record($"import {table.Length - 1} CSV rows");
+        _idRenames.Clear();
+        var idsInFile = new HashSet<string>(StringComparer.OrdinalIgnoreCase);   // a Data ID the file repeats is a second row, not an update of the first
         int added = 0, updated = 0, changed = 0, rejected = 0;
         for (var r = 1; r < table.Length; r++)
         {
             var line = table[r];
             var id = idColumn >= 0 && idColumn < line.Length ? line[idColumn].Trim() : string.Empty;
-            var row = id.Length == 0 ? null : _allRows.FirstOrDefault(x => x.Cells[0].Equals(id, StringComparison.OrdinalIgnoreCase));
+            var repeated = id.Length > 0 && !idsInFile.Add(id);
+            if (repeated)
+            {
+                var asked = id;
+                id = DataIdNumbering.Unique(id, TakenIds(testcase.Index));
+                idsInFile.Add(id);
+                _idRenames.Add((asked, id));
+            }
+            var row = id.Length == 0 || repeated ? null : _allRows.FirstOrDefault(x => x.Cells[0].Equals(id, StringComparison.OrdinalIgnoreCase));
             if (row is null)
             {
                 AddPastedRow(testcase, id);
@@ -81,6 +92,7 @@ public sealed partial class DataEditorViewModel
         var notes = new List<string>();
         if (unknown.Count > 0) notes.Add("ignored columns: " + string.Join(", ", unknown.Take(5)) + (unknown.Count > 5 ? "…" : ""));
         if (rejected > 0) notes.Add($"{rejected} cells refused");
+        if (IdRenameNote() is { Length: > 0 } renameNote) notes.Add(renameNote);
         ShowStatus($"Imported {added + updated} rows ({added} new, {updated} updated, {changed} cells changed)" + (notes.Count == 0 ? "." : "; " + string.Join("; ", notes) + "."), isError: false);
     }
 

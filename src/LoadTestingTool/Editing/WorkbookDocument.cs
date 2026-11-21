@@ -153,6 +153,47 @@ public sealed partial class WorkbookDocument
     /// Changes a data ID in both the request and response sheets. Returns false when the testcase has no
     /// such row. Throws when the new ID is empty or already used by another row of the same testcase.
     /// </summary>
+    /// <summary>
+    /// Renames the later rows of every Data ID that a testcase has twice or more (the first keeps its name) on the request and response sheets,
+    /// numbering them as <see cref="DataIdNumbering"/> does. The nth row with an ID on one sheet matches the nth on the other.
+    /// </summary>
+    public IReadOnlyList<DataIdRename> FixDuplicateDataIds()
+    {
+        var taken = new Dictionary<int, HashSet<string>>();
+        foreach (var table in new[] { Request, Response })
+            foreach (var row in table.Rows)
+                if (RowIndex(row) is { } index)
+                {
+                    if (!taken.TryGetValue(index, out var set)) taken[index] = set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    var id = row.Get("dataid").Trim();
+                    if (id.Length > 0) set.Add(id);
+                }
+        var renamed = new Dictionary<(int, string, int), string>();
+        var result = new List<DataIdRename>();
+        foreach (var table in new[] { Request, Response })
+        {
+            var seen = new Dictionary<(int, string), int>();
+            foreach (var row in table.Rows)
+            {
+                if (RowIndex(row) is not { } index) continue;
+                var id = row.Get("dataid").Trim();
+                if (id.Length == 0) continue;
+                var key = (index, id.ToLowerInvariant());
+                seen[key] = seen.GetValueOrDefault(key) + 1;
+                if (seen[key] < 2) continue;
+                var occurrence = (index, id.ToLowerInvariant(), seen[key]);
+                if (!renamed.TryGetValue(occurrence, out var replacement))
+                {
+                    replacement = DataIdNumbering.Unique(id, taken[index]);
+                    renamed[occurrence] = replacement;
+                    result.Add(new DataIdRename(index, id, replacement));
+                }
+                row.Set("dataid", replacement);
+            }
+        }
+        return result;
+    }
+
     public bool RenameDataRow(int testcaseIndex, string oldDataId, string newDataId)
     {
         newDataId = newDataId.Trim();

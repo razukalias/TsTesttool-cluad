@@ -49,6 +49,8 @@ public sealed partial class DataEditorViewModel
     {
         if (SelectedTestcase is not { } testcase || block.Length == 0 || startRow < 0 || startCell < 0) return;
         Record($"paste {block.Length} {(block.Length == 1 ? "row" : "rows")}");
+        _idRenames.Clear();
+        _placeholderIds.Clear();
 
         var skippedLines = 0;
         var missing = startRow + block.Length - VisibleRows.Count;
@@ -56,6 +58,7 @@ public sealed partial class DataEditorViewModel
         {
             if (FilterText.Trim().Length > 0 || RowNumberFilter.Trim().Length > 0 || ColumnFilters.Count > 0) skippedLines = missing;
             else for (var i = 0; i < missing; i++) AddPastedRow(testcase);
+            if (startCell == 0) foreach (var added in VisibleRows.Skip(VisibleRows.Count - (skippedLines > 0 ? 0 : missing))) _placeholderIds.Add(added.CurrentDataId);
         }
 
         var changed = 0;
@@ -68,13 +71,14 @@ public sealed partial class DataEditorViewModel
             {
                 var cell = startCell + c;
                 if (cell > Columns.Count) { skippedCells++; continue; }
-                switch (ApplyCell(row, cell, block[r][c]))
+                switch (ApplyCell(row, cell, block[r][c], numberClashes: true))
                 {
                     case CellResult.Changed: changed++; break;
                     case CellResult.Rejected: skippedCells++; break;
                 }
             }
         }
+        _placeholderIds.Clear();
         FinishBulk(changed, $"Pasted {changed} {(changed == 1 ? "cell" : "cells")}", skippedCells, skippedLines);
     }
 
@@ -195,11 +199,39 @@ public sealed partial class DataEditorViewModel
     private enum CellResult { Unchanged, Changed, Rejected }
 
     /// <summary>Writes one cell for a bulk operation without recording history or status (the caller does that once).</summary>
-    private CellResult ApplyCell(DataRowViewModel row, int cellIndex, string value)
+    /// <summary>The Data IDs renamed during the current paste or import, to say so in the status line: (asked for, used).</summary>
+    private readonly List<(string Asked, string Used)> _idRenames = [];
+
+    /// <summary>Placeholder IDs of rows a paste just added whose Data ID cell the paste is about to overwrite: they do not count as taken.</summary>
+    private readonly HashSet<string> _placeholderIds = new(StringComparer.OrdinalIgnoreCase);
+
+    private HashSet<string> TakenIds(int testcaseIndex, string? exceptOwn = null)
+    {
+        var taken = DataIdNumbering.TakenSet(_document.GetDataIds(testcaseIndex));
+        foreach (var placeholder in _placeholderIds) taken.Remove(placeholder);
+        if (exceptOwn is not null) taken.Remove(exceptOwn.Trim());
+        return taken;
+    }
+
+    private string IdRenameNote() => _idRenames.Count == 0 ? string.Empty
+        : "Data IDs numbered to stay unique: " + string.Join(", ", _idRenames.Take(5).Select(r => $"{r.Asked} → {r.Used}")) + (_idRenames.Count > 5 ? $" (+{_idRenames.Count - 5} more)" : "");
+
+    private CellResult ApplyCell(DataRowViewModel row, int cellIndex, string value, bool numberClashes = false)
     {
         if (cellIndex == 0)
         {
             if (value == row.CurrentDataId) return CellResult.Unchanged;
+            if (numberClashes) _placeholderIds.Remove(row.CurrentDataId);
+            if (numberClashes && value.Trim().Length > 0 && !value.Trim().Equals(row.CurrentDataId, StringComparison.OrdinalIgnoreCase))
+            {
+                var taken = TakenIds(row.TestcaseIndex, row.CurrentDataId);
+                if (taken.Contains(value.Trim()))
+                {
+                    var asked = value.Trim();
+                    value = DataIdNumbering.Unique(asked, taken);
+                    _idRenames.Add((asked, value));
+                }
+            }
             try
             {
                 if (!_document.RenameDataRow(row.TestcaseIndex, row.CurrentDataId, value))
@@ -237,6 +269,7 @@ public sealed partial class DataEditorViewModel
         var notes = new List<string>();
         if (skippedCells > 0) notes.Add($"{skippedCells} skipped (past the last column or a refused data ID)");
         if (skippedLines > 0) notes.Add($"{skippedLines} lines past the last row skipped because a filter is active");
+        if (IdRenameNote() is { Length: > 0 } renameNote) notes.Add(renameNote);
         MarkChanged();
         OnPropertyChanged(nameof(RowCountText));
         ShowStatus(notes.Count == 0 ? message + "." : $"{message}; {string.Join("; ", notes)}.", isError: false);
