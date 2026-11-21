@@ -797,3 +797,43 @@ Tree icons (2026-11-21): a small line icon sits at the far left of every tree ro
 - **Hang watchdog** (`HangMonitor`): the UI thread stamps a heartbeat every second; a second thread checks it. After 10 s without a heartbeat it writes `Logs/ui-hang.log` once (memory, thread counts, the last 40 actions); when the window answers again the status line says how long it was frozen. .NET cannot dump another thread's stack in-process, so the trail of actions is what shows what led to the freeze.
 - **Recovery copies** (`RecoveryStore`): while a workbook has unsaved edits a copy is written to `Recovery/` every 30 s (less often for a workbook that takes over a second to copy; removed once everything is saved). If the app dies, the next time the workbook opens the copy is placed beside it as `name (recovered yyyyMMdd-HHmm).xlsx` and the status line says so; the workbook itself is never changed.
 - Not done: running the table or the wizard in its own process (judged too big for what it gives). Still open: finding the cause of the wizard hang itself; once it happens again `Logs/ui-hang.log` should show the actions before it.
+
+## Help and user manual (planned 2026-11-21, not started)
+
+Today help is scattered: ⓘ step-type guides (`StepTypeGuide`), a few "Help" buttons using `ContextHelpWindow` (assertion editor, step picker, template editor), the new Help of "Template and response" (`ResponseColumnsHelp`), and the Markdown reports in `docs/`. Nothing covers the whole solution and most forms and fields have no help. Goal: one manual for the whole solution plus help on every form, function and field, each with an example.
+
+### 1. General help and user manual
+- [ ] One **Help** entry in the main menu / toolbar (and **F1** in every window) that opens a **Help centre** window: left a contents tree, right the page, a search box over all pages, back/forward, and "Open the instance used in this example".
+- [ ] One source of truth: the manual pages are Markdown files in `docs/manual/` (embedded in the app as resources), so the same text is shown in the app, can be read on GitHub, and is exported to one `USER_MANUAL.md` / PDF by a script. No help text is written twice (the existing `ContextHelpWindow` strings and `StepTypeGuide` move into it).
+- [ ] Manual chapters (each with a short purpose, steps, and a worked example):
+  1. What the tool is: the Excel-driven runner, the instance folder (workbook, Templates, History, Logs, Results), how a run works from config row to result.
+  2. Quick start: create an instance, add a testcase and a step, run, read the dashboard (uses a small sample instance).
+  3. The workbook: config, request, response, environments sheets; every column of the config sheet (steptype, targetUrl, verb, contenttype, expectedstatus, stage, parent, condition, stepconfig, header_*, environments ...).
+  4. Request data: data IDs, `_placeholders_` in templates, `<From_request_col_r>`, generated tokens (`<guid>`, `<randomnumber>` ...), duplicate IDs and numbering.
+  5. Responses and assertions: response headers `{verb}Step.path`, all verbs with an example each, `statusCode`, `responseHeader.Name`, `#count`, the "Unexpected response path" contract check, tag cell as known bug.
+  6. Step types: HTTP, GraphQL, CaseQL, SQL, File, Script, ActionManual (merge the ⓘ guides).
+  7. Control steps: If / While / For / ForEach, conditions wizard, C# conditions, output variables, `@prev`, `@lastround`, nesting (use ControlFlowScenarios as the examples).
+  8. The data editor: record view, grid, row/column menus, bulk edit, import and export, Template and response window, Undo/Redo, backups, Save.
+  9. Running and results: run selection, environments, parallel rows, the dashboard (Overview, Bugs, Failed cells), history explorer and comparison, logs.
+  10. Settings and administration: appsettings.json, instance registry, history sheets, storage cleanup, crash protection and `Logs/ui-hang.log`.
+  11. Troubleshooting and FAQ: the typical errors and their cure (unexpected response path, missing column, template not found, ...).
+  12. Reference: all verbs, all keywords and tokens, all keyboard shortcuts, all stepconfig keys.
+- [ ] Each chapter ends with "Try it": the exact instance and testcase to open (ControlFlowScenarios, ComplexResponses, DataEngine_IntegrationScenarios, FileHttpScenarios).
+
+### 2. Help for each form, function and field
+- [ ] **Inventory first:** a list of every window, tab, button, menu item and field, kept in this file as a checklist (windows: main dashboard, data editor + record view, step form, Add columns / Template and response, Import, Export, Condition builder, Template editor, Assertion editor/workbench, Instance builder, Instance configuration, Environment manager, History explorer/comparison/settings/logs, Run selection, Data ID selection, Storage cleanup, Backups, Global validation, Step wizard / testcase wizard). Each gets one line "has help: no/yes".
+- [ ] **Per window:** a **Help** button (same place, same look) and F1, opening the matching manual page at the right chapter. Context-aware: F1 on a focused field opens the help of that field.
+- [ ] **Per field:** a small ⓘ or a tooltip with one line (what it is, allowed values, default), and a "More…" link to the field's manual entry. The field entry has: purpose, allowed values, what the runner does with it, one example value, and the common mistake.
+- [ ] **Per function / menu item / button:** one line in the tooltip, and an entry in the manual with: when to use it, what it changes, whether it is one Undo step, and an example (before / after of a cell or row).
+- [ ] **Examples** are real: each example is a small block that can be copied or "Use this example" (as the step-type guides do), and each one is covered by a test that parses/validates it, so examples cannot rot.
+- [ ] **Field catalogue as data:** `FieldHelp` table (window, field id, label, one-liner, allowed values, example, manual anchor). The form builders read it for the tooltip, and a test fails when a field id used in a window has no entry (so new fields cannot ship without help).
+- [ ] Step form: all step-type fields (verb, target URL, template, content type, expected status, stage, timeout, threads/iterations, wait, stop on failure, enabled, environments, headers, step config keys) with examples; Config edit mode and the old step wizard get the same guides (open item from "How-to-fill guide").
+- [ ] Record view, record view fields and header verb button; Template and response (done: window Help only, fields still to do); Import window (sheet, range, header row, placement, remembered choices); Export; Condition builder (every operator with an example); Assertion editor; Instance builder/configuration; Environment manager; History settings; Run selection.
+- [ ] First-run hint: a dismissible "New here? Open the quick start" banner, and "Help ▸ What's new" listing recent additions (from this file's Done sections).
+
+### 3. Order of work
+1. Help centre window + Markdown resources + F1 plumbing + one chapter (Quick start) to prove the pipeline, with tests (opens, search finds text, every page loads).
+2. Inventory checklist and the `FieldHelp` table with the completeness test.
+3. Chapters 3, 5, 6, 7 (workbook, assertions, step types, control steps), moving the existing texts in.
+4. Per-window Help buttons and field tooltips, window by window, ticking the inventory.
+5. Remaining chapters, reference tables (generated from code where possible: verbs, tokens, stepconfig keys), export of `USER_MANUAL.md`/PDF, example-validation tests.
