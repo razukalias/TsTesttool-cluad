@@ -67,6 +67,8 @@ public sealed class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        CrashGuard.Install();
+        HangMonitor.Start();
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var args = desktop.Args ?? Array.Empty<string>();

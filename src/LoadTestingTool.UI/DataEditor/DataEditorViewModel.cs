@@ -29,6 +29,8 @@ public sealed partial class DataEditorViewModel : ObservableObject
         LoadTestcases(null);
         InitSheets();
         ColumnsChanged += (_, _) => { if (ShowRecord) BuildRecord(); };
+        if (RecoverEarlierEdits() is { } recoveredNotice) ShowStatus(recoveredNotice, isError: true);
+        StartRecovery();
     }
 
     /// <summary>Drops config columns that steps no longer use (see <see cref="LegacyColumns"/>). Done when saving, so opening a workbook never changes it.</summary>

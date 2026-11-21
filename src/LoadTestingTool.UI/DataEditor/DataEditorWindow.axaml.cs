@@ -45,7 +45,14 @@ public partial class DataEditorWindow : Window
             _resultsTimer.Tick += async (_, _) => await shell.RefreshResultsIfChangedAsync();
             _resultsTimer.Start();
         };
-        Closed += (_, _) => _resultsTimer?.Stop();
+        Action<string> showCaught = message => Shell.Current?.Notify(message, true);
+        CrashGuard.Reported += showCaught;
+        Closed += (_, _) =>
+        {
+            _resultsTimer?.Stop();
+            CrashGuard.Reported -= showCaught;
+            foreach (var instance in Shell.Instances) instance.Editor?.StopRecovery(windowClosing: true);
+        };
     }
 
     private bool _runDetailsAttached;

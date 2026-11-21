@@ -33,13 +33,17 @@ public sealed partial class DataEditorWindow
     private static IReadOnlyList<int> VisibleCellOrder(DataGrid grid)
         => grid.Columns.OfType<FormattedTextColumn>().Where(c => c.IsVisible && c.Tag is int cell && cell >= 1).OrderBy(c => c.DisplayIndex).Select(c => (int)c.Tag!).ToList();
 
-    private static void OnGridSelectionClosesWizard(object? sender, SelectionChangedEventArgs e) => _openWizard?.Hide();
+    private static void OnGridSelectionClosesWizard(object? sender, SelectionChangedEventArgs e) { CrashGuard.Trace("grid selection changed"); _openWizard?.Hide(); }
 
     private void OnCellSelectionChanged(object? sender, EventArgs e)
     {
-        if (this.FindControl<DataGrid>("Grid") is not { } grid) return;
-        _openWizard?.Hide();
-        foreach (var column in grid.Columns.OfType<FormattedTextColumn>()) column.RefreshSelection();
+        CrashGuard.Trace("cell selection changed");
+        CrashGuard.Guard(() =>
+        {
+            if (this.FindControl<DataGrid>("Grid") is not { } grid) return;
+            _openWizard?.Hide();
+            foreach (var column in grid.Columns.OfType<FormattedTextColumn>()) column.RefreshSelection();
+        }, "the table");
     }
 
     /// <summary>A click on a request or expected cell: select it (Ctrl adds or removes, Shift extends, a plain click starts a drag). Other columns clear the selection.</summary>

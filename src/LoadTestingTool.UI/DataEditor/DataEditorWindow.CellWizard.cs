@@ -110,14 +110,16 @@ public sealed partial class DataEditorWindow
             apply.Click += (_, _) => flyout.Hide();
             content.Children.Add(new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { cancel, apply } });
         }
-        flyout.Closed += (_, _) =>
+        flyout.Closed += (_, _) => CrashGuard.Guard(() =>
         {
+            CrashGuard.Trace($"wizard closed (cell {cellIndex}{(cancelled ? ", cancelled" : "")})");
             if (cancelled) return;
             var after = row.Cells[cellIndex] ?? string.Empty;
             if (after == before) return;
             foreach (var other in others) if ((other.Cells[cellIndex] ?? string.Empty) != after) other.Cells[cellIndex] = after;
             if (targets is not null) foreach (var (target, cell) in targets) if ((target.Cells[cell] ?? string.Empty) != after) target.Cells[cell] = after;
-        };
+        }, "the cell wizard");
+        CrashGuard.Trace($"wizard opened (cell {cellIndex}, {title})");
         _openWizard?.Hide();
         _openWizard = flyout;
         flyout.Closed += (_, _) => { if (ReferenceEquals(_openWizard, flyout)) _openWizard = null; };

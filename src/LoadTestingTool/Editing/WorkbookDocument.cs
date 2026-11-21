@@ -212,6 +212,41 @@ public sealed partial class WorkbookDocument
         return RowInsertion.PreviewRenames(workbook, [Request, Response, .. _others]);
     }
 
+    /// <summary>The baseline workbook with every edit applied, the way Save writes it (nothing is accepted or written).</summary>
+    private XLWorkbook BuildEdited(WorkbookSaveOptions options, out int inserted, out int otherInserted, out int columns, out int renumbered, out int reordered)
+    {
+        var stream = new MemoryStream(_baselineBytes, writable: false);
+        var workbook = new XLWorkbook(stream);
+        Config.ApplyTo(workbook.Worksheet(Config.SheetName));
+        Request.ApplyTo(workbook.Worksheet(Request.SheetName));
+        Response.ApplyTo(workbook.Worksheet(Response.SheetName));
+        ApplyOtherSheets(workbook);
+        inserted = Request.PendingInserts().Count + Response.PendingInserts().Count;
+        otherInserted = _others.Sum(t => t.PendingInserts().Count);
+        columns = Request.PendingColumnInserts + Response.PendingColumnInserts + (Request.HasRemovedColumns ? 1 : 0) + (Response.HasRemovedColumns ? 1 : 0);
+        columns += Request.RenamedHeaders().Count + Response.RenamedHeaders().Count > 0 ? 1 : 0;
+        if (inserted > 0) EnsureRowsCanMove();
+        renumbered = RowInsertion.Apply(workbook, [Request, Response, .. _others], options.FixRenamedReferences); // also renames references to renamed columns
+        Config.ApplyFormats(workbook.Worksheet(Config.SheetName));
+        Request.ApplyFormats(workbook.Worksheet(Request.SheetName));
+        Response.ApplyFormats(workbook.Worksheet(Response.SheetName));
+        foreach (var other in _others) other.ApplyFormats(workbook.Worksheet(other.SheetName));
+        reordered = RowReorder.Apply(workbook, out var reorderedReferences);   // rows of one testcase together, in testcase order
+        renumbered += reorderedReferences;
+
+        return workbook;
+    }
+
+    /// <summary>Writes the edited workbook to <paramref name="path"/> without touching the original file or marking anything saved: a recovery copy of unsaved edits.</summary>
+    public void SaveRecoveryCopy(string path)
+    {
+        using var workbook = BuildEdited(new WorkbookSaveOptions(), out _, out _, out _, out _, out _);
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        var temp = path + ".tmp";
+        workbook.SaveAs(temp);
+        File.Move(temp, path, overwrite: true);
+    }
+
     public SaveResult Save(WorkbookSaveOptions? options = null)
     {
         options ??= new WorkbookSaveOptions();
@@ -221,24 +256,7 @@ public sealed partial class WorkbookDocument
         if (!options.OverwriteExternalChanges && !string.Equals(Hash(current), _baselineHash, StringComparison.Ordinal))
             throw new WorkbookChangedException(FilePath);
 
-        using var stream = new MemoryStream(_baselineBytes, writable: false);
-        using var workbook = new XLWorkbook(stream);
-        Config.ApplyTo(workbook.Worksheet(Config.SheetName));
-        Request.ApplyTo(workbook.Worksheet(Request.SheetName));
-        Response.ApplyTo(workbook.Worksheet(Response.SheetName));
-        ApplyOtherSheets(workbook);
-        var inserted = Request.PendingInserts().Count + Response.PendingInserts().Count;
-        var otherInserted = _others.Sum(t => t.PendingInserts().Count);
-        var columns = Request.PendingColumnInserts + Response.PendingColumnInserts + (Request.HasRemovedColumns ? 1 : 0) + (Response.HasRemovedColumns ? 1 : 0);
-        columns += Request.RenamedHeaders().Count + Response.RenamedHeaders().Count > 0 ? 1 : 0;
-        if (inserted > 0) EnsureRowsCanMove();
-        var renumbered = RowInsertion.Apply(workbook, [Request, Response, .. _others], options.FixRenamedReferences); // also renames references to renamed columns
-        Config.ApplyFormats(workbook.Worksheet(Config.SheetName));
-        Request.ApplyFormats(workbook.Worksheet(Request.SheetName));
-        Response.ApplyFormats(workbook.Worksheet(Response.SheetName));
-        foreach (var other in _others) other.ApplyFormats(workbook.Worksheet(other.SheetName));
-        var reordered = RowReorder.Apply(workbook, out var reorderedReferences);   // rows of one testcase together, in testcase order
-        renumbered += reorderedReferences;
+        using var workbook = BuildEdited(options, out var inserted, out var otherInserted, out var columns, out var renumbered, out var reordered);
 
         var directory = Path.GetDirectoryName(FilePath)!;
         var temp = Path.Combine(directory, $"{Path.GetFileName(FilePath)}.tmp-{Guid.NewGuid():N}");
