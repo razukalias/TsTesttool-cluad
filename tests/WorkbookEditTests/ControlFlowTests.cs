@@ -131,6 +131,52 @@ public class ControlFlowTests
     }
 
     [Fact]
+    public async Task For_can_stop_when_a_condition_holds_after_a_round_and_skip_rounds_before_they_start()
+    {
+        var stop = await RunAsync(Build(new TempDir(),
+            new Step("Loop", "For", Config: "from=1;to=10;stopwhen=_i_ eq 3"),
+            new Step("Each", Parent: "Loop", Url: "/n/_i_"),
+            new Step("After", Url: "/after")), Ok);
+        Assert.Equal(["/n/1", "/n/2", "/n/3", "/after"], stop.Paths);
+
+        var skip = await RunAsync(Build(new TempDir(),
+            new Step("Loop", "For", Config: "from=1;to=5;skipwhen=_i_ eq 2 or _i_ eq 4"),
+            new Step("Each", Parent: "Loop", Url: "/n/_i_")), Ok);
+        Assert.Equal(["/n/1", "/n/3", "/n/5"], skip.Paths);
+
+        var both = await RunAsync(Build(new TempDir(),
+            new Step("Loop", "For", Config: "{\"from\":1,\"to\":9,\"skipwhen\":\"_i_ lt 3\",\"stopwhen\":\"_i_ gte 5 and not _i_ eq 9\"}"),
+            new Step("Each", Parent: "Loop", Url: "/n/_i_")), Ok);
+        Assert.Equal(["/n/3", "/n/4", "/n/5"], both.Paths);
+    }
+
+    [Fact]
+    public async Task ForEach_stop_and_skip_see_the_item_and_a_response_inside_the_loop()
+    {
+        var run = await RunAsync(Build(new TempDir(),
+            new Step("Each", "ForEach", Config: "items=a,b,c,d;skipwhen=_item_ eq b;stopwhen=<From_response_Item.ok_r> eq true and _index_ gte 2"),
+            new Step("Item", Parent: "Each", Url: "/item/_item_")), Ok);
+        Assert.Equal(["/item/a", "/item/c"], run.Paths);   // b is skipped, the stop is met after c (index 2)
+    }
+
+    [Fact]
+    public async Task An_if_and_a_while_use_and_or_not_and_brackets()
+    {
+        var run = await RunAsync(Build(new TempDir(),
+            new Step("First", Url: "/first"),
+            new Step("Check", "If", Condition: "(<From_response_First.ok_r> eq true and 1 eq 2) or not <From_response_First.ok_r> eq false"),
+            new Step("Then1", Parent: "Check", Url: "/then"),
+            new Step("Else1", Parent: "Check:else", Url: "/else")), Ok);
+        Assert.Equal(["/first", "/then"], run.Paths);
+
+        var bad = await RunAsync(Build(new TempDir(),
+            new Step("Check", "If", Condition: "1 eq 1 and (2 eq 2"),
+            new Step("Then1", Parent: "Check", Url: "/then")), Ok);
+        Assert.DoesNotContain("/then", bad.Paths);
+        Assert.Contains(bad.Run.Testcases.SelectMany(t => t.Requests), r => r.ErrorMessage.Contains("not closed"));
+    }
+
+    [Fact]
     public async Task ForEach_walks_a_json_array_from_a_response_or_a_comma_list_with_item_and_index()
     {
         var fromResponse = await RunAsync(Build(new TempDir(),

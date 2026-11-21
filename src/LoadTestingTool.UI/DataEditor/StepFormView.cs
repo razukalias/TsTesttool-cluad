@@ -239,10 +239,33 @@ public sealed class StepFormView : UserControl
                     box.CaretIndex = start + chosen.Length;
                     Commit();
                 };
+                var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+                void Build(string key, string label, string tag, string tip)
+                {
+                    var wizard = new Button { Content = label, Margin = new Thickness(6, 0, 0, 0), Tag = tag };
+                    ToolTip.SetTip(wizard, tip);
+                    wizard.Click += async (_, _) =>
+                    {
+                        if (TopLevel.GetTopLevel(this) is not Window owner) return;
+                        var existing = key == "condition" ? box.Text ?? string.Empty : ControlStepSettings.Read(box.Text).GetValueOrDefault(key, string.Empty);
+                        var built = await new ConditionBuilderWindow(valueSource, _step.CurrentName, existing, label.TrimEnd('…')).ShowDialog<string?>(owner);
+                        if (built is null) return;
+                        box.Text = key == "condition" ? built : ControlStepSettings.WithKey(box.Text, key, built);
+                        Commit();
+                    };
+                    buttons.Children.Add(wizard);
+                }
+                if (title.Equals("condition", StringComparison.OrdinalIgnoreCase)) Build("condition", "Build condition…", "build-condition", "Build the condition row by row: values, verbs, and / or / xor / not and brackets");
+                else if (_step.TypeText is "For" or "ForEach")
+                {
+                    Build("stopwhen", "Stop when…", "stop-when", "A condition checked after every round; when it holds, the loop ends");
+                    Build("skipwhen", "Skip when…", "skip-when", "A condition checked before every round; when it holds, that round is skipped");
+                }
+                buttons.Children.Add(pick);
                 var withButton = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
                 withButton.Children.Add(box);
-                Grid.SetColumn(pick, 1);
-                withButton.Children.Add(pick);
+                Grid.SetColumn(buttons, 1);
+                withButton.Children.Add(buttons);
                 input = withButton;
             }
         }

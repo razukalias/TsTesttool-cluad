@@ -121,5 +121,7 @@ public class ControlWizardPickerTests
         var typeFields = Get<StackPanel>("_typeFields");
         var buttons = typeFields.GetLogicalDescendants().OfType<Button>().Where(b => Equals(b.Tag, "insert-response-value")).ToList();
         Assert.Single(buttons);   // ForEach: the items field has the picker
+        Assert.Contains(typeFields.GetLogicalDescendants().OfType<Button>(), b => Equals(b.Tag, "stop-when"));   // stop-when and skip-when build their condition in the wizard
+        Assert.Contains(typeFields.GetLogicalDescendants().OfType<Button>(), b => Equals(b.Tag, "skip-when"));
     }
 }

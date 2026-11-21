@@ -20,7 +20,17 @@ public sealed class ResponseValuePicker : Window
 
     public static string ReferenceFor(string target) => $"<From_response_{target}_r>";
 
+    private Func<string, string> _format = ReferenceFor;
+
     public ResponseValuePicker(DataEditorViewModel editor, string? exceptStep) : this(editor.ReferenceTargets(exceptStep)) { }
+
+    /// <summary>A picker over any list of names (data columns, loop variables…): <paramref name="format"/> turns the chosen name into the text that is inserted.</summary>
+    public ResponseValuePicker(IReadOnlyList<string> targets, Func<string, string> format, string title, string note) : this(targets)
+    {
+        _format = format;
+        Title = title;
+        _note.Text = targets.Count == 0 ? "Nothing to choose from here yet." : note;
+    }
 
     public ResponseValuePicker(IReadOnlyList<string> targets)
     {
@@ -32,7 +42,7 @@ public sealed class ResponseValuePicker : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         var insert = new Button { Content = "Insert", Classes = { "accent" }, IsEnabled = false, Tag = "picker-insert" };
         var cancel = new Button { Content = "Cancel", Margin = new Thickness(0, 0, 8, 0) };
-        void Choose() { if (_list.SelectedItem is string target) { Chosen = ReferenceFor(target); Close(Chosen); } }
+        void Choose() { if (_list.SelectedItem is string target) { Chosen = _format(target); Close(Chosen); } }
         insert.Click += (_, _) => Choose();
         cancel.Click += (_, _) => Close(null);
         _list.SelectionChanged += (_, _) => insert.IsEnabled = _list.SelectedItem is string;

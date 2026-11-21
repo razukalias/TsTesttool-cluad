@@ -86,9 +86,9 @@ public static class WorkbookValidator
             Add(problems, ProblemSeverity.Error, table, row, $"{type.WireName()} steps need a condition, for example _status_ eq 200.");
         else if (type is StepType.If or StepType.While)
         {
-            var parts = Text(row, "condition").Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length >= 2 && !LoadTestingTool.Execution.AssertionEngine.Verbs.Contains(parts[1].Trim('{', '}')) && !Text(row, "condition").Contains('"') && !Text(row, "condition").Contains('\''))
-                Add(problems, ProblemSeverity.Warning, table, row, $"Condition: '{parts[1]}' is not a comparison (eq, ne, lt, lte, gt, gte, contains, notcontains, startswith, endswith, regex, exists, notexists, empty, notempty, in, size).");
+            var condition = Text(row, "condition");
+            if (!condition.StartsWith("cs:", StringComparison.OrdinalIgnoreCase) && LoadTestingTool.Execution.ConditionEvaluator.Check(condition) is { } problem)
+                Add(problems, ProblemSeverity.Warning, table, row, problem);
         }
         if (type == StepType.For && !config.ContainsKey("to") && !config.ContainsKey("count"))
             Add(problems, ProblemSeverity.Error, table, row, "A For step needs 'to' or 'count' in its Step config, for example from=1;to=5.");

@@ -756,3 +756,10 @@ Tree icons (2026-11-21): a small line icon sits at the far left of every tree ro
 - **Remove from parent (name)** (was "Move out") takes a step out one level. **Remove step**: its children move out one level and are re-indented; **Remove step and its N child steps** removes the whole block (one Undo step).
 - **Outline numbers** in the tree and on the step cards: 1, 2, 2.1, 2.1.1, 2.2, 3; step cards are indented by depth.
 - Phases B (condition wizard, and/or/xor/not/brackets, For/ForEach stop-when) and C (C# script conditions with autocomplete) follow.
+
+## Conditions wizard (tree phase B)
+- `If` / `While` conditions and `For` / `ForEach` `stopwhen` / `skipwhen` open a **Build condition…** wizard: one row per comparison, joined with `and` / `or` / `xor`, optional `not`, bracket boxes `(` / `not (` and `)`, all 17 verbs plus "is true", and `⋯` pickers for response values, status code, headers, request data columns and loop variables.
+- Grammar: `not` binds tightest, then `and`, then `xor`, then `or` (`! && ^ ||` also work); brackets group.
+- **Behaviour change:** unquoted `and`, `or`, `xor`, `not` inside a value are now operators. Quote such values (`"or"`).
+- `stopwhen` is checked after each round, `skipwhen` before each round (log lines `LOOP STOP` / `LOOP SKIP`).
+- Still to do (phase C): a C# script mode (`cs:` prefix) with variable-only completion.

@@ -26,6 +26,8 @@ internal static class ControlStepSettings
             new("count", "Count", "", "How many rounds (instead of To)."),
             new("step", "Step", "1", "Added every round; may be negative."),
             new("var", "Variable name", "i", "Use it as _i_ in the steps inside."),
+            new("stopwhen", "Stop when", "_i_ gte 3", "A condition checked after every round; when it holds the loop ends (like break). Build it with the Stop when… button."),
+            new("skipwhen", "Skip a round when", "_i_ eq 2", "A condition checked before every round; when it holds that round is skipped (like continue)."),
             new("delayms", "Wait between rounds (ms)", "0", ""),
             new("timeoutms", "Whole loop timeout (ms)", "", "The loop fails when it runs longer than this (checked between rounds)."),
             new("onfailure", "When a step inside fails", "stop", "stop (default), break or continue."),
@@ -36,12 +38,25 @@ internal static class ControlStepSettings
             new("separator", "Separator", ",", "Splits a plain list."),
             new("var", "Variable name", "item", "Use it as _item_ in the steps inside."),
             new("index", "Index name", "index", "Counts from 0."),
+            new("stopwhen", "Stop when", "_item_ eq STOP", "A condition checked after every round; when it holds the loop ends (like break). Build it with the Stop when… button."),
+            new("skipwhen", "Skip a round when", "_item_ empty", "A condition checked before every round; when it holds that round is skipped (like continue)."),
             new("delayms", "Wait between rounds (ms)", "0", ""),
             new("timeoutms", "Whole loop timeout (ms)", "", "The loop fails when it runs longer than this (checked between rounds)."),
             new("onfailure", "When a step inside fails", "stop", "stop (default), break or continue."),
         ],
         _ => [],
     };
+
+    /// <summary>The StepConfig with one key set (or taken out when the value is empty), the other keys kept. A JSON config stays JSON; a key=value config becomes JSON only when a value contains ';'.</summary>
+    public static string WithKey(string? stepConfig, string key, string value)
+    {
+        var values = Read(stepConfig);
+        var existing = values.Keys.FirstOrDefault(k => k.Equals(key, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null) values.Remove(existing);
+        if (!string.IsNullOrWhiteSpace(value)) values[key] = value.Trim();   // a key that was there keeps its place only when it is set again: it moves to the end
+        var json = (stepConfig ?? string.Empty).TrimStart().StartsWith('{') || values.Values.Any(v => v.Contains(';'));
+        return json ? System.Text.Json.JsonSerializer.Serialize(values) : string.Join(";", values.Select(p => $"{p.Key}={p.Value}"));
+    }
 
     /// <summary>The values already in a StepConfig (JSON or key=value text), by key.</summary>
     public static Dictionary<string, string> Read(string? stepConfig) => ControlConfig.Parse(stepConfig);
@@ -50,8 +65,10 @@ internal static class ControlStepSettings
     public static string Write(string type, IReadOnlyDictionary<string, string> values, string? oldStepConfig)
     {
         var known = For(type).Select(s => s.Key).ToList();
-        var parts = known.Where(k => values.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v)).Select(k => $"{k}={values[k].Trim()}").ToList();
-        foreach (var other in Read(oldStepConfig)) if (!known.Contains(other.Key, StringComparer.OrdinalIgnoreCase)) parts.Add($"{other.Key}={other.Value}");
-        return string.Join(";", parts);
+        var pairs = known.Where(k => values.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v)).Select(k => new KeyValuePair<string, string>(k, values[k].Trim())).ToList();
+        foreach (var other in Read(oldStepConfig)) if (!known.Contains(other.Key, StringComparer.OrdinalIgnoreCase)) pairs.Add(other);
+        // a condition may contain ';' which would cut a key=value text in two: then the settings are written as JSON
+        if (pairs.Any(p => p.Value.Contains(';'))) return System.Text.Json.JsonSerializer.Serialize(pairs.ToDictionary(p => p.Key, p => p.Value));
+        return string.Join(";", pairs.Select(p => $"{p.Key}={p.Value}"));
     }
 }

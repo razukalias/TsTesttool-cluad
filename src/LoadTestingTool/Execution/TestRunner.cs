@@ -233,16 +233,23 @@ public sealed class TestRunner
                         try
                         {
                             var round = 0;
+                            var position = 0;
+                            var skipWhen = config.GetValueOrDefault("skipwhen");
+                            var stopWhen = config.GetValueOrDefault("stopwhen");
+                            async Task<bool> MetAsync(string? text) => !string.IsNullOrWhiteSpace(text) && ConditionEvaluator.Evaluate(await TextAsync(text));
                             foreach (var value in values)
                             {
                                 loopVars[variable] = value;
-                                if (indexName is not null) loopVars[indexName] = round.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                if (indexName is not null) loopVars[indexName] = position.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                position++;
+                                if (await MetAsync(skipWhen)) { _logger.Info($"LOOP SKIP | step={control.StepName} | {variable}={value} | skipwhen={skipWhen}"); continue; }
                                 _logger.Info($"LOOP ROUND | step={control.StepName} | round={round + 1} | {variable}={value}");
                                 round++;
                                 var outcome = await RoundAsync(round);
                                 if (outcome == 1) break;
                                 if (outcome == 2) return false;
                                 if (outcome == 3) return FailControl($"The loop ran longer than its timeout ({totalMs} ms) after {round - 1} rounds.");
+                                if (await MetAsync(stopWhen)) { _logger.Info($"LOOP STOP | step={control.StepName} | after round {round} | stopwhen={stopWhen}"); break; }
                             }
                             return true;
                         }
