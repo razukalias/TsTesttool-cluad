@@ -57,9 +57,11 @@ public sealed class AddColumnsWindow : Window
 
         var add = new Button { Content = "Add ticked columns", Classes = { "primary" }, Tag = "add-columns", MinWidth = 140 };
         var close = new Button { Content = "Close", MinWidth = 80, IsCancel = true };
+        var help = new Button { Content = "Help", MinWidth = 80, Tag = "help" };
+        help.Click += (_, _) => ResponseColumnsHelp.CreateWindow().Show(this);
         add.Click += (_, _) => { AddTicked(); Close(); };
         close.Click += (_, _) => Close();
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0), Children = { close, add } };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0), Children = { help, close, add } };
         DockPanel.SetDock(buttons, Dock.Bottom);
         Content = new DockPanel { Margin = new Thickness(16), Children = { buttons, _tabs } };
 

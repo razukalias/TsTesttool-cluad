@@ -151,3 +151,25 @@ public class ResponseHeaderVerbTests
         window.Close();
     }
 }
+
+public class ResponseHelpTests
+{
+    [AvaloniaFact]
+    public void The_window_has_a_help_button_that_opens_the_guide()
+    {
+        using var dir = new TempDir();
+        var editor = new DataEditorViewModel(Samples.CreateLarge(dir, rows: 2), "Customers");
+        var window = new AddColumnsWindow(editor, "CreateCustomer");
+        window.Show();
+        var help = window.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Tag, "help"));
+        help.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var guide = Avalonia.Application.Current is null ? null : window.OwnedWindows.SingleOrDefault(w => Equals(w.Tag, "response-help"));
+        Assert.NotNull(guide);
+        var text = string.Join("\n", guide!.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+        Assert.Contains("#count", text);
+        Assert.Contains("Right-click a node", text);
+        Assert.Contains("Every row", text);
+        guide.Close(); window.Close();
+    }
+}
