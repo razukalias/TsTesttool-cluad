@@ -1836,6 +1836,23 @@ public sealed partial class MainWindow : Window
         return config;
     }
 
+    /// <summary>
+    /// An Instances folder is the real one when it holds instance subfolders with a workbook,
+    /// or when it sits next to the central appsettings.json (the packaged layout, even if empty).
+    /// An empty Instances folder auto-created under bin/ by a dev run is not usable.
+    /// </summary>
+    private static bool IsUsableInstancesRoot(string folder)
+    {
+        try
+        {
+            if (File.Exists(Path.Combine(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(folder)) ?? folder, "appsettings.json"))) return true;
+            return Directory.EnumerateDirectories(folder).Any(sub => Directory.EnumerateFiles(sub, "*.xlsx", SearchOption.TopDirectoryOnly)
+                .Any(file => !Path.GetFileName(file).StartsWith("~$", StringComparison.Ordinal)));
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
     private static string ResolveConfiguredPath(string configured, string basePath)
     {
         if (string.IsNullOrWhiteSpace(configured)) return configured;
@@ -1844,15 +1861,17 @@ public sealed partial class MainWindow : Window
         var direct = Path.GetFullPath(configured, basePath);
         var configuredLeaf = Path.GetFileName(Path.TrimEndingDirectorySeparator(configured));
         var directDirectoryIsUsable = !configuredLeaf.Equals("Instances", StringComparison.OrdinalIgnoreCase)
-            || (Directory.Exists(direct) && Directory.EnumerateFiles(direct, "*.xlsx", SearchOption.TopDirectoryOnly).Any());
+            || (Directory.Exists(direct) && IsUsableInstancesRoot(direct));
         if (File.Exists(direct) || (Directory.Exists(direct) && directDirectoryIsUsable)) return direct;
 
         // Development output is nested below src/LoadTestingTool.UI/bin, while
         // the packaged dashboard keeps appsettings, Instances, and Runner next
-        // to the UI directory. Try the same configured path from each ancestor.
+        // to the UI directory. Try the same configured path from each ancestor,
+        // nearest first, so a publish folder placed inside the source tree never
+        // picks up the source tree's own Instances/appsettings.
         var ancestors = new List<DirectoryInfo>();
         for (var directory = new DirectoryInfo(basePath); directory is not null; directory = directory.Parent) ancestors.Add(directory);
-        foreach (var directory in ancestors.AsEnumerable().Reverse())
+        foreach (var directory in ancestors)
         {
             var candidate = Path.GetFullPath(configured, directory.FullName);
             if (File.Exists(candidate) || Directory.Exists(candidate)) return candidate;
@@ -1862,15 +1881,15 @@ public sealed partial class MainWindow : Window
         var leaf = Path.GetFileName(Path.TrimEndingDirectorySeparator(configured));
 
         if (fileName.Equals("appsettings.json", StringComparison.OrdinalIgnoreCase))
-            foreach (var directory in ancestors.AsEnumerable().Reverse())
+            foreach (var directory in ancestors)
                 if (File.Exists(Path.Combine(directory.FullName, fileName))) return Path.Combine(directory.FullName, fileName);
 
         if (leaf.Equals("Instances", StringComparison.OrdinalIgnoreCase))
-            foreach (var directory in ancestors.AsEnumerable().Reverse())
+            foreach (var directory in ancestors)
                 if (Directory.Exists(Path.Combine(directory.FullName, leaf))) return Path.Combine(directory.FullName, leaf);
 
         if (fileName.Equals("LoadTestingTool.exe", StringComparison.OrdinalIgnoreCase))
-            foreach (var directory in ancestors.AsEnumerable().Reverse())
+            foreach (var directory in ancestors)
                 foreach (var relative in new[] { "bin/Debug/net10.0/LoadTestingTool.dll", "bin/Release/net10.0/LoadTestingTool.dll", "bin/Debug/net10.0/LoadTestingTool.exe", "bin/Release/net10.0/LoadTestingTool.exe" })
                 {
                     var candidate = Path.Combine(directory.FullName, relative);
