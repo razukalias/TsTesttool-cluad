@@ -80,6 +80,9 @@ public static class WorkbookValidator
     /// <summary>What each control step needs: a condition for If and While, a range for For, a list for ForEach.</summary>
     private static void CheckControlStep(List<WorkbookProblem> problems, SheetTable table, TableRow row, StepType type)
     {
+        foreach (var (outName, outSource) in LoadTestingTool.Execution.StepOutputs.Parse(Text(row, "stepconfig")))
+            if (LoadTestingTool.Execution.StepOutputs.Check(outName, outSource) is { } outProblem)
+                Add(problems, ProblemSeverity.Warning, table, row, outProblem);
         if (!type.IsControl()) return;
         var config = LoadTestingTool.Execution.ControlConfig.Parse(Text(row, "stepconfig"));
         if (type is StepType.If or StepType.While && Text(row, "condition").Length == 0)

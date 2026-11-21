@@ -3,6 +3,75 @@ using System.Text.Json;
 namespace LoadTestingTool.Execution;
 
 /// <summary>The settings of a control step, from its <c>stepconfig</c> cell: JSON (<c>{"from":1,"to":5}</c>) or <c>from=1;to=5</c>.</summary>
+/// <summary>
+/// What a relative reference points at while a step runs: <c>&lt;From_response_@prev.path_r&gt;</c> is the response of the step before the current one,
+/// <c>&lt;From_response_@lastround.Step.path_r&gt;</c> the value Step had at the end of the previous round of the loop the current step is in.
+/// </summary>
+public sealed class RelativeScope
+{
+    private static readonly AsyncLocal<RelativeScope?> Holder = new();
+    public static RelativeScope? Current { get => Holder.Value; set => Holder.Value = value; }
+    public string? PreviousStep { get; init; }
+    public IReadOnlyDictionary<string, string>? LastRound { get; init; }
+
+    /// <summary>The real key for a key that starts with @, or null when it is not relative.</summary>
+    public static (string? Key, IReadOnlyDictionary<string, string>? Source, string? Problem) Map(string key)
+    {
+        if (!key.StartsWith('@')) return (key, null, null);
+        var dot = key.IndexOf('.');
+        var word = (dot < 0 ? key : key[..dot]).ToLowerInvariant();
+        var rest = dot < 0 ? string.Empty : key[(dot + 1)..];
+        switch (word)
+        {
+            case "@prev":
+                return Current?.PreviousStep is { Length: > 0 } step ? ($"{step}.{rest}", null, null) : (null, null, "There is no step before this one that sends a request.");
+            case "@lastround":
+                return Current?.LastRound is { } last ? (rest, last, null) : (null, null, "There is no previous round: this is the first round, or the step is not inside a loop.");
+            default:
+                return (null, null, $"'{word}' is not a relative reference. Use @prev or @lastround.");
+        }
+    }
+}
+
+public static class StepOutputs
+{
+    private static readonly System.Text.RegularExpressions.Regex Name = new(@"^[A-Za-z][A-Za-z0-9]*$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>The (name, source) pairs of a step's <c>outputs</c> setting: <c>orderId=items[0].id,code=statusCode,loc=header.Location</c>.</summary>
+    public static IReadOnlyList<(string Name, string Source)> Parse(string? stepConfig)
+    {
+        var text = ControlConfig.Parse(stepConfig).GetValueOrDefault("outputs");
+        var list = new List<(string, string)>();
+        if (string.IsNullOrWhiteSpace(text)) return list;
+        foreach (var part in text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var at = part.IndexOf('=');
+            if (at > 0) list.Add((part[..at].Trim(), part[(at + 1)..].Trim()));
+        }
+        return list;
+    }
+
+    public static bool IsValidName(string name) => Name.IsMatch(name);
+
+    /// <summary>The pairs as the <c>outputs</c> value: <c>name=source,name=source</c>.</summary>
+    public static string Format(this IEnumerable<(string Name, string Source)> outputs) => string.Join(",", outputs.Select(o => $"{o.Name}={o.Source}"));
+
+    /// <summary>The key the runner stores a value under: <c>Step.items[0].id</c>, <c>Step.statusCode</c>, <c>Step.responseHeader.Location</c>.</summary>
+    public static string KeyFor(string step, string source)
+    {
+        var path = source.Trim();
+        if (path.StartsWith("$.")) path = path[2..];
+        if (path.StartsWith("header.", StringComparison.OrdinalIgnoreCase)) path = AssertionEngine.ResponseHeaderPrefix + path["header.".Length..];
+        if (path.Equals("status", StringComparison.OrdinalIgnoreCase)) path = "statusCode";
+        return $"{step}.{path}";
+    }
+
+    /// <summary>The problem with an outputs entry, or null.</summary>
+    public static string? Check(string name, string source) =>
+        !IsValidName(name) ? $"Output name '{name}' must start with a letter and use only letters and digits, so _{name}_ and <From_response_{name}_r> work." :
+        string.IsNullOrWhiteSpace(source) ? $"Output '{name}' has no source." : null;
+}
+
 public static class ControlConfig
 {
     public static Dictionary<string, string> Parse(string? text)

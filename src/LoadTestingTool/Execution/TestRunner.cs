@@ -90,6 +90,7 @@ public sealed class TestRunner
                         return true;
                     }
                     if (!request.Enabled) { _logger.Info($"STEP SKIPPED | reason=disabled | step={request.StepName}"); return true; }
+                    RelativeScope.Current = new RelativeScope { PreviousStep = PreviousRequestStep(request), LastRound = RelativeScope.Current?.LastRound };
                     if (request.StepType.IsControl()) return await RunControlAsync(request);
                     Dictionary<string, string> variables;
                     IReadOnlySet<string> redactedVariables;
@@ -173,9 +174,25 @@ public sealed class TestRunner
                         ? await ExecuteActionManualAsync(run, testcase, data.DataId, request, variables, variables.TryGetValue("manualinfo", out var manualInfo) ? Substitute(manualInfo, variables) : string.Empty, ++stepOrder, threadId, iteration, token, environment)
                         : await ExecuteRequestAsync(run, testcase, data.DataId, request, variables, redactedVariables, definitions, requestReferences, ++stepOrder, threadId, iteration, correlation, correlationSources, executionContext, token, environment);
                     AddRequest(testcaseResult, result);
+                    foreach (var (outName, outSource) in StepOutputs.Parse(request.StepConfig))
+                    {
+                        if (StepOutputs.Check(outName, outSource) is { } outProblem) { _logger.Warn($"OUTPUT IGNORED | step={request.StepName} | {outProblem}"); continue; }
+                        var outKey = StepOutputs.KeyFor(request.StepName, outSource);
+                        var outValue = correlation.TryGetValue(outKey, out var found) ? found : string.Empty;
+                        correlation[outName] = outValue;
+                        if (!correlation.ContainsKey(outKey)) _logger.Warn($"OUTPUT EMPTY | step={request.StepName} | {outName} | the response has no '{outSource}'");
+                        else _logger.Info($"OUTPUT | step={request.StepName} | {outName}={(outValue.Length > 80 ? outValue[..77] + "…" : outValue)}");
+                    }
                     if (result.FailureCategory.Equals("RuntimeReference", StringComparison.OrdinalIgnoreCase)) { _logger.Warn($"Stopping current data row after missing runtime reference. dataid={data.DataId}; step={request.StepName}; iteration={iteration}; remaining rows will continue."); return false; }
                     if (result.Result == "FAIL" && (request.StopOnFailure || request.StepType == StepType.ActionManual)) { _logger.Warn($"Stopping current data row after failed dataid={data.DataId}, step {request.StepName} because {(request.StepType == StepType.ActionManual ? "ActionManual always stops immediately" : "stopOnFailure=true")}."); return false; }
                     return true;
+                }
+                string? PreviousRequestStep(RequestStep current)
+                {
+                    var list = testcase.Steps.ToList();
+                    var at = list.FindIndex(x => ReferenceEquals(x, current));
+                    for (var i = at - 1; i >= 0; i--) if (!list[i].StepType.IsControl() && list[i].TestcaseIndex == current.TestcaseIndex) return list[i].StepName;
+                    return null;
                 }
                 async Task<bool> RunSequenceAsync(IEnumerable<RequestStep> steps)
                 {
@@ -222,15 +239,17 @@ public sealed class TestRunner
                     var totalMs = control.ResponseTimeoutMs > 0 ? control.ResponseTimeoutMs : control.TimeoutSeconds > 0 ? control.TimeoutSeconds * 1000L : 0L;
                     var watch = System.Diagnostics.Stopwatch.StartNew();
                     // 0 = next round, 1 = leave the loop, 2 = stop the data row, 3 = the whole loop took longer than its timeout
+                    Dictionary<string, string>? endOfLastRound = null;   // what the steps gave at the end of the previous round, for @lastround
                     async Task<int> RoundAsync(int number)
                     {
+                        RelativeScope.Current = new RelativeScope { PreviousStep = RelativeScope.Current?.PreviousStep, LastRound = endOfLastRound };
                         if (totalMs > 0 && watch.ElapsedMilliseconds > totalMs) return 3;
                         var scope = GeneratedTokens.Scope.Value;
                         var outer = scope?.Round ?? string.Empty;
                         if (scope is not null) scope.Round = $"{outer}/{control.StepName}#{number}";   // new random numbers, GUIDs and dates every round
                         _logger.Info($"LOOP ROUND | loop={control.StepName} | type={control.StepType.WireName()} | round={number}");
                         try { return await RunSequenceAsync(Inside(false)) ? 0 : onFailure switch { "continue" => 0, "break" => 1, _ => 2 }; }
-                        finally { if (scope is not null) scope.Round = outer; }
+                        finally { if (scope is not null) scope.Round = outer; endOfLastRound = new Dictionary<string, string>(correlation, StringComparer.OrdinalIgnoreCase); }
                     }
                     async Task<bool> LoopAsync(string variable, IEnumerable<string> values, string? indexName)
                     {
@@ -697,6 +716,13 @@ public sealed class TestRunner
                 return $"_*{contextKey}*_";
             }
             var values = source.Equals("request", StringComparison.OrdinalIgnoreCase) ? requestReferences : correlation;
+            if (key.StartsWith('@'))
+            {
+                var (mapped, over, problem) = RelativeScope.Map(key);
+                if (mapped is null) throw new RuntimeReferenceException(key, match.Value, problem!);
+                key = mapped;
+                if (over is not null) values = over;
+            }
             return values is not null && values.TryGetValue(key, out var actual)
                 ? actual
                 : throw new RuntimeReferenceException(key, match.Value);

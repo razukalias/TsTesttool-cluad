@@ -186,6 +186,14 @@ public sealed partial class DataEditorViewModel
         foreach (var step in steps)
             if (ResponseSamples.LatestHeaders(HistoryFolderPath, step) is { } stored)
                 targets.AddRange(stored.Headers.Select(h => $"{step}.{LoadTestingTool.Execution.AssertionEngine.ResponseHeaderPrefix}{h.Name}"));
+        // fields a step saves as output variables are offered even before the step has ever run
+        foreach (var row in _document.Config.Rows.Where(r => !r.IsBlank && (SelectedTestcase is not { } t || WorkbookDocument.EffectiveIndex(r) == t.Index)))
+        {
+            var step = row.Get("stepname").Trim();
+            if (!steps.Contains(step, StringComparer.OrdinalIgnoreCase)) continue;
+            foreach (var (name, source) in LoadTestingTool.Execution.StepOutputs.Parse(row.Get("stepconfig")))
+                if (source.Length > 0) targets.Add(LoadTestingTool.Execution.StepOutputs.KeyFor(step, source));
+        }
         return targets.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(t => t, StringComparer.OrdinalIgnoreCase).ToList();
     }
 

@@ -97,12 +97,12 @@ public class ConditionBuilderTests
     }
 
     [AvaloniaFact]
-    public void Each_value_box_has_a_menu_with_the_five_sources()
+    public void Each_value_box_has_a_menu_with_the_seven_sources()
     {
         var window = Show("a eq b");
         var more = Named<Button>(window, "cond-more-left");
         var flyout = Assert.IsType<MenuFlyout>(more.Flyout);
-        Assert.Equal(["cond-source-response", "cond-source-status", "cond-source-header", "cond-source-data", "cond-source-loop"], flyout.Items.OfType<MenuItem>().Select(i => i.Tag as string).ToArray());
+        Assert.Equal(["cond-source-response", "cond-source-status", "cond-source-header", "cond-source-prev", "cond-source-lastround", "cond-source-data", "cond-source-loop"], flyout.Items.OfType<MenuItem>().Select(i => i.Tag as string).ToArray());
         Assert.NotNull(Named<Button>(window, "cond-more-right").Flyout);
         window.Close();
     }
@@ -226,6 +226,81 @@ public class ConditionScriptModeTests
     }
 }
 
+public class OutputVariableTests
+{
+    private static (DataEditorWindow Window, EditorShellViewModel Shell) Open(TempDir dir)
+    {
+        var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 3), null);
+        window.Width = 1300; window.Height = 900; window.Show();
+        var shell = window.Shell;
+        shell.Current!.ShowSteps = true;
+        shell.SelectedNode = shell.Instances[0].Testcases[0].StepNodes[0];
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        return (window, shell);
+    }
+
+    [AvaloniaFact]
+    public void The_step_form_saves_outputs_in_the_step_config_and_keeps_its_other_settings()
+    {
+        using var dir = new TempDir();
+        var (window, shell) = Open(dir);
+        shell.Current!.FocusedStep!.Write("stepconfig", "keep=1");   // adds the column: the form is rebuilt
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var step = shell.Current!.FocusedStep!;
+        var view = window.GetVisualDescendants().OfType<OutputVariablesView>().Single();
+        Assert.Equal(0, view.RowCount);
+        view.AddRow("", "");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var boxes = view.GetVisualDescendants().OfType<TextBox>().ToList();
+        boxes.First(b => Equals(b.Tag, "output-name")).Text = "orderId";
+        boxes.First(b => Equals(b.Tag, "output-source")).Text = "items[0].id";
+        view.Apply();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var config = LoadTestingTool.Execution.ControlConfig.Parse(step.Value("stepconfig"));
+        Assert.True(config.ContainsKey("keep"), $"config was: '{step.Value("stepconfig")}' after name={boxes.Count}; rows={view.RowCount}; focused={shell.Current!.FocusedStep?.CurrentName}/{step.CurrentName}");
+        Assert.Equal("1", config["keep"]);
+        Assert.Equal("orderId=items[0].id", config["outputs"]);
+        Assert.Equal([("orderId", "items[0].id")], LoadTestingTool.Execution.StepOutputs.Parse(step.Value("stepconfig")));
+        boxes.First(b => Equals(b.Tag, "output-name")).Text = "1bad";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Contains("must start with a letter", view.Problems);
+        view.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Tag, "output-remove")).Command?.Execute(null);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Output_names_and_their_sources_are_offered_to_conditions_and_the_previous_step_is_reachable()
+    {
+        using var dir = new TempDir();
+        var (window, shell) = Open(dir);
+        var editor = shell.Current!;
+        var first = editor.FocusedStep!;
+        if (editor.ResponseSteps().Count < 2) editor.AddStepOfType("HTTP", null, false, null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var steps = editor.ResponseSteps();
+        Assert.True(steps.Count >= 2);
+        first.Write("stepconfig", "outputs=token=auth.token,code=statusCode");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        editor = shell.Current!;
+        Assert.Contains("token", editor.OutputVariableNames());
+        Assert.Contains("token", editor.LoopVariablesFor(steps[1]));
+        Assert.Contains("env", editor.LoopVariablesFor(steps[1]));
+        Assert.Contains($"{steps[0]}.auth.token", editor.ReferenceTargets(steps[1]));
+        Assert.Null(editor.PreviousStepName(steps[0]));
+        Assert.Equal(steps[0], editor.PreviousStepName(steps[1]));
+        Assert.Contains("auth.token", editor.PreviousStepTargets(steps[1]));
+        Assert.Empty(editor.PreviousStepTargets(steps[0]));
+
+        var wizard = new ConditionBuilderWindow(editor, steps[1], "cs: true");
+        wizard.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Contains("_token_", wizard.CompletionItems('_').Select(i => i.Text));
+        Assert.Contains("<From_response_@prev.auth.token_r>", wizard.CompletionItems('<').Select(i => i.Text));
+        wizard.Close();
+        window.Close();
+    }
+}
+
 public class ConditionBuilderScreenshots
 {
     [AvaloniaFact]
@@ -241,5 +316,14 @@ public class ConditionBuilderScreenshots
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Avalonia.Headless.HeadlessWindowExtensions.CaptureRenderedFrame(window)!.Save(System.IO.Path.Combine(outDir, "wizard-script.png"));
         window.Close();
+        using var dir = new TempDir();
+        var editorWindow = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 3), null);
+        editorWindow.Width = 1300; editorWindow.Height = 1000; editorWindow.Show();
+        editorWindow.Shell.Current!.ShowSteps = true;
+        editorWindow.Shell.SelectedNode = editorWindow.Shell.Instances[0].Testcases[0].StepNodes[0];
+        editorWindow.Shell.Current!.FocusedStep!.Write("stepconfig", "outputs=orderId=id,token=auth.token");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Avalonia.Headless.HeadlessWindowExtensions.CaptureRenderedFrame(editorWindow)!.Save(System.IO.Path.Combine(outDir, "outputs-form.png"));
+        editorWindow.Close();
     }
 }

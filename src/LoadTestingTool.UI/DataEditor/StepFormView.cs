@@ -154,6 +154,7 @@ public sealed class StepFormView : UserControl
             foreach (var column in others) _settings.Children.Add(Field(column.Title));
         }
         if (UsesHeaders(type)) _settings.Children.Add(HeadersSection());
+        if (!IsControl(type) && !type.Trim().Equals("ActionManual", StringComparison.OrdinalIgnoreCase)) _settings.Children.Add(new OutputVariablesView(_step));
         _settings.Children.Add(RawConfig());
         if (_step.Editor is { } owner)
         {

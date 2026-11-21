@@ -145,6 +145,43 @@ public class ControlFlowTests
         Assert.Contains("line 1", ConditionScript.Check("cs: 1 +"));
     }
 
+    private static string Json(string path) => "{\"id\":\"A7\",\"n\":3,\"v\":\"" + path + "\"}";
+
+    [Fact]
+    public async Task A_step_can_save_response_values_as_output_variables_for_conditions_loops_and_later_steps()
+    {
+        using var dir = new TempDir();
+        var path = Build(dir,
+            new Step("First", Url: "/first", Config: "outputs=orderId=id,code=statusCode,count=n"),
+            new Step("Check", "If", Condition: "_orderId_ eq A7 and _code_ eq 200"),
+            new Step("Then1", Parent: "Check", Url: "/then/_orderId_"),
+            new Step("Loop", "For", Config: "from=1;to=9;stopwhen=_count_ eq _i_"),
+            new Step("Each", Parent: "Loop", Url: "/n/_i_"));
+        var (_, paths, _) = await RunAsync(path, Json);
+        Assert.Equal(["/first", "/then/A7", "/n/1", "/n/2", "/n/3"], paths);
+    }
+
+    [Fact]
+    public async Task A_relative_reference_reads_the_step_before_and_the_previous_round_of_a_loop()
+    {
+        var before = await RunAsync(Build(new TempDir(),
+            new Step("First", Url: "/first"),
+            new Step("Second", Url: "/second"),
+            new Step("Check", "If", Condition: "<From_response_@prev.id_r> eq A7"),
+            new Step("Then1", Parent: "Check", Url: "/then")), Json);
+        Assert.Equal(["/first", "/second", "/then"], before.Paths);
+
+        var rounds = await RunAsync(Build(new TempDir(),
+            new Step("Loop", "For", Config: "from=1;to=3"),
+            new Step("Each", Parent: "Loop", Url: "/n/_i_"),
+            new Step("Later", "If", Parent: "Loop", Condition: "_i_ gt 1"),
+            new Step("Echo", Parent: "Later", Url: "/echo<From_response_@lastround.Each.v_r>")), Json);
+        Assert.Equal(["/n/1", "/n/2", "/echo/n/1", "/n/3", "/echo/n/2"], rounds.Paths);
+
+        var none = await RunAsync(Build(new TempDir(), new Step("Only", Url: "/only"), new Step("Check", "If", Condition: "<From_response_@lastround.Only.id_r> eq A7")), Json);
+        Assert.Contains(none.Run.Testcases.SelectMany(t => t.Requests), r => (r.ErrorMessage ?? "").Contains("no previous round"));
+    }
+
     [Fact]
     public async Task If_runs_its_steps_when_the_condition_holds_and_the_else_steps_when_it_does_not()
     {
@@ -453,6 +490,15 @@ public class ControlFlowValidationTests
         Assert.Contains(problems, m => m.Contains("While step without 'max'"));
         Assert.Contains(problems, m => m.Contains("onfailure 'explode'"));
         Assert.DoesNotContain(problems, m => m.Contains("need a StepConfig"));   // control steps do not need one
+    }
+
+    [Fact]
+    public void A_bad_output_name_is_reported_and_a_good_one_is_not()
+    {
+        var problems = Problems(("A", "HTTP", "", "", "outputs=1bad=id,good=id,my_name=id"));
+        Assert.Contains(problems, m => m.Contains("Output name '1bad'"));
+        Assert.Contains(problems, m => m.Contains("Output name 'my_name'"));
+        Assert.DoesNotContain(problems, m => m.Contains("Output name 'good'"));
     }
 
     [Fact]

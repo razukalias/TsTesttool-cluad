@@ -33,7 +33,31 @@ public sealed partial class DataEditorViewModel
             if (parent.EndsWith(":else", StringComparison.OrdinalIgnoreCase)) parent = parent[..^5].Trim();
             current = parent.Length == 0 ? null : rows.FirstOrDefault(r => string.Equals(r.Get("stepname").Trim(), parent, StringComparison.OrdinalIgnoreCase));
         }
+        names.AddRange(OutputVariableNames());
         names.Add("env");
         return names.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>The names the steps of the selected testcase save with their <c>outputs</c> setting; each is usable as <c>_name_</c> after its step has run.</summary>
+    public IReadOnlyList<string> OutputVariableNames()
+        => _document.Config.Rows.Where(r => !r.IsBlank && (SelectedTestcase is not { } t || WorkbookDocument.EffectiveIndex(r) == t.Index))
+            .SelectMany(r => StepOutputs.Parse(r.Get("stepconfig"))).Select(o => o.Name).Where(StepOutputs.IsValidName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    /// <summary>The request step before the given one (control steps send nothing, so they are skipped), or null for the first.</summary>
+    public string? PreviousStepName(string? stepName)
+    {
+        var rows = _document.Config.Rows.Where(r => !r.IsBlank && (SelectedTestcase is not { } t || WorkbookDocument.EffectiveIndex(r) == t.Index)).ToList();
+        var at = rows.FindIndex(r => string.Equals(r.Get("stepname").Trim(), stepName?.Trim(), StringComparison.OrdinalIgnoreCase));
+        for (var i = at - 1; i >= 0; i--)
+            if (rows[i].Get("steptype").Trim().ToLowerInvariant() is not ("if" or "while" or "for" or "foreach")) return rows[i].Get("stepname").Trim();
+        return null;
+    }
+
+    /// <summary>What the previous step gives, as the path after its name (<c>statusCode</c>, <c>token</c>, <c>responseHeader.Location</c>): what <c>@prev</c> can reach.</summary>
+    public IReadOnlyList<string> PreviousStepTargets(string? stepName)
+    {
+        var previous = PreviousStepName(stepName);
+        if (previous is null) return [];
+        return ReferenceTargets(stepName).Where(t => t.StartsWith(previous + ".", StringComparison.OrdinalIgnoreCase)).Select(t => t[(previous.Length + 1)..]).ToList();
     }
 }

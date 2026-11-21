@@ -26,6 +26,7 @@ public sealed class ConditionBuilderWindow : Window
     private readonly Func<IReadOnlyList<string>> _responseTargets;
     private readonly Func<IReadOnlyList<string>> _dataTargets;
     private readonly Func<IReadOnlyList<string>> _loopVariables;
+    private readonly Func<IReadOnlyList<string>> _previousTargets;
     private readonly StackPanel _rowsPanel = new() { Spacing = 6 };
     private readonly List<RowView> _rows = [];
     private readonly TextBox _preview = new() { IsReadOnly = true, Tag = "cond-preview", TextWrapping = TextWrapping.Wrap, MinHeight = 44 };
@@ -60,11 +61,12 @@ public sealed class ConditionBuilderWindow : Window
     public bool OpenedAsRows { get; }
 
     public ConditionBuilderWindow(DataEditorViewModel? editor, string? stepName, string? initial, string title = "Build condition")
-        : this(() => editor?.ReferenceTargets(stepName) ?? [], () => editor?.RequestDataTargets() ?? [], () => editor?.LoopVariablesFor(stepName) ?? ["env"], initial, title) { }
+        : this(() => editor?.ReferenceTargets(stepName) ?? [], () => editor?.RequestDataTargets() ?? [], () => editor?.LoopVariablesFor(stepName) ?? ["env"], initial, title, () => editor?.PreviousStepTargets(stepName) ?? []) { }
 
     /// <summary>The wizard over any source of names: what earlier steps give (Step.path, Step.statusCode, Step.responseHeader.Name), the data row's columns and the loop variables.</summary>
-    public ConditionBuilderWindow(Func<IReadOnlyList<string>> responseTargets, Func<IReadOnlyList<string>> dataTargets, Func<IReadOnlyList<string>> loopVariables, string? initial, string title = "Build condition")
+    public ConditionBuilderWindow(Func<IReadOnlyList<string>> responseTargets, Func<IReadOnlyList<string>> dataTargets, Func<IReadOnlyList<string>> loopVariables, string? initial, string title = "Build condition", Func<IReadOnlyList<string>>? previousTargets = null)
     {
+        _previousTargets = previousTargets ?? (() => []);
         _responseTargets = responseTargets;
         _dataTargets = dataTargets;
         _loopVariables = loopVariables;
@@ -174,10 +176,11 @@ public sealed class ConditionBuilderWindow : Window
         var items = new List<(string, string)>();
         if (trigger == '_')
             foreach (var name in _loopVariables().Where(n => n.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
-                items.Add(($"_{name}_", name.Equals("env", StringComparison.OrdinalIgnoreCase) ? "The selected environment." : $"The value of {name} in the loop this step is in."));
+                items.Add(($"_{name}_", name.Equals("env", StringComparison.OrdinalIgnoreCase) ? "The selected environment." : "A variable: a loop counter or item, or an output a step saved."));
         else if (trigger == '<')
         {
             foreach (var t in _responseTargets().Distinct(StringComparer.OrdinalIgnoreCase)) items.Add((ResponseValuePicker.ReferenceFor(t), "From the response of an earlier step."));
+            foreach (var t in _previousTargets().Distinct(StringComparer.OrdinalIgnoreCase)) items.Add(($"<From_response_@prev.{t}_r>", "From the step right before this one (follows it if steps move)."));
             foreach (var t in _dataTargets().Distinct(StringComparer.OrdinalIgnoreCase)) items.Add(($"<From_request_{t}_r>", "A column of the data row that is running."));
         }
         return items;
@@ -270,8 +273,14 @@ public sealed class ConditionBuilderWindow : Window
             case "data":
                 picker = new ResponseValuePicker(_dataTargets(), t => $"<From_request_{t}_r>", "Cell of the current data row", "The request columns of the workbook; the value is the one in the data row that is running.");
                 break;
+            case "prev":
+                picker = new ResponseValuePicker(_previousTargets(), t => $"<From_response_@prev.{t}_r>", "Value from the previous step", "The step right before this one that sends a request. The reference follows the step if it is renamed or moved.");
+                break;
+            case "lastround":
+                picker = new ResponseValuePicker(all, t => $"<From_response_@lastround.{t}_r>", "Value from the previous round of the loop", "What the step had at the end of the previous round (inside a loop). In the first round there is none and the step fails with a message saying so.");
+                break;
             case "loop":
-                picker = new ResponseValuePicker(_loopVariables(), t => $"_{t}_", "Loop variable or environment", "The counter and item of the loops this step is in, the round of a While, and the environment name (env).");
+                picker = new ResponseValuePicker(_loopVariables(), t => $"_{t}_", "Variable", "The counter and item of the loops this step is in, the round of a While, the output variables steps save, and the environment name (env).");
                 break;
         }
         if (picker is null) return;
@@ -296,8 +305,10 @@ public sealed class ConditionBuilderWindow : Window
         Item("Value from a step's response…", "response");
         Item("Status code of a step…", "status");
         Item("Response header of a step…", "header");
+        Item("Value from the previous step…", "prev");
+        Item("Value from the previous round (in a loop)…", "lastround");
         Item("Cell of the current data row…", "data");
-        Item("Loop variable or environment…", "loop");
+        Item("Variable: loop, output or environment…", "loop");
         return flyout;
     }
 
