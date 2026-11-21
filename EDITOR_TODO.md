@@ -743,3 +743,9 @@ Tree icons (2026-11-21): a small line icon sits at the far left of every tree ro
 - **Config edit mode toolbar:** Add step, Move step up/down, Remove step, Find & replace, Show its columns and the "Table view" toggle of the cards header are gone (adding a step: ＋ on the testcase in the tree).
 - **Table view:** "Sheets ▾" (which sheets are shown) and "＋" (add sheet) moved into the sheet tab bar, after the tabs. The tree is unchanged in every mode.
 - Still open: Find & replace is reachable only from Table view now; other-sheet buttons (＋ Columns…, Rename/Remove column) unchanged.
+
+## Overview Bugs tab: statistics on top (done)
+- The **Bugs** tab title shows the total: "Bugs (n)" (known bugs of the selected instance's run; "may be fixed" entries are not counted).
+- Top part: instance, its testcases (open/close with ▸/▾) and their steps, each with a "⚑ n" button (testcases add up steps, the instance adds up testcases; items without bugs show no button, steps without bugs are listed greyed). Clicking a button narrows the list below to that testcase or step ("Show all" clears it).
+- Bottom part: the known bugs of the run, as before (including the "may be fixed" entries and their buttons).
+- Nothing else changed (tree, dashboard run lines). Logic in `BugStatistics`, tests in `BugStatisticsTests`. Not seen on screen by hand: the dashboard window is not covered by the headless screenshots.

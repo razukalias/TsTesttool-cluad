@@ -488,13 +488,14 @@ public sealed partial class MainWindow
         var assertionPaging = CreatePaginationBar(false);
         DockPanel.SetDock(assertionPaging, Dock.Bottom); assertionPanel.Children.Add(assertionPaging);
         _manualTab = new TabItem { Header = BuildActionManualTabHeader(0), Content = BuildActionManualPanel() };
+        _bugsTab = new TabItem { Header = "Bugs (0)", Content = Scroll(_bugItems) };
         _detailTabs.ItemsSource = new[]
         {
             new TabItem { Header = "Overview", Content = Scroll(_overviewPanel) },
             _manualTab,
             new TabItem { Header = "Run Summary", Content = Scroll(_runSummaryPanel) },
             new TabItem { Header = "Assertions", Content = assertionPanel },
-            new TabItem { Header = "Bugs", Content = Scroll(_bugItems) },
+            _bugsTab,
             new TabItem { Header = "Environments", Content = Scroll(_environmentCompareItems) },
             new TabItem { Header = "Artifacts", Content = Scroll(_artifactPanel) }
         };
