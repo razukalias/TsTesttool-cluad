@@ -483,7 +483,7 @@ public sealed partial class MainWindow
         _assertionSearch.TextChanged += (_, _) => RefreshAssertionList();
         var assertionActions = new WrapPanel { Children = { DashboardStyle.Action("Open Assertion Workbench", OpenAssertionWorkbench, "primary"), DashboardStyle.Action("Copy assertions", () => _ = CopyAssertionsAsync()), DashboardStyle.Action("Select failed", () => { if (_selectedInstance is not null) foreach (var a in _selectedInstance.Assertions.Where(a => a.Result == "FAIL")) a.Selected = true; RefreshAssertionList(); }),
             DashboardStyle.Action("Clear", () => { if (_selectedInstance is not null) foreach (var a in _selectedInstance.Assertions) a.Selected = false; RefreshAssertionList(); }),
-            DashboardStyle.Action("Apply actual values", ApplySelectedFixes), DashboardStyle.Action("Export comparison", () => _ = GenerateAssertionComparisonAsync()), DashboardStyle.Action("Open comparison", OpenLatestAssertionComparison) } };
+            DashboardStyle.Action("Apply actual values", ApplySelectedFixes), DashboardStyle.Action("Compare", () => _ = GenerateAssertionComparisonAsync(openInEditor: true)) } };
         var assertionPanel = new DockPanel { Margin = new Thickness(12) };
         var assertionFilterBar = new WrapPanel { Children = { _environmentFilter, _assertionTestcaseFilter, _assertionStepFilter, _assertionResultFilter, _assertionVerbFilter, _assertionSearch, _assertionExclude } };
         foreach (var control in assertionFilterBar.Children) control.Margin = new Thickness(0, 0, 8, 6);

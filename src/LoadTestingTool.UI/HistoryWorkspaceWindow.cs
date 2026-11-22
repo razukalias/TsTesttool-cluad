@@ -310,14 +310,7 @@ public sealed class HistoryWorkspaceWindow : Window
         return names.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    private void OpenComparisonInEditor(string path)
-    {
-        var processPath = Environment.ProcessPath ?? throw new InvalidOperationException("The History process path is unavailable.");
-        var start = new ProcessStartInfo { FileName = processPath, UseShellExecute = false, CreateNoWindow = true };
-        var assembly = System.Reflection.Assembly.GetEntryAssembly()?.Location;
-        if (!string.IsNullOrWhiteSpace(assembly) && (Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase) || Path.GetFileNameWithoutExtension(processPath).Equals("dotnet.exe", StringComparison.OrdinalIgnoreCase))) start.ArgumentList.Add(assembly);
-        start.ArgumentList.Add("--dataset-editor"); start.ArgumentList.Add(path); Process.Start(start);
-    }
+    private static void OpenComparisonInEditor(string path) => DatasetEditorLauncher.Open(path);
 
     private static string ResolveSettingsPath(string instancesRoot)
     {

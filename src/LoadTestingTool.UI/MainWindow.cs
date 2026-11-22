@@ -1499,7 +1499,7 @@ public sealed partial class MainWindow : Window
         OpenExcelFile(path, "result workbook");
     }
 
-    private async Task GenerateAssertionComparisonAsync()
+    private async Task GenerateAssertionComparisonAsync(bool openInEditor = false)
     {
         if (_selectedInstance is null)
         {
@@ -1527,6 +1527,11 @@ public sealed partial class MainWindow : Window
         {
             await Task.Run(() => CreateAssertionComparisonWorkbook(snapshot, outputPath));
             _details.Text = $"Assertion comparison created:\n{outputPath}";
+            if (openInEditor)
+            {
+                DatasetEditorLauncher.Open(outputPath);
+                _details.Text = $"Assertion comparison opened in the spreadsheet editor:\n{outputPath}";
+            }
             UiLog($"Assertion comparison completed. instance={instance.Name}; runId={instance.CurrentRunId}; output={outputPath}");
         }
         catch (Exception ex)
@@ -1534,29 +1539,6 @@ public sealed partial class MainWindow : Window
             _details.Text = $"Could not create assertion comparison:\n{ex.Message}";
             UiLog($"Assertion comparison failed. instance={instance.Name}; runId={instance.CurrentRunId}; error={ex}");
         }
-    }
-
-    private void OpenLatestAssertionComparison()
-    {
-        if (_selectedInstance is null)
-        {
-            _details.Text = "Select an instance first.";
-            UiLog("Open assertion comparison ignored. reason=no-selected-instance");
-            return;
-        }
-
-        var folder = Path.Combine(_selectedInstance.ResultsFolder, "failed");
-        var path = Directory.Exists(folder)
-            ? Directory.GetFiles(folder, "AssertionComparison_*.xlsx", SearchOption.TopDirectoryOnly).OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault()
-            : null;
-        if (path is null)
-        {
-            _details.Text = "No assertion comparison workbook exists yet.";
-            UiLog($"Open assertion comparison ignored. instance={_selectedInstance.Name}; reason=file-not-found");
-            return;
-        }
-        UiLog($"Opening latest assertion comparison. instance={_selectedInstance.Name}; path={path}");
-        OpenExcelFile(path, "assertion comparison workbook");
     }
 
     private static void CreateAssertionComparisonWorkbook(IReadOnlyList<AssertionSnapshot> assertions, string outputPath)

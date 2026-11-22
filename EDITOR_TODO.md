@@ -902,3 +902,9 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - [x] The cell wizard (✦ on a table cell) has a ✕ (discard) and an OK (keep); the rename-column-header popup has a ✕ and an OK as well. Enter / Escape and clicking away work as before.
 - [ ] Not done: the same ✕ / OK on the other-sheet and step-grid cell wizards' extra panels, the bug-comment popup and the failed-cell popup (they have their own buttons, not a common pattern).
 - [ ] Not done: rename of several picked columns at once (Rename header is disabled when more than one column is picked).
+
+## Assertions tab: one Compare button
+- [x] "Export comparison" and "Open comparison" are merged into **Compare**: it builds the assertion comparison workbook and opens it in the dataset (spreadsheet) editor, the same way History's Compare does (shared `DatasetEditorLauncher`).
+- [ ] Not done: a choice between the editor and Excel for this Compare (History's compare form has one); the old files stay in `Results/failed` and are not listed anywhere.
+- [ ] Not done: comparing assertions of two different runs from this tab (it compares the expected and actual values of the current run only).
+
