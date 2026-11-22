@@ -37,6 +37,7 @@ public partial class DataEditorWindow : Window
         InitTreeMenu();
         InitStepCards();
         InitInstanceButtons();
+        StartFileWatch();
         Opened += async (_, _) =>
         {
             await shell.RefreshResultsAsync();
@@ -308,6 +309,23 @@ public partial class DataEditorWindow : Window
     }
 
     private void OnStepColumnsChanged(object? sender, EventArgs e) => RebuildStepColumns();
+
+    private Avalonia.Threading.DispatcherTimer? _fileWatch;
+
+    /// <summary>Checks every loaded workbook's file time when the window is activated (coming back from Excel) and every few seconds while it is active.</summary>
+    private void StartFileWatch()
+    {
+        Activated += (_, _) => CheckFilesChanged();
+        _fileWatch = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        _fileWatch.Tick += (_, _) => { if (IsActive) CheckFilesChanged(); };
+        _fileWatch.Start();
+        Closed += (_, _) => _fileWatch?.Stop();
+    }
+
+    internal void CheckFilesChanged()
+    {
+        foreach (var node in _shell.Instances) node.Editor?.CheckFileChanged();
+    }
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {

@@ -24,6 +24,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         WorkbookPath = Path.GetFullPath(workbookPath);
         InstanceName = string.IsNullOrWhiteSpace(instanceName) ? Path.GetFileNameWithoutExtension(workbookPath) : instanceName;
         _document = WorkbookDocument.Load(WorkbookPath);
+        RememberFileTime();
         RefreshExcelOpen();
         StepRows.CollectionChanged += (_, _) => { for (var i = 0; i < StepRows.Count; i++) StepRows[i].Position = i + 1; };
         LoadTestcases(null);
@@ -591,7 +592,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             RemoveLegacyColumns();
             options.BackupFolder ??= DataEngineBackup.ConfiguredFolder(WorkbookPath);
             var result = _document.Save(options);
-            if (result.Saved) { ClearUndoHistory(); _referenceScan = null; }
+            if (result.Saved) { ClearUndoHistory(); _referenceScan = null; RememberFileTime(); }
             if (result.RequiresReload) ReloadAfterRowsMoved(keepRow);
             ConflictVisible = false;
             IsDirty = _document.IsDirty;
@@ -652,6 +653,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         ClearReuseChoices();
         var keep = SelectedTestcase?.Index;
         _document = WorkbookDocument.Load(WorkbookPath);
+        RememberFileTime();
         _referenceScan = null;
         ClearUndoHistory();
         ConflictVisible = false;

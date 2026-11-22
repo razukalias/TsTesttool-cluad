@@ -337,6 +337,7 @@ public sealed partial class DataEditorViewModel
     public void FinishNewTestcase(int index)
     {
         _document = LoadTestingTool.Editing.WorkbookDocument.Load(WorkbookPath);
+        RememberFileTime();
         _referenceScan = null;
         ClearUndoHistory();
         ConflictVisible = false;

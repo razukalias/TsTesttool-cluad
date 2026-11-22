@@ -914,3 +914,9 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - [ ] Not done: the separate window has no instance tree (one workbook per window) and does not offer "open another instance".
 - [ ] Not done: a real-process smoke test of `--table-editor` (tests cover the window and the lock, not the process start).
 
+## Prompt to reload when the file changed on disk
+- [x] The editor remembers the workbook file's modified time (when opened, reloaded or saved here). On window activation and every 5 s while active it compares it with the file; when different, a banner asks "Reload" or "Keep what I see" (mentions unsaved edits when there are some). Applies to every loaded instance, in the normal and the edit-only window. Own saves, running instances and a missing file do not trigger it.
+- [ ] Not done: only the workbook is watched, not its Templates/Queries/Files that the step forms edit.
+- [ ] Not done: "Keep what I see" does not show what changed (no diff of the two versions); the save-time hash check remains the safety net.
+- [ ] Not done: no file-system watcher (a 5-second check instead), and a change made while the window is inactive is noticed on activation.
+
