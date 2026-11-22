@@ -564,6 +564,7 @@ public sealed class TestRunner
             var expectedStatus = GeneratedTokens.Resolve(step.ExpectedStatus);
             var hasExpectedStatus = !string.IsNullOrWhiteSpace(expectedStatus);
             var expectedStatusMatches = hasExpectedStatus && StatusMatches(result.HttpStatus, expectedStatus);
+            result.ExpectedStatusMatched = expectedStatusMatches;
             var soapFault = step.StepType == StepType.Wcf ? SoapEnvelope.FaultOf(result.ResponseBody) : null;
             if ((hasExpectedStatus && !expectedStatusMatches) || (!hasExpectedStatus && (!response.IsSuccessStatusCode || soapFault is not null)))
             {

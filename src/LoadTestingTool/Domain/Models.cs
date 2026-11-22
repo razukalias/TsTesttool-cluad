@@ -330,7 +330,9 @@ public sealed class RequestResult
     public string ManualComment { get; set; } = string.Empty;
     public bool ManualAction { get; set; }
     public string Environment { get; init; } = string.Empty;
-    public string Result => ErrorMessage.Length > 0 || Assertions.Any(a => a.Result == "FAIL") || (HttpStatus is < 200 or >= 300) ? "FAIL" : "PASS";
+    /// <summary>True when the step names an expected status (for example 404 or 500 in a negative test) and the response had it; the status then does not fail the step.</summary>
+    public bool ExpectedStatusMatched { get; set; }
+    public string Result => ErrorMessage.Length > 0 || Assertions.Any(a => a.Result == "FAIL") || (!ExpectedStatusMatched && HttpStatus is < 200 or >= 300) ? "FAIL" : "PASS";
 }
 
 public sealed class CorrelationRecord

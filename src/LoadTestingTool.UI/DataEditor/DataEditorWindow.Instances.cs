@@ -26,7 +26,7 @@ public partial class DataEditorWindow
     internal async Task NewInstanceAsync()
     {
         if (_shell.EnvironmentSettings is not { } settings) { _shell.Current?.Notify("Creating instances is not available here.", true); return; }
-        var builder = new InstanceBuilderWindow(settings.InstancesRoot, settings.WorkbookName);
+        var builder = new InstanceBuilderWindow(settings.InstancesRoot, settings.WorkbookName) { SettingsFile = settings.SettingsFile };
         await builder.ShowDialog(this);
         if (string.IsNullOrWhiteSpace(builder.CreatedFolder)) return;
         var node = _shell.AddCreatedInstance(builder.CreatedFolder);

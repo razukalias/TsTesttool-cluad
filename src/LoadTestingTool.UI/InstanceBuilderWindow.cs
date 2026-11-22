@@ -11,10 +11,13 @@ public sealed class InstanceBuilderWindow : Window
     private readonly TextBox _name = new() { Text = "DataEngine_" };
     private readonly string _defaultRoot;
     private readonly string _workbookName;
-    private readonly ComboBox _template = new() { ItemsSource = new[] { "Full DataEngine template", "Minimal HTTP template" }, SelectedIndex = 0 };
+    private readonly ComboBox _template = new() { ItemsSource = new[] { "Full DataEngine template", "Minimal HTTP template", LoadTestingTool.MockServer.SampleInstance.TemplateName }, SelectedIndex = 0 };
     private readonly TextBox _message = new() { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
     private readonly Button _create;
     public string? CreatedFolder { get; private set; }
+
+    /// <summary>The central settings file; the sample instance registers its SQLite connection profile there.</summary>
+    public string? SettingsFile { get; set; }
 
     public InstanceBuilderWindow(string defaultRoot, string workbookName = "DataEngine.xlsx")
     {
@@ -69,6 +72,12 @@ public sealed class InstanceBuilderWindow : Window
             var folder = Path.GetFullPath(Path.Combine(_defaultRoot, name));
             if (Directory.Exists(folder) && Directory.EnumerateFileSystemEntries(folder).Any()) throw new InvalidOperationException("The target folder already exists and is not empty.");
             DataEditor.InstanceOperations.EnsureFolders(folder);
+            if (_template.SelectedItem as string == LoadTestingTool.MockServer.SampleInstance.TemplateName)
+            {
+                LoadTestingTool.MockServer.SampleInstance.Build(folder, _workbookName, settingsFile: SettingsFile);
+                CreatedFolder = folder; Close();
+                return;
+            }
             var workbookPath = Path.Combine(folder, _workbookName);
             using (var workbook = new XLWorkbook())
             {

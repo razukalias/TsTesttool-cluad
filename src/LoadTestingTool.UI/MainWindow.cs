@@ -583,7 +583,7 @@ public sealed partial class MainWindow : Window
     private async Task CreateInstanceAsync()
     {
         var root = Path.GetFullPath(_config.InstancesRoot);
-        var builder = new InstanceBuilderWindow(root, _config.WorkbookName);
+        var builder = new InstanceBuilderWindow(root, _config.WorkbookName) { SettingsFile = string.IsNullOrWhiteSpace(_config.SettingsFile) ? null : Path.GetFullPath(_config.SettingsFile) };
         builder.Closed += (_, _) =>
         {
             var createdFolder = builder.CreatedFolder;

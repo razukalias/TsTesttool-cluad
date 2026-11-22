@@ -104,6 +104,7 @@ public sealed partial class MainWindow
 
         public string InstancesRoot => Path.GetFullPath(window._config.InstancesRoot);
         public string WorkbookName => window._config.WorkbookName;
+        public string? SettingsFile => string.IsNullOrWhiteSpace(window._config.SettingsFile) ? null : Path.GetFullPath(window._config.SettingsFile);
 
         public string? RegisterInstance(string name, string? copyFrom)
         {

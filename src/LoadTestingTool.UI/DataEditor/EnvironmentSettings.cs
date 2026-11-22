@@ -9,6 +9,9 @@ namespace LoadTestingTool.UI.DataEditor;
 /// </summary>
 public interface IEnvironmentSettings
 {
+    /// <summary>The central settings file, when there is one (the sample instance registers its SQLite profile in it).</summary>
+    string? SettingsFile => null;
+
     /// <summary>Every environment defined centrally.</summary>
     IReadOnlyList<string> Environments { get; }
 
