@@ -43,6 +43,20 @@ public class ToolbarLayoutTests
     }
 
     [AvaloniaFact]
+    public void A_visible_Column_button_opens_the_add_column_panel_so_a_step_without_columns_can_get_its_first_one()
+    {
+        using var dir = new TempDir();
+        var (window, shell) = Open(dir);
+        var editor = shell.Current!;
+        var button = Assert.Single(window.GetVisualDescendants().OfType<Button>(), b => Equals(b.Tag, "add-column"));
+        Assert.False(editor.AddColumnVisible);
+        button.Command!.Execute(null);
+        Assert.True(editor.AddColumnVisible);
+        Assert.NotEmpty(editor.NewColumnSteps);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void The_old_view_tabs_and_column_buttons_are_gone_and_csv_is_a_droplist_with_a_button()
     {
         using var dir = new TempDir();

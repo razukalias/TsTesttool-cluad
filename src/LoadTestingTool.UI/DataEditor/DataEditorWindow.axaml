@@ -453,6 +453,7 @@
                 <ComboBox Tag="environment-filter" ItemsSource="{Binding EnvironmentOptions}" SelectedItem="{Binding EnvironmentChoice, Mode=TwoWay}" IsVisible="{Binding HasEnvironmentChoice}" IsEnabled="{Binding HasResults}" MinWidth="150" ToolTip.Tip="Which environment the failed rows, columns and cells and the red marks refer to. The run covers several environments; All environments mixes them" />
               </StackPanel>
               <Button Content="Find &amp; replace" Command="{Binding OpenFindCommand}" Margin="0,0,8,8" MinHeight="36" />
+              <Button Content="+ Column" Tag="add-column" Command="{Binding OpenAddColumnCommand}" Margin="0,0,8,8" MinHeight="36" ToolTip.Tip="Add a request (variable) or expected-value column for a step of this testcase, even a step that has no columns yet" />
               <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,8,8">
                 <ComboBox Tag="csv-action" ItemsSource="{Binding CsvActions}" SelectedIndex="{Binding CsvActionIndex, Mode=TwoWay}" MinWidth="130" MinHeight="36" ToolTip.Tip="Choose Import CSV or Export CSV, then press the button beside it" />
                 <Button Tag="csv-run" Content="▶" Command="{Binding RunCsvActionCommand}" MinHeight="36" MinWidth="36" ToolTip.Tip="Run the selected CSV action" />
