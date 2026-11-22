@@ -881,6 +881,9 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - [ ] **SQL – more:** a database viewer for the sample database (tables and rows, run a query), other providers (PostgreSQL, MySQL), per-instance profiles.
 - [x] **Sample instance covering all steps** (create-instance dialog > "Sample instance (all step types, runs offline)"): ten testcases (HTTP, chaining, WCF incl. an expected fault, GraphQL, SQL on SQLite, File, Script, If/else, For/ForEach/While, a disabled ActionManual), each step with a `note` column, request data, expected columns and `#count`, `Templates`, `Queries`, `Files/sample.db`, its own `MockServer.json` and the `AllStepsSqlite` profile registered in the central settings. A test runs every enabled testcase against the mock server. Also fixed: a step whose expected status matched (a negative test, e.g. 500) was still reported as FAIL.
   - [ ] Not done: a one-click "start the mock server for this instance" from the dialog; ActionManual stays disabled.
+  - [ ] Not done: a UI test that the create-instance dialog offers and builds the sample template.
+  - [ ] Not done: a direct regression test for "expected non-2xx status passes" (only covered through the sample run).
+  - [ ] Not done: the sample builder uses the default port 8099 and a fixed `AllStepsSqlite` profile name; no port or name choice in the dialog, and a second sample instance reuses the same profile.
 - [ ] Import the endpoints of `server.py` / a HAR file / an OpenAPI file as routes; a starter preset per sample instance; a CORS switch; HTTPS with a self-signed certificate; response sequences (first call 202, then 200) and request counters.
 
 ### `<from_filepath_…>` file picker
