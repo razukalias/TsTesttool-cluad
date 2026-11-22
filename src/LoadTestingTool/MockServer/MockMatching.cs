@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 using System.Text.RegularExpressions;
 
 namespace LoadTestingTool.MockServer;
@@ -87,6 +88,8 @@ public static class MockRouteMatcher
             "body" => request.Body,
             "json" => MockJson.Get(request.Body, condition.Name),
             "graphql" => MockGraphQl.Part(request.Body, condition.Name),
+            "soap" => MockSoap.Part(request, condition.Name),
+            "xml" => MockXml.Get(request.Body, condition.Name),
             _ => null
         };
         switch (condition.Op.ToLowerInvariant())
@@ -154,7 +157,7 @@ public static class MockTemplate
             case "method": return request.Method;
             case "path": return request.Path;
             case "url": return request.Path + (request.Query.Count == 0 ? "" : "?" + string.Join("&", request.Query.Select(p => $"{p.Key}={p.Value}")));
-            case "operation": return MockGraphQl.Part(request.Body, "operation") ?? "";
+            case "operation": return MockGraphQl.Part(request.Body, "operation") ?? MockSoap.Part(request, "operation") ?? "";
             case "now": return DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture);
             case "guid": return Guid.NewGuid().ToString();
             case "random": return Random.Shared.Next(0, 1_000_000).ToString(CultureInfo.InvariantCulture);
@@ -170,6 +173,8 @@ public static class MockTemplate
             "query" => request.Query.TryGetValue(name, out var q) ? q : "",
             "header" => request.Headers.TryGetValue(name, out var h) ? h : "",
             "json" => MockJson.Get(request.Body, name) ?? "",
+            "xml" => MockXml.Get(request.Body, name) ?? "",
+            "soap" => MockSoap.Part(request, name) ?? "",
             _ => ""
         };
     }
@@ -202,5 +207,73 @@ public static class MockGraphQl
             "operation" => !string.IsNullOrWhiteSpace(operationName) && operationName != "null" ? operationName : name ?? field,
             _ => null
         };
+    }
+}
+
+/// <summary>Reads one value out of an XML text by local element names, for example GetOrder.OrderId or Items.Item[1].@sku. A SOAP envelope is read from its body.</summary>
+public static class MockXml
+{
+    private static readonly Regex Part = new(@"([^.\[\]]+)|\[(\d+)\]", RegexOptions.Compiled);
+
+    public static string? Get(string xml, string path)
+    {
+        if (string.IsNullOrWhiteSpace(xml) || !xml.TrimStart().StartsWith('<')) return null;
+        try
+        {
+            var root = XDocument.Parse(xml).Root;
+            if (root is null) return null;
+            IEnumerable<XElement> current = MockSoap.IsEnvelope(root) ? MockSoap.BodyOf(root)?.Elements() ?? [] : [root];
+            XElement? element = null;
+            var first = true;
+            foreach (Match part in Part.Matches(path))
+            {
+                if (part.Groups[2].Success)
+                {
+                    var list = current.ToList();
+                    if (!int.TryParse(part.Groups[2].Value, out var index) || index >= list.Count) return null;
+                    element = list[index]; current = [element];
+                    continue;
+                }
+                var name = part.Groups[1].Value;
+                if (name.StartsWith('@'))
+                    return element?.Attributes().FirstOrDefault(a => a.Name.LocalName == name[1..])?.Value;
+                var matches = (first ? current : current.SelectMany(e => e.Elements())).Where(e => e.Name.LocalName == name).ToList();
+                first = false;
+                if (matches.Count == 0) return null;
+                current = matches; element = matches[0];
+            }
+            return element?.Value;
+        }
+        catch (System.Xml.XmlException) { return null; }
+    }
+}
+
+/// <summary>What a SOAP request asks for: the operation (the first element in the body), the action and the version.</summary>
+public static class MockSoap
+{
+    public static readonly string[] Parts = ["operation", "action", "version"];
+    private const string Ns11 = "http://schemas.xmlsoap.org/soap/envelope/";
+    private const string Ns12 = "http://www.w3.org/2003/05/soap-envelope";
+
+    public static bool IsEnvelope(XElement root) => root.Name.LocalName == "Envelope" && root.Name.NamespaceName is Ns11 or Ns12;
+    public static XElement? BodyOf(XElement envelope) => envelope.Elements().FirstOrDefault(e => e.Name.LocalName == "Body");
+
+    /// <summary>operation, action (SOAPAction header, or action= of the content type) or version (1.1 / 1.2). Null when the request is not SOAP.</summary>
+    public static string? Part(MockRequest request, string part)
+    {
+        XElement? root;
+        try { root = request.Body.TrimStart().StartsWith('<') ? XDocument.Parse(request.Body).Root : null; }
+        catch (System.Xml.XmlException) { return null; }
+        if (root is null || !IsEnvelope(root)) return null;
+        switch ((string.IsNullOrWhiteSpace(part) ? "operation" : part.Trim()).ToLowerInvariant())
+        {
+            case "operation": return BodyOf(root)?.Elements().FirstOrDefault()?.Name.LocalName;
+            case "version": return root.Name.NamespaceName == Ns12 ? "1.2" : "1.1";
+            case "action":
+                if (request.Headers.TryGetValue("SOAPAction", out var header)) return header.Trim().Trim('"');
+                if (request.Headers.TryGetValue("Content-Type", out var type) && Regex.Match(type, "action=\"?([^\";]+)\"?", RegexOptions.IgnoreCase) is { Success: true } m) return m.Groups[1].Value;
+                return "";
+            default: return null;
+        }
     }
 }

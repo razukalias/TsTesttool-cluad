@@ -17,6 +17,7 @@ public static class TreeIcons
 
     private const string Http = "M7 7h11 M15 4l3 3-3 3 M17 17H6 M9 14l-3 3 3 3";
     private const string GraphQl = "M12 3l7.5 4.5v9L12 21l-7.5-4.5v-9z M12 3v18 M4.5 7.5l15 9 M19.5 7.5l-15 9";
+    private const string Service = "M5 4h14v6H5z M5 14h14v6H5z M8 7h.01 M8 17h.01 M12 10v4";
     private const string List = "M5 6h14 M5 12h14 M5 18h9";
     private const string Database = "M12 5c4 0 7 1 7 2.5S16 10 12 10 5 9 5 7.5 8 5 12 5z M5 7.5v9C5 18 8 19 12 19s7-1 7-2.5v-9 M5 12c0 1.5 3 2.5 7 2.5s7-1 7-2.5";
     private const string File = "M7 3h7l4 4v14H7z M14 3v4h4";
@@ -28,6 +29,7 @@ public static class TreeIcons
     /// <summary>The icon of a step by its type name (HTTP, GraphQL, CaseQL, SQL, File, Script, ActionManual, If, While, For, ForEach); HTTP for anything else.</summary>
     public static string ForStep(string typeName) => typeName switch
     {
+        "WCF" => Service,
         "GraphQL" => GraphQl,
         "CaseQL" => List,
         "SQL" => Database,

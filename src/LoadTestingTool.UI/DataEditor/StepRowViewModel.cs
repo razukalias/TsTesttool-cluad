@@ -145,7 +145,7 @@ public sealed partial class StepRowViewModel : ObservableObject, IFormattedRow, 
 /// <summary>The fixed choices for config columns that have them; those columns become drop-downs.</summary>
 public static class StepOptions
 {
-    public static readonly IReadOnlyList<string> StepTypes = ["HTTP", "GraphQL", "CaseQL", "SQL", "File", "Script", "ActionManual", "If", "While", "For", "ForEach"];
+    public static readonly IReadOnlyList<string> StepTypes = ["HTTP", "WCF", "GraphQL", "CaseQL", "SQL", "File", "Script", "ActionManual", "If", "While", "For", "ForEach"];
     public static readonly IReadOnlyList<string> Stages = ["Setup", "Test", "Teardown"];
     public static readonly IReadOnlyList<string> Verbs = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
     public static readonly IReadOnlyList<string> Booleans = ["True", "False"];

@@ -30,7 +30,7 @@ internal sealed class TestcaseWizardWindow : Window
     private readonly TextBox _index = Field("Auto");
     private readonly TextBox _name = Field("NewTestcase");
     private readonly TextBox _stepName = Field("Request");
-    private readonly ComboBox _stepType = new() { ItemsSource = new[] { "HTTP", "GraphQL", "CaseQL", "File", "Script", "SQL" }, SelectedIndex = 0, Width = 260 };
+    private readonly ComboBox _stepType = new() { ItemsSource = new[] { "HTTP", "WCF", "GraphQL", "CaseQL", "File", "Script", "SQL" }, SelectedIndex = 0, Width = 260 };
     private readonly ComboBox _stage = new() { ItemsSource = new[] { "Setup", "Test", "Teardown" }, SelectedIndex = 1, Width = 220 };
     private readonly CheckBox _enabled = new() { Content = "Enable the initial step", IsChecked = true };
     private readonly TextBox _timeout = Field("30");

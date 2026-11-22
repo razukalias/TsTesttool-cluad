@@ -482,7 +482,7 @@ public sealed class TestRunner
 
     private async Task<RequestResult> ExecuteRequestAsync(RunResult run, TestcaseDefinition testcase, string dataId, RequestStep step, Dictionary<string, string> variables, IReadOnlySet<string> redactedVariables, IReadOnlyList<AssertionDefinition> definitions, IReadOnlyDictionary<string, string> requestReferences, int sequence, int thread, int iteration, Dictionary<string, string> correlation, Dictionary<string, CorrelationRecord> correlationSources, LoadTestingTool.Domain.ExecutionContext executionContext, CancellationToken cancellationToken, string environment)
     {
-        if (step.StepType != StepType.Http) return await ExecuteNonHttpAsync(run, testcase, dataId, step, variables, redactedVariables, definitions, requestReferences, sequence, thread, iteration, correlation, correlationSources, executionContext, cancellationToken, environment);
+        if (!step.StepType.IsHttpLike()) return await ExecuteNonHttpAsync(run, testcase, dataId, step, variables, redactedVariables, definitions, requestReferences, sequence, thread, iteration, correlation, correlationSources, executionContext, cancellationToken, environment);
         var started = DateTimeOffset.Now; var sw = Stopwatch.StartNew(); var requestId = $"REQ-{Interlocked.Increment(ref _sequence):D8}"; var templatePath = Path.Combine(_templatesFolder, step.TemplateSource);
         _logger.Info($"Request starting. RequestId={requestId}; testcase={testcase.TestcaseIndex}; dataid={dataId}; stepName={step.StepName}; thread={thread}; iteration={iteration}; verb={step.Verb}; url={step.TargetUrl}; template={templatePath}; ignoreempty={step.IgnoreEmpty}");
         var result = new RequestResult { RunId = run.RunId, RequestId = requestId, TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, WaitMs = step.WaitMs, WaitExpression = step.WaitExpression, Verb = step.Verb, TargetUrl = GeneratedTokens.ToDisplay(step.TargetUrl), TemplateSource = step.TemplateSource, StepConfig = GeneratedTokens.Resolve(step.StepConfig), ContentType = ResolveContentType(step), RequestHeaders = string.Join("; ", step.Headers.Select(h => $"{h.Key}={h.Value}")), Variables = new Dictionary<string, string>(variables, StringComparer.OrdinalIgnoreCase), RedactedVariables = redactedVariables, Environment = environment };
@@ -497,7 +497,8 @@ public sealed class TestRunner
             var body = streamedTemplate is null ? TemplateRenderer.Render(resolvedTemplate, result.ContentType, variables) : string.Empty;
             var resolvedTemplateForLog = streamedTemplate is null ? body : resolvedTemplate;
             _logger.Info($"STEP RESOLUTION [{requestId}]\nSTEP TYPE: HTTP\nORIGINAL TARGET: {step.TargetUrl}\nRESOLVED TARGET: {result.TargetUrl}\nORIGINAL TEMPLATE:\n{originalTemplate}\nRESOLVED TEMPLATE:\n{InternalLogger.RedactVariableValues(resolvedTemplateForLog, redactedVariables, variables)}\nVARIABLES:\n{FormatVariables(variables, redactedVariables)}");
-            using var request = new HttpRequestMessage(new HttpMethod(step.Verb), result.TargetUrl);
+            using var request = new HttpRequestMessage(new HttpMethod(step.StepType == StepType.Wcf ? "POST" : step.Verb), result.TargetUrl);
+            var wcf = step.StepType == StepType.Wcf ? SoapEnvelope.Options(step) : null;
             var binaryBody = ResolveBinaryHttpBody(step, executionContext);
             if (result.ContentType.Equals("multipart/form-data", StringComparison.OrdinalIgnoreCase))
             {
@@ -518,8 +519,19 @@ public sealed class TestRunner
             }
             else
             {
+                if (wcf is not null)
+                {
+                    var envelope = SoapEnvelope.Wrap(body, wcf);
+                    result.RequestBody = SoapEnvelope.MaskSecrets(InternalLogger.RedactVariableValues(envelope, redactedVariables, variables));
+                    request.Content = new StringContent(envelope, Encoding.UTF8, "text/xml");
+                    request.Content.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(SoapEnvelope.ContentType(wcf));
+                    if (!SoapEnvelope.Is12(wcf.SoapVersion)) request.Headers.TryAddWithoutValidation("SOAPAction", $"\"{wcf.SoapAction}\"");
+                }
+                else
+                {
                 result.RequestBody = InternalLogger.RedactVariableValues(body, redactedVariables, variables);
                 if (!step.Verb.Equals("HEAD", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrWhiteSpace(body)) request.Content = new StringContent(body, Encoding.UTF8, result.ContentType.Equals("xml", StringComparison.OrdinalIgnoreCase) ? "application/xml" : "application/json");
+                }
             }
             var resolvedHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var header in step.Headers)
@@ -552,10 +564,12 @@ public sealed class TestRunner
             var expectedStatus = GeneratedTokens.Resolve(step.ExpectedStatus);
             var hasExpectedStatus = !string.IsNullOrWhiteSpace(expectedStatus);
             var expectedStatusMatches = hasExpectedStatus && StatusMatches(result.HttpStatus, expectedStatus);
-            if ((hasExpectedStatus && !expectedStatusMatches) || (!hasExpectedStatus && !response.IsSuccessStatusCode))
+            var soapFault = step.StepType == StepType.Wcf ? SoapEnvelope.FaultOf(result.ResponseBody) : null;
+            if ((hasExpectedStatus && !expectedStatusMatches) || (!hasExpectedStatus && (!response.IsSuccessStatusCode || soapFault is not null)))
             {
                 result.ErrorMessage = hasExpectedStatus
                     ? $"Expected status '{expectedStatus}' but received '{result.HttpStatus}'."
+                    : soapFault is not null ? $"SOAP fault: {soapFault} (HTTP {result.HttpStatus})."
                     : $"Unexpected HTTP status {(int)response.StatusCode} {response.StatusCode}.";
                 result.FailureCategory = FailureCategories.HttpStatus;
                 _logger.Error($"HTTP STATUS FAILURE [{requestId}] | testcase={testcase.TestcaseIndex} | dataid={dataId} | step={step.StepName} | actual={result.HttpStatus} | expected={(hasExpectedStatus ? expectedStatus : "2xx/3xx")}");
@@ -887,7 +901,7 @@ public sealed class TestRunner
         var resolved = context.Resolve(value ?? string.Empty);
         return TemplateRenderer.Render(resolved, "text/plain", variables);
     }
-    private static string ResolveContentType(RequestStep step) => !string.IsNullOrWhiteSpace(step.ContentType) ? step.ContentType : Path.GetExtension(step.TemplateSource).TrimStart('.').ToLowerInvariant() switch { "xml" => "xml", _ => "json" };
+    private static string ResolveContentType(RequestStep step) => step.StepType == StepType.Wcf ? "xml" : !string.IsNullOrWhiteSpace(step.ContentType) ? step.ContentType : Path.GetExtension(step.TemplateSource).TrimStart('.').ToLowerInvariant() switch { "xml" => "xml", _ => "json" };
     private static bool StatusMatches(int actual, string expected) => expected.Contains('-') ? int.TryParse(expected.Split('-')[0], out var min) && int.TryParse(expected.Split('-')[1], out var max) && actual >= min && actual <= max : expected.EndsWith("xx", StringComparison.OrdinalIgnoreCase) && int.TryParse(expected[..1], out var family) ? actual / 100 == family : int.TryParse(expected, out var exact) && actual == exact;
 
     /// <summary>"/Outer#2/Inner#5" becomes "Outer #2 > Inner #5".</summary>

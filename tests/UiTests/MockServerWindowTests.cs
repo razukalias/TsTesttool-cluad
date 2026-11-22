@@ -102,6 +102,25 @@ public class MockServerWindowTests
     }
 
     [AvaloniaFact]
+    public void SoapButtonAddsAnOperationRouteAndAWsdlRoute()
+    {
+        using var dir = new TempDir();
+        var window = Open(dir);
+        ButtonWith(window, "SOAP").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        var routes = window.Config.Routes;
+        Assert.Equal(5, routes.Count);
+        var operation = routes[^2]; var wsdl = routes[^1];
+        Assert.Equal(("POST", "/Orders.svc"), (operation.Method, operation.Path));
+        Assert.Equal(("soap", "operation", "GetOrder"), (operation.Conditions[0].Source, operation.Conditions[0].Name, operation.Conditions[0].Value));
+        Assert.Contains("{{xml.GetOrder.OrderId}}", operation.Response.Body);
+        Assert.Equal(("GET", "query", "wsdl"), (wsdl.Method, wsdl.Conditions[0].Source, wsdl.Conditions[0].Name));
+        Assert.Contains("wsdl:definitions", wsdl.Response.Body);
+        Assert.Contains("{{header.Host}}", wsdl.Response.Body);
+        Assert.Empty(window.Config.Validate());
+        System.Xml.Linq.XDocument.Parse(wsdl.Response.Body);   // the starter WSDL is well-formed
+    }
+
+    [AvaloniaFact]
     public void ConditionsAndHeadersAreAddedAndEdited()
     {
         using var dir = new TempDir();

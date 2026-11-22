@@ -171,7 +171,7 @@ public class StepTreeMenuTests
 
         IEnumerable<string?> Tags(object node) => ((ContextMenu)build.Invoke(window, [tree, node])!).Items.OfType<MenuItem>().Select(i => i.Tag as string);
         var types = ((ContextMenu)build.Invoke(window, [tree, testcase])!).Items.OfType<MenuItem>().Single(i => Equals(i.Tag, "tree-add-step")).Items.OfType<MenuItem>().Select(i => i.Header as string).ToArray();
-        Assert.Equal(["HTTP", "GraphQL", "CaseQL", "SQL", "File", "Script", "ActionManual", "If", "While", "For", "ForEach"], types);
+        Assert.Equal(["HTTP", "WCF", "GraphQL", "CaseQL", "SQL", "File", "Script", "ActionManual", "If", "While", "For", "ForEach"], types);
 
         var plain = testcase.StepNodes[0];
         Assert.Contains("tree-add-after", Tags(plain));

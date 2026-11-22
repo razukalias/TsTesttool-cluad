@@ -47,7 +47,7 @@ public sealed class StepTypeSection : UserControl
         DetachedFromVisualTree += (_, _) => _step.Cells.CollectionChanged -= follow;
     }
 
-    public static bool HasSettings(string type) => type.Trim().ToLowerInvariant() is "http" or "graphql" or "caseql" or "sql" or "file" or "script";
+    public static bool HasSettings(string type) => type.Trim().ToLowerInvariant() is "http" or "wcf" or "graphql" or "caseql" or "sql" or "file" or "script";
 
     public static string Describe(string type) => type.Trim().ToLowerInvariant() switch
     {
@@ -55,6 +55,7 @@ public sealed class StepTypeSection : UserControl
         "sql" => "The command comes from the Template, a file, or the text below. The connection profile is a name defined in appsettings.json.",
         "file" => "Reads or writes a file inside the workspace and stores the result in an output variable for later steps.",
         "script" => "Runs a trusted C# script. Trusted scripts must be enabled in the instance settings.",
+        "wcf" => "A SOAP call to a WCF (or any SOAP) service over HTTP. The Template is the request body (one element such as <GetOrder xmlns=\"…\">…</GetOrder>) or a whole <Envelope>; it is put in an envelope for you. Faults fail the step.",
         "http" => "Sends the Template as the request body. For multipart/form-data, define the form parts here.",
         "actionmanual" => "Pauses the run until someone confirms the manual action; the wait limit is in the step settings.",
         _ => string.Empty
@@ -88,6 +89,11 @@ public sealed class StepTypeSection : UserControl
             case "graphql" or "caseql":
                 AddAll(new Spec("OperationName", "Operation name", Kind.Text), new Spec("Source", "Query file", Kind.Path, Hint: "Optional. Overrides the template.", Folder: "Queries"),
                     new Spec("Inline", "Query", Kind.Multi, Hint: "Used when no template is set."), new Spec("Variables", "Variables", Kind.Json));
+                break;
+            case "wcf":
+                AddAll(new Spec("SoapAction", "SOAP action", Kind.Text, Hint: "e.g. http://tempuri.org/IOrders/GetOrder"), new Spec("SoapVersion", "SOAP version", Kind.Combo, ["1.1", "1.2"]),
+                    new Spec("Username", "User name", Kind.Text, Hint: "Optional. Adds a WS-Security UsernameToken."), new Spec("Password", "Password", Kind.Text),
+                    new Spec("HeaderXml", "Extra header XML", Kind.Multi, Hint: "Optional. Put inside the SOAP header."));
                 break;
             case "sql":
                 AddAll(new Spec("ConnectionProfile", "Connection", Kind.Text, Hint: "Profile name from appsettings.json (SQL Server or SQLite)"), new Spec("CommandType", "Command type", Kind.Combo, ["Text", "StoredProcedure"]),

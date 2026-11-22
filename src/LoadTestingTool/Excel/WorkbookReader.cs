@@ -33,9 +33,9 @@ public sealed class WorkbookReader
             var parentText = Text(configHeaders, row, "parent");
             var inElse = parentText.EndsWith(":else", StringComparison.OrdinalIgnoreCase);
             var parent = inElse ? parentText[..^5].Trim() : parentText;
-            if ((stepType is StepType.Http or StepType.GraphQL or StepType.CaseQL) && string.IsNullOrWhiteSpace(url)) throw new InvalidDataException($"config row {row.RowNumber()} requires targetUrl for {stepType.WireName()}.");
-            if (stepType == StepType.Http && string.IsNullOrWhiteSpace(template)) throw new InvalidDataException($"config row {row.RowNumber()} requires templetsource for HTTP.");
-            if (stepType != StepType.Http && stepType != StepType.ActionManual && !stepType.IsControl() && string.IsNullOrWhiteSpace(Text(configHeaders, row, "stepconfig"))) throw new InvalidDataException($"config row {row.RowNumber()} requires StepConfig for {stepType.WireName()}.");
+            if ((stepType is StepType.Http or StepType.Wcf or StepType.GraphQL or StepType.CaseQL) && string.IsNullOrWhiteSpace(url)) throw new InvalidDataException($"config row {row.RowNumber()} requires targetUrl for {stepType.WireName()}.");
+            if (stepType.IsHttpLike() && string.IsNullOrWhiteSpace(template)) throw new InvalidDataException($"config row {row.RowNumber()} requires templetsource for {stepType.WireName()}.");
+            if (!stepType.IsHttpLike() && stepType != StepType.ActionManual && !stepType.IsControl() && string.IsNullOrWhiteSpace(Text(configHeaders, row, "stepconfig"))) throw new InvalidDataException($"config row {row.RowNumber()} requires StepConfig for {stepType.WireName()}.");
             steps.Add(new RequestStep
             {
                 TestcaseIndex = index, Testcase = testcase, StepName = stepName, Parent = parent, InElse = inElse, Condition = Compile(Text(configHeaders, row, "condition"), workbook, config, compiledCellCache, row.RowNumber()), Sequence = row.RowNumber(), TemplateSource = template, TargetUrl = url,

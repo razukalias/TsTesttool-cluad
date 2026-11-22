@@ -21,6 +21,17 @@ public static class StepTypeGuide
             "Step config is optional. Use it for extra request headers.",
         ], "{\n  \"Headers\": {\n    \"Authorization\": \"Bearer _token_\"\n  }\n}", "Adds an Authorization header; _token_ is read from the data row."),
 
+        ["wcf"] = new("WCF step (SOAP)",
+        [
+            "Target URL: the service endpoint, e.g. http://host/Orders.svc. The request is always POST.",
+            "Template: an XML file in the Templates folder with the operation element, e.g. <GetOrder xmlns=\"http://tempuri.org/\"><OrderId>_orderId_</OrderId></GetOrder>. It is wrapped in a SOAP envelope for you; a template that already is an <Envelope> is sent as it is. _name_ placeholders are filled from the data row and escaped for XML.",
+            "SOAP action: the operation's action (sent as the SOAPAction header for SOAP 1.1, as action= in the content type for 1.2). SOAP version: 1.1 (basicHttpBinding) or 1.2.",
+            "User name / Password: optional, adds a WS-Security UsernameToken with a plain-text password to the header. Extra header XML goes in the SOAP header too.",
+            "Expected response values: paths start at the body's first element, e.g. GetOrderResponse.Status or GetOrderResponse.Lines.Line[1].@sku; header elements are Header.<name>; a fault is Fault.faultstring (Fault.Reason.Text in SOAP 1.2). statusCode and response headers work as for HTTP.",
+            "A SOAP fault fails the step with the fault text. For a negative test set Expected status to 500 and assert on Fault.faultstring.",
+            "Only SOAP over HTTP(S) with basicHttp or wsHttp without message security is supported (no net.tcp, no WS-Security signing).",
+        ], "{\n  \"SoapAction\": \"http://tempuri.org/IOrders/GetOrder\",\n  \"SoapVersion\": \"1.1\"\n}", "Use the Mock server window's SOAP button to get a service to call."),
+
         ["graphql"] = new("GraphQL step",
         [
             "Target URL: the GraphQL endpoint. Verb is normally POST.",

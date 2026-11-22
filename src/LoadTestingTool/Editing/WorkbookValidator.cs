@@ -47,11 +47,11 @@ public static class WorkbookValidator
             try { ExecutionStageParser.Parse(Text(row, "stage")); }
             catch (InvalidDataException ex) { Add(problems, ProblemSeverity.Error, table, row, ex.Message); }
 
-            if (type is StepType.Http or StepType.GraphQL or StepType.CaseQL && Text(row, "targeturl").Length == 0)
+            if (type is StepType.Http or StepType.Wcf or StepType.GraphQL or StepType.CaseQL && Text(row, "targeturl").Length == 0)
                 Add(problems, ProblemSeverity.Error, table, row, $"{type.WireName()} steps need a targetUrl.");
-            if (type == StepType.Http && Text(row, "templetsource").Length == 0)
-                Add(problems, ProblemSeverity.Error, table, row, "HTTP steps need a template (templetsource).");
-            if (type is not StepType.Http and not StepType.ActionManual && !type.IsControl() && Text(row, "stepconfig").Length == 0)
+            if (type.IsHttpLike() && Text(row, "templetsource").Length == 0)
+                Add(problems, ProblemSeverity.Error, table, row, $"{type.WireName()} steps need a template (templetsource).");
+            if (!type.IsHttpLike() && type is not StepType.ActionManual && !type.IsControl() && Text(row, "stepconfig").Length == 0)
                 Add(problems, ProblemSeverity.Error, table, row, $"{type.WireName()} steps need a StepConfig.");
             CheckControlStep(problems, table, row, type);
 

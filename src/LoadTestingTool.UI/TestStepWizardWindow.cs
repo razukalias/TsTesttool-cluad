@@ -17,7 +17,7 @@ internal sealed class TestStepWizardWindow : Window
     private readonly TextBox _testcaseIndex = Field("1");
     private readonly TextBox _testcase = Field("ExampleTest");
     private readonly TextBox _stepName = Field("NewStep");
-    private readonly ComboBox _stepType = new() { Width = 230, ItemsSource = new[] { "HTTP", "GraphQL", "CaseQL", "File", "Script", "SQL" }, SelectedIndex = 0 };
+    private readonly ComboBox _stepType = new() { Width = 230, ItemsSource = new[] { "HTTP", "WCF", "GraphQL", "CaseQL", "File", "Script", "SQL" }, SelectedIndex = 0 };
     private readonly ComboBox _stage = new() { Width = 180, ItemsSource = new[] { "Setup", "Test", "Teardown" }, SelectedIndex = 1 };
     private readonly CheckBox _enabled = new() { Content = "Enabled", IsChecked = true };
     private readonly TextBox _timeout = Field("30");
@@ -120,11 +120,12 @@ internal sealed class TestStepWizardWindow : Window
     private static void Set(TextBox box, string value) => box.Text = value;
     private void UpdateTypeFields()
     {
-        var type = _stepType.SelectedItem?.ToString() ?? "HTTP"; _httpFields.IsVisible = type is "HTTP" or "GraphQL";
+        var type = _stepType.SelectedItem?.ToString() ?? "HTTP"; _httpFields.IsVisible = type is "HTTP" or "WCF" or "GraphQL";
         _typeFields.Children.Clear();
         _help.Text = type switch
         {
             "HTTP" => "HTTP uses Target URL, HTTP verb, content type, template source, response assertions, and optional wait time.",
+            "WCF" => "WCF uses Target URL, an XML template (the operation element or a whole envelope) and StepConfig such as {\"SoapAction\":\"http://tempuri.org/IOrders/GetOrder\",\"SoapVersion\":\"1.1\"}.",
             "GraphQL" => "GraphQL uses Target URL and StepConfig such as Source, Query, Variables, and OperationName.",
             "File" => "File StepConfig examples: {\"Action\":\"ReadBinary\",\"Path\":\"Files/image.png\",\"OutputVariable\":\"imageFile\",\"OutputMode\":\"Reference\"}.",
             "Script" => "Script StepConfig should identify the script source and inputs. Trusted scripts must be enabled in the instance.",
@@ -191,7 +192,7 @@ internal sealed class TestStepWizardWindow : Window
         if (!int.TryParse(_testcaseIndex.Text, out var index) || index < 1) { _error.Text = "Testcase index must be a positive number."; return; }
         if (string.IsNullOrWhiteSpace(_testcase.Text) || string.IsNullOrWhiteSpace(_stepName.Text)) { _error.Text = "Testcase and step name are required."; return; }
         if (!int.TryParse(_timeout.Text, out var timeout) || timeout < 0) { _error.Text = "Timeout must be zero or a positive number."; return; }
-        if (type is "HTTP" or "GraphQL" && string.IsNullOrWhiteSpace(_targetUrl.Text)) { _error.Text = "Target URL is required for HTTP and GraphQL steps."; return; }
+        if (type is "HTTP" or "WCF" or "GraphQL" && string.IsNullOrWhiteSpace(_targetUrl.Text)) { _error.Text = "Target URL is required for HTTP and GraphQL steps."; return; }
         if (!string.IsNullOrWhiteSpace(_template.Text))
         {
             var templatePath = Path.GetFullPath(Path.Combine(_templatesFolder, _template.Text.Replace('/', Path.DirectorySeparatorChar)));

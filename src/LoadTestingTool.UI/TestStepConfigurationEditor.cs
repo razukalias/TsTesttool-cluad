@@ -23,7 +23,7 @@ internal sealed class TestStepConfigurationEditor : UserControl
     private readonly StackPanel _steps = new() { Spacing = 5 };
     private readonly StackPanel _editor = new() { Spacing = 8 };
     private readonly TextBox _newStepName = new() { Watermark = "Step name", MinWidth = 260 };
-    private readonly ComboBox _newStepType = new() { ItemsSource = new[] { "HTTP", "GraphQL", "CaseQL", "File", "Script", "SQL", "If", "While", "For", "ForEach" }, SelectedIndex = 0, MinWidth = 180 };
+    private readonly ComboBox _newStepType = new() { ItemsSource = new[] { "HTTP", "WCF", "GraphQL", "CaseQL", "File", "Script", "SQL", "If", "While", "For", "ForEach" }, SelectedIndex = 0, MinWidth = 180 };
     private readonly TextBlock _status = DashboardStyle.Text("", 11, false, DashboardStyle.Muted);
     private readonly Dictionary<string, int> _headers = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<StepRow> _rows = [];
@@ -197,7 +197,7 @@ internal sealed class TestStepConfigurationEditor : UserControl
         _selectedStep = row; _loading = true; _editor.Children.Clear();
         _stepName = new TextBox { Text = row.Get(_headers, "stepname", "NewStep") };
         var existingType = row.Get(_headers, "steptype", "HTTP");
-        _stepType = new ComboBox { ItemsSource = new[] { "HTTP", "GraphQL", "CaseQL", "File", "Script", "SQL", "If", "While", "For", "ForEach" }.Concat(existingType.Equals("ActionManual", StringComparison.OrdinalIgnoreCase) ? new[] { "ActionManual" } : Array.Empty<string>()), SelectedItem = existingType };
+        _stepType = new ComboBox { ItemsSource = new[] { "HTTP", "WCF", "GraphQL", "CaseQL", "File", "Script", "SQL", "If", "While", "For", "ForEach" }.Concat(existingType.Equals("ActionManual", StringComparison.OrdinalIgnoreCase) ? new[] { "ActionManual" } : Array.Empty<string>()), SelectedItem = existingType };
         _enabled = new CheckBox { Content = "Enabled", IsChecked = !row.Get(_headers, "enabled", "true").Equals("false", StringComparison.OrdinalIgnoreCase) };
         _stage = new ComboBox { ItemsSource = new[] { "Setup", "Test", "Teardown" }, SelectedItem = row.Get(_headers, "stage", "Test") };
         _condition = new TextBox { Text = row.Get(_headers, "condition"), Watermark = "_status_ eq 200" }; _parent = new ComboBox { MinWidth = 220 }; FillParentChoices(row);

@@ -68,9 +68,25 @@ public sealed partial class MockServerWindow
             });
             _selected = _config.Routes.Count; MarkChanged();
         });
+        var soap = Small("SOAP", "Add a SOAP operation (POST /Orders.svc, answered for one operation) and a ?wsdl route", () =>
+        {
+            _config.Routes.Add(new MockRoute
+            {
+                Name = "SOAP GetOrder", Method = "POST", Path = "/Orders.svc",
+                Conditions = [new MockCondition { Source = "soap", Name = "operation", Op = "equals", Value = "GetOrder" }],
+                Response = new MockResponse { ContentType = "text/xml; charset=utf-8", Body = SoapSample.Response }
+            });
+            _config.Routes.Add(new MockRoute
+            {
+                Name = "WSDL", Method = "GET", Path = "/Orders.svc",
+                Conditions = [new MockCondition { Source = "query", Name = "wsdl", Op = "exists" }],
+                Response = new MockResponse { ContentType = "text/xml; charset=utf-8", Body = SoapSample.Wsdl }
+            });
+            _selected = _config.Routes.Count - 1; MarkChanged();
+        });
         var up = Small("▲", "Move up: routes are tried from the top", () => Move(-1));
         var down = Small("▼", "Move down", () => Move(1));
-        var tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(0, 0, 0, 6), Children = { add, graphQl, copy, remove, up, down } };
+        var tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(0, 0, 0, 6), Children = { add, graphQl, soap, copy, remove, up, down } };
         _routeList.SelectionChanged += (_, _) => { if (_refreshing || _routeList.SelectedIndex < 0) return; _selected = _routeList.SelectedIndex; LoadSelected(); };
         var left = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 8, 12, 0), Children = { tools, _routeList } };
         DockPanel.SetDock(tools, Dock.Top);

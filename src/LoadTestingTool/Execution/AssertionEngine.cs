@@ -193,13 +193,22 @@ public sealed class AssertionEngine
     private static Dictionary<string, string> FlattenXml(XDocument document)
     {
         var output = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (document.Root is not null) FlattenXmlElement(document.Root, document.Root.Name.LocalName, output);
+        if (document.Root is null) return output;
+        // A SOAP envelope is read from its body: GetOrderResponse.Status, Fault.faultstring, and Header.<element> for header elements.
+        if (document.Root.Name.LocalName == "Envelope" && document.Root.Name.NamespaceName is SoapEnvelope.Ns11 or SoapEnvelope.Ns12
+            && document.Root.Elements().FirstOrDefault(e => e.Name.LocalName == "Body") is { } soapBody)
+        {
+            foreach (var header in document.Root.Elements().Where(e => e.Name.LocalName == "Header").SelectMany(e => e.Elements())) FlattenXmlElement(header, "Header." + header.Name.LocalName, output);
+            foreach (var child in soapBody.Elements()) FlattenXmlElement(child, child.Name.LocalName, output);
+            return output;
+        }
+        FlattenXmlElement(document.Root, document.Root.Name.LocalName, output);
         return output;
     }
 
     private static void FlattenXmlElement(XElement element, string path, Dictionary<string, string> output)
     {
-        foreach (var attribute in element.Attributes()) output[$"{path}.@{attribute.Name.LocalName}"] = attribute.Value;
+        foreach (var attribute in element.Attributes().Where(a => !a.IsNamespaceDeclaration)) output[$"{path}.@{attribute.Name.LocalName}"] = attribute.Value;
         var children = element.Elements().ToList();
         if (children.Count == 0) { output[path] = element.Value; return; }
         foreach (var group in children.GroupBy(x => x.Name.LocalName))

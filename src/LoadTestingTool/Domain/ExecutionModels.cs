@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace LoadTestingTool.Domain;
 
-public enum StepType { Http, GraphQL, CaseQL, Sql, File, Script, ActionManual, If, While, For, ForEach }
+public enum StepType { Http, GraphQL, CaseQL, Sql, File, Script, ActionManual, If, While, For, ForEach, Wcf }
 public enum ExecutionStage { Setup, Test, Teardown }
 public enum VariableScope { Step, Iteration, VirtualUser, Testcase, Run }
 
@@ -187,6 +187,7 @@ public static class StepTypeParser
     public static StepType Parse(string? value) => string.IsNullOrWhiteSpace(value) ? StepType.Http : value.Trim().ToLowerInvariant() switch
     {
         "http" or "rest" => StepType.Http,
+        "wcf" or "soap" or "wcf-service" => StepType.Wcf,
         "graphql" or "graph-ql" => StepType.GraphQL,
         "caseql" or "case-ql" => StepType.CaseQL,
         "sql" or "sqlserver" or "sql-server" => StepType.Sql,
@@ -353,6 +354,7 @@ public static class StepTypeExtensions
     public static string WireName(this StepType type) => type switch
     {
         StepType.GraphQL => "GraphQL",
+        StepType.Wcf => "WCF",
         StepType.CaseQL => "CaseQL",
         StepType.Sql => "SQL",
         StepType.File => "File",
@@ -366,6 +368,9 @@ public static class StepTypeExtensions
     };
 
     /// <summary>If, While, For and ForEach hold other steps and send nothing themselves.</summary>
+    /// <summary>HTTP and WCF steps are sent from a template to a target URL and answered with a status, headers and a body.</summary>
+    public static bool IsHttpLike(this StepType type) => type is StepType.Http or StepType.Wcf;
+
     public static bool IsControl(this StepType type) => type is StepType.If or StepType.While or StepType.For or StepType.ForEach;
 }
 

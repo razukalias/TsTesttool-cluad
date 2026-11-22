@@ -128,6 +128,33 @@ public class StepTypeTests
     }
 
     [AvaloniaFact]
+    public void Wcf_settings_use_the_runners_keys_and_keep_other_keys()
+    {
+        using var dir = new TempDir();
+        var (window, shell, step) = Open(dir);
+        step.Write("steptype", "WCF");
+        step.Write("stepconfig", "{\"SoapAction\":\"urn:old\",\"Extra\":1}");
+        Pump();
+        var section = window.GetVisualDescendants().OfType<StepTypeSection>().Single();
+        var box = section.GetVisualDescendants().OfType<TextBox>().First(t => t.Text == "urn:old");
+        box.Text = "urn:new";
+        Leave(box);
+        var user = section.GetVisualDescendants().OfType<TextBox>().First(t => t.Watermark == "Optional. Adds a WS-Security UsernameToken.");
+        user.Text = "svc";
+        Leave(user);
+        var json = JsonNode.Parse(shell.Current!.FocusedStep!.Value("stepconfig"))!.AsObject();
+        Assert.Equal("urn:new", json["SoapAction"]!.ToString());
+        Assert.Equal("svc", json["Username"]!.ToString());
+        Assert.Equal(1, (int)json["Extra"]!);
+        Assert.True(StepTypeSection.HasSettings("WCF"));
+        Assert.Contains("SOAP", StepTypeSection.Describe("WCF"));
+        Assert.Contains("WCF", StepOptions.StepTypes);
+        Assert.NotNull(LoadTestingTool.UI.StepTypeGuide.For("WCF"));
+        Assert.NotEqual(TreeIcons.ForStep("HTTP"), TreeIcons.ForStep("WCF"));
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Multipart_content_type_shows_a_parts_editor_that_writes_parts()
     {
         using var dir = new TempDir();

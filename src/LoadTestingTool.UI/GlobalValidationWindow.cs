@@ -122,6 +122,12 @@ internal static class GlobalValidationService
         {
             switch (step.StepType)
             {
+                case StepType.Wcf:
+                    var wcf = StepConfig.Read<LoadTestingTool.Execution.WcfStepOptions>(step);
+                    if (wcf.SoapVersion is not ("1.1" or "1.2")) issues.Add(Issue("ERROR", location, $"WCF step has SoapVersion '{wcf.SoapVersion}'.", "Use 1.1 or 1.2."));
+                    if (wcf.Username.Length == 0 && wcf.Password.Length > 0) issues.Add(Issue("WARNING", location, "WCF step has a Password but no Username, so no security header is sent.", "Add a Username, or remove the Password."));
+                    if (wcf.HeaderXml.Length > 0) { try { System.Xml.Linq.XElement.Parse("<h>" + wcf.HeaderXml + "</h>"); } catch (System.Xml.XmlException ex) { issues.Add(Issue("ERROR", location, $"WCF HeaderXml is not valid XML: {ex.Message}", "Fix the XML in the step's extra header.")); } }
+                    break;
                 case StepType.GraphQL:
                     ValidateSource(issues, item, location, StepConfig.Read<GraphQlStepOptions>(step).Source, "GraphQL source");
                     break;
