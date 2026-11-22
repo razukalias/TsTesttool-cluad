@@ -158,7 +158,8 @@ public sealed partial class EditorShellViewModel : ObservableObject
             node.WorkbookSaved += saved => WorkbookSaved?.Invoke(saved);
             Instances.Add(node);
         }
-        if (Instances.Count == 0) throw new ArgumentException("There are no instances to edit.", nameof(instances));
+        // No instances yet (empty Instances folder): open an empty editor so the user can create one.
+        if (Instances.Count == 0) return;
 
         var full = selectedPath is null ? null : System.IO.Path.GetFullPath(selectedPath);
         var start = Instances.FirstOrDefault(n => System.IO.Path.GetFullPath(n.Path) == full) ?? Instances[0];

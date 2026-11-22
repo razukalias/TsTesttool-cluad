@@ -604,8 +604,10 @@ public sealed partial class MainWindow
     /// <summary>The data editor as the application's only window: the dashboard is built but never shown, and still runs tests and tracks results for the editor.</summary>
     internal DataEditor.DataEditorWindow? CreateStandaloneEditor()
     {
+        // Open the editor even with no instances yet (empty Instances folder), so the
+        // user can create one from it instead of landing on a bare leftover window.
         _selectedInstance ??= _instances.FirstOrDefault();
-        return _selectedInstance is null ? null : CreateDataEditor();
+        return CreateDataEditor();
     }
 
     private Window? _hostWindow;
@@ -617,7 +619,7 @@ public sealed partial class MainWindow
     {
         try
         {
-            var editor = DataEditor.DataEditorWindow.Open(_instances.Select(x => (x.Name, x.WorkbookPath)), _selectedInstance!.WorkbookPath);
+            var editor = DataEditor.DataEditorWindow.Open(_instances.Select(x => (x.Name, x.WorkbookPath)), _selectedInstance?.WorkbookPath);
             editor.Shell.RunHandler = RunFromEditorAsync;
             editor.Shell.EnvironmentSettings = new EditorEnvironmentSettings(this);
             editor.Shell.HistoryHandler = LaunchHistoryWorkspace;
@@ -637,6 +639,7 @@ public sealed partial class MainWindow
         catch (Exception ex)
         {
             _details.Text = $"Cannot open the data editor: {ex.Message}";
+            UiLog($"Cannot open the data editor: {ex}");
             return null;
         }
     }

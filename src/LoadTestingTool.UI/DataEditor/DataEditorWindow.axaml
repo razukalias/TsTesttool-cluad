@@ -388,7 +388,15 @@
 
   <GridSplitter x:Name="TreeSplitter" Grid.Column="1" Width="6" Background="Transparent" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Cursor="SizeWestEast" ToolTip.Tip="Drag to resize" />
 
-  <Grid Grid.Column="2" DataContext="{Binding Current}" x:DataType="vm:DataEditorViewModel" RowDefinitions="Auto,Auto,*,Auto">
+  <!-- Shown only while no workbook is open (no instances yet, e.g. an empty Instances folder) -->
+  <StackPanel Grid.Column="2" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center"
+              IsVisible="{Binding Current, Converter={x:Static ObjectConverters.IsNull}}">
+    <TextBlock Text="No instances yet" FontSize="18" FontWeight="SemiBold" Foreground="#E3EDF9" HorizontalAlignment="Center" />
+    <TextBlock Text="Click + next to INSTANCES to create one, or add instance folders to the Instances folder and press refresh." Foreground="#8EA4BC" TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center" />
+  </StackPanel>
+
+  <Grid Grid.Column="2" DataContext="{Binding Current}" x:DataType="vm:DataEditorViewModel" RowDefinitions="Auto,Auto,*,Auto"
+        IsVisible="{Binding $self.DataContext, Converter={x:Static ObjectConverters.IsNotNull}}">
 
     <!-- Title bar: what is open, whether it is saved, and the main actions -->
     <Border Grid.Row="0" Background="#0F1C2E" BorderBrush="#22364D" BorderThickness="0,0,0,1" Padding="20,14">
