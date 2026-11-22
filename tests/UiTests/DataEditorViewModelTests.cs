@@ -226,11 +226,11 @@ public class DataEditorViewModelTests
         vm.VisibleRows[0].Cells[CellOf(vm, "CreateCustomer.name")] = "Mine";
         vm.SaveCommand.Execute(null);
 
-        Assert.True(vm.ConflictVisible);
+        Assert.True(vm.FileChangedVisible);   // the modified time differs: asked before anything is written
         Assert.True(vm.IsDirty);
-        Assert.True(vm.StatusIsError);
 
-        vm.OverwriteAndSaveCommand.Execute(null);
+        vm.OverwriteChangedFileCommand.Execute(null);
+        Assert.False(vm.FileChangedVisible);
         Assert.False(vm.ConflictVisible);
         Assert.False(vm.IsDirty);
     }

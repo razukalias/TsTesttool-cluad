@@ -586,6 +586,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         try
         {
             if (AskAboutRenamedReferences()) return false;
+            if (IsDirty && !options.OverwriteExternalChanges && CheckFileChanged()) return false;   // the file has another modified time: ask first
             options = new LoadTestingTool.Editing.WorkbookSaveOptions { CreateBackup = options.CreateBackup, BackupFolder = options.BackupFolder, OverwriteExternalChanges = options.OverwriteExternalChanges, FixRenamedReferences = _fixReferencesChoice ?? true };
             var keepRow = SelectedRow?.Cells[0];
             SavingWorkbook?.Invoke(); // open step forms write their template files too

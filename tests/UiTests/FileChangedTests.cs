@@ -1,70 +1,90 @@
 using Avalonia.Headless.XUnit;
-using Avalonia.Threading;
 using LoadTestingTool.UI.DataEditor;
 using Xunit;
 
 namespace UiTests;
 
+// Only at save: a file with another modified time than the one the editor opened or saved asks before it is overwritten.
 public class FileChangedTests
 {
+    private static void Edit(DataEditorViewModel vm) => vm.VisibleRows[0].Cells[1] = "edited";
+
     [Fact]
-    public void A_file_with_a_different_modified_time_asks_to_reload_and_reload_takes_the_new_version()
+    public void Nothing_is_checked_until_saving()
     {
         using var dir = new TempDir();
         var path = Samples.CreateLarge(dir, rows: 3);
         var vm = new DataEditorViewModel(path);
-        Assert.False(vm.CheckFileChanged());                       // nothing changed since opening
         File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(5));
-        Assert.True(vm.CheckFileChanged());
+        Assert.False(vm.FileChangedVisible);                       // no background check
+        Edit(vm);
+        Assert.False(vm.FileChangedVisible);
+    }
+
+    [Fact]
+    public void Saving_a_file_with_another_modified_time_asks_first_and_saves_nothing()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        var vm = new DataEditorViewModel(path);
+        Edit(vm);
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(5));
+        var before = File.ReadAllBytes(path);
+        vm.SaveCommand.Execute(null);
         Assert.True(vm.FileChangedVisible);
         Assert.Contains("changed on disk", vm.FileChangedText);
+        Assert.True(vm.IsDirty);
+        Assert.Equal(before, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public void Cancel_keeps_the_edits_and_the_next_save_asks_again()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        var vm = new DataEditorViewModel(path);
+        Edit(vm);
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(5));
+        vm.SaveCommand.Execute(null);
+        vm.CancelSaveOfChangedFileCommand.Execute(null);
+        Assert.False(vm.FileChangedVisible);
+        Assert.True(vm.IsDirty);
+        vm.SaveCommand.Execute(null);
+        Assert.True(vm.FileChangedVisible);
+    }
+
+    [Fact]
+    public void Overwrite_saves_over_the_changed_file()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        var vm = new DataEditorViewModel(path);
+        Edit(vm);
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(5));
+        vm.SaveCommand.Execute(null);
+        vm.OverwriteChangedFileCommand.Execute(null);
+        Assert.False(vm.IsDirty);
+        Assert.False(vm.FileChangedVisible);
+        vm.VisibleRows[0].Cells[1] = "edited again";
+        vm.SaveCommand.Execute(null);                              // the saved time is the known one now: no question
+        Assert.False(vm.FileChangedVisible);
+        Assert.False(vm.IsDirty);
+    }
+
+    [Fact]
+    public void Reload_takes_the_new_version_and_a_normal_save_does_not_ask()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        var vm = new DataEditorViewModel(path);
+        Edit(vm);
+        vm.SaveCommand.Execute(null);                              // own save: no question
+        Assert.False(vm.FileChangedVisible);
+        Edit(vm);
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(5));
+        vm.SaveCommand.Execute(null);
         vm.ReloadChangedFileCommand.Execute(null);
         Assert.False(vm.FileChangedVisible);
-        Assert.False(vm.CheckFileChanged());                       // the new time is the known one
-    }
-
-    [Fact]
-    public void Keep_what_I_see_accepts_the_new_time_and_an_own_save_does_not_trigger_the_question()
-    {
-        using var dir = new TempDir();
-        var path = Samples.CreateLarge(dir, rows: 3);
-        var vm = new DataEditorViewModel(path);
-        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(5));
-        Assert.True(vm.CheckFileChanged());
-        vm.KeepMyVersionCommand.Execute(null);
-        Assert.False(vm.FileChangedVisible);
-        Assert.False(vm.CheckFileChanged());
-
-        vm.VisibleRows[0].Cells[1] = "edited";
-        vm.SaveCommand.Execute(null);
         Assert.False(vm.IsDirty);
-        Assert.False(vm.CheckFileChanged());                       // our own save is not "someone else"
-    }
-
-    [Fact]
-    public void Unsaved_edits_are_mentioned_in_the_question()
-    {
-        using var dir = new TempDir();
-        var path = Samples.CreateLarge(dir, rows: 3);
-        var vm = new DataEditorViewModel(path);
-        vm.VisibleRows[0].Cells[1] = "edited";
-        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(5));
-        Assert.True(vm.CheckFileChanged());
-        Assert.Contains("unsaved edits", vm.FileChangedText);
-    }
-
-    [AvaloniaFact]
-    public void The_window_checks_when_activated_and_shows_the_banner()
-    {
-        using var dir = new TempDir();
-        var path = Samples.CreateLarge(dir, rows: 3);
-        var window = DataEditorWindow.Open(path, "Customers");
-        window.Width = 1200; window.Height = 700; window.Show();
-        Dispatcher.UIThread.RunJobs();
-        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(5));
-        window.CheckFilesChanged();
-        Dispatcher.UIThread.RunJobs();
-        Assert.True(window.ViewModel.FileChangedVisible);
-        window.Close();
     }
 }

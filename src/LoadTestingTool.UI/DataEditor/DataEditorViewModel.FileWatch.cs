@@ -3,7 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace LoadTestingTool.UI.DataEditor;
 
-// Noticing that the workbook file was changed by someone else (Excel, another editor window, a run) after it was opened or last saved here.
+// At save time: has the workbook file been changed by someone else (Excel, another editor window, a run) since it was opened or last saved here? Nothing is checked in the background.
 public sealed partial class DataEditorViewModel
 {
     private DateTime _knownWriteUtc = DateTime.MinValue;
@@ -26,17 +26,17 @@ public sealed partial class DataEditorViewModel
     }
 
     /// <summary>
-    /// Compares the file's modified time with the one remembered when the workbook was opened or last saved here; when it differs, shows the question.
-    /// Returns true when the question is (now) shown. A missing file, a running instance and an already shown question are left alone.
+    /// Called when saving: compares the file's modified time with the one remembered when the workbook was opened or last saved here; when it differs,
+    /// shows the question (reload, overwrite or cancel) and returns true, and the save does not go ahead. A missing file is left alone.
     /// </summary>
     public bool CheckFileChanged()
     {
         if (FileChangedVisible) return true;
-        if (IsRunning || _knownWriteUtc == DateTime.MinValue) return false;
+        if (_knownWriteUtc == DateTime.MinValue) return false;
         var now = ReadWriteTimeUtc();
         if (now == DateTime.MinValue || now == _knownWriteUtc) return false;
         FileChangedText = $"This workbook was changed on disk at {now.ToLocalTime():HH:mm:ss} (you opened or saved it at {_knownWriteUtc.ToLocalTime():HH:mm:ss})."
-            + (IsDirty ? " You have unsaved edits: reloading would lose them." : " Reload to see the new version.");
+            + " Saving now would overwrite that version. Reload to take it (your unsaved edits are lost), or overwrite it with yours.";
         FileChangedVisible = true;
         return true;
     }
@@ -44,12 +44,15 @@ public sealed partial class DataEditorViewModel
     [RelayCommand]
     private void ReloadChangedFile() { Reload(); }
 
-    /// <summary>"Keep what I see": the changed file is accepted as seen. Saving still stops if the content really differs (the check at save time).</summary>
+    /// <summary>"Cancel": nothing is saved; the next save asks again.</summary>
     [RelayCommand]
-    private void KeepMyVersion()
+    private void CancelSaveOfChangedFile()
     {
-        _knownWriteUtc = ReadWriteTimeUtc();
         FileChangedVisible = false;
-        ShowStatus("Kept your version. Saving will ask again if the file really differs.", isError: false);
+        ShowStatus("Not saved: the file on disk is newer. Your edits are still here.", isError: true);
     }
+
+    /// <summary>"Overwrite with my edits": saves over the changed file.</summary>
+    [RelayCommand]
+    private void OverwriteChangedFile() { FileChangedVisible = false; SaveCore(new LoadTestingTool.Editing.WorkbookSaveOptions { OverwriteExternalChanges = true }); }
 }
