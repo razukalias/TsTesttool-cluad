@@ -6,6 +6,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using LoadTestingTool.Editing;
+using LoadTestingTool.Execution;
 
 namespace LoadTestingTool.UI.DataEditor;
 
@@ -150,6 +151,7 @@ public sealed class RecordLineView : Border
     private readonly RecordLineViewModel _line;
     private readonly DataEditorViewModel _editor;
     private readonly WrapPanel _chips = new() { Orientation = Orientation.Horizontal };
+    private readonly StackPanel _alternatives = new() { Spacing = 4, Tag = "alternatives" };
     private readonly TextBlock _raw = new() { FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontSize = 11, Foreground = Brush.Parse("#6F87A3"), TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock _warning = new() { FontSize = 11, Foreground = Brush.Parse("#F6A623"), TextWrapping = TextWrapping.Wrap, Tag = "line-warning" };
     private readonly TextBlock _help = new() { FontSize = 11, Foreground = Brush.Parse("#8EA4BC"), TextWrapping = TextWrapping.Wrap, Tag = "line-help", IsVisible = false };
@@ -169,6 +171,7 @@ public sealed class RecordLineView : Border
         var right = new StackPanel { Spacing = 3 };
         Grid.SetColumn(right, 1);
         right.Children.Add(_chips);
+        right.Children.Add(_alternatives);
         if (line.IsDontRun) { _help.Text = RecordLineViewModel.DontRunHelp; _help.IsVisible = true; right.Children.Add(_help); }
         right.Children.Add(_raw);
         right.Children.Add(_example);
@@ -193,9 +196,15 @@ public sealed class RecordLineView : Border
         {
             for (var i = 0; i < _line.Parts.Count; i++) _chips.Children.Add(Chip(i));
             _chips.Children.Add(AddButton());
+            if (_line.CanCombine)
+            {
+                _chips.Children.Add(AlternativeButton(true));
+                _chips.Children.Add(AlternativeButton(false));
+            }
             if (_line.IsDontRun) _chips.Children.Add(StepsButton());
             _chips.Children.Add(CopyButton());
         }
+        RenderAlternatives();
         var generated = _line.Parts.Any(p => p.Kind != ValuePartKind.Text);
         _raw.Text = _line.Raw.Length == 0 ? "(empty)" : "stored as: " + _line.Raw;
         _raw.IsVisible = generated || _line.Raw.Length == 0 || _line.HasCondition && _line.Raw.StartsWith('{');   // plain text needs no second copy
@@ -203,6 +212,39 @@ public sealed class RecordLineView : Border
         _example.IsVisible = generated;
         _warning.Text = _line.Warnings.Count == 0 ? string.Empty : "⚠ " + string.Join(" ", _line.Warnings);
         _warning.IsVisible = _line.Warnings.Count > 0;
+    }
+
+    private Control AlternativeButton(bool isOr)
+    {
+        var button = new Button { Content = isOr ? "+ OR" : "+ AND", Tag = isOr ? "alt-add-or" : "alt-add-and", Padding = new Thickness(10, 3), Margin = new Thickness(0, 0, 6, 4), MinHeight = 28, CornerRadius = new CornerRadius(14) };
+        ToolTip.SetTip(button, isOr ? "Another check of this field: the cell passes when this OR the new check passes" : "Another check of this field: the cell passes when this AND the new check pass (AND binds tighter than OR)");
+        button.Click += (_, _) => _line.AddAlternative(isOr);
+        return button;
+    }
+
+    /// <summary>The OR / AND checks below the value: the kind (click to switch), the verb, the value and a ✕.</summary>
+    private void RenderAlternatives()
+    {
+        _alternatives.Children.Clear();
+        var verbs = ValueParts.Conditions.Where(c => AssertionAlternatives.CanCombine(c.Verb)).ToList();
+        for (var i = 0; i < _line.Alternatives.Count; i++)
+        {
+            var index = i;
+            var item = _line.Alternatives[i];
+            var kind = new Button { Content = item.IsOr ? "OR" : "AND", Tag = "alt-kind", MinWidth = 52, Padding = new Thickness(8, 3), Background = Brush.Parse(item.IsOr ? "#3B2F6B" : "#1E4D5F") };
+            ToolTip.SetTip(kind, "Click to switch between OR and AND");
+            kind.Click += (_, _) => _line.ChangeAlternative(index, item with { IsOr = !item.IsOr });
+            var verb = new ComboBox { ItemsSource = verbs.Select(v => v.Words).ToList(), SelectedItem = verbs.FirstOrDefault(v => v.Verb == item.Verb).Words ?? verbs.First().Words, MinWidth = 150, Tag = "alt-verb" };
+            verb.SelectionChanged += (_, _) => { if (verb.SelectedItem is string words && verbs.First(v => v.Words == words).Verb is var chosen && chosen != item.Verb) _line.ChangeAlternative(index, item with { Verb = chosen }); };
+            var value = new TextBox { Text = item.Value, MinWidth = 160, Watermark = "value", Tag = "alt-value", IsVisible = ValueParts.NeedsValue(item.Verb) };
+            void Commit() { var text = (value.Text ?? string.Empty).Replace('>', ')').Trim(); if (text != item.Value) _line.ChangeAlternative(index, item with { Value = text }); }
+            value.LostFocus += (_, _) => Commit();
+            value.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Commit(); e.Handled = true; } };
+            var remove = new Button { Content = "✕", Tag = "alt-remove", Padding = new Thickness(8, 3) };
+            ToolTip.SetTip(remove, "Remove this check");
+            remove.Click += (_, _) => _line.RemoveAlternative(index);
+            _alternatives.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Tag = "alt-row", Children = { kind, verb, value, remove } });
+        }
     }
 
     private Control Chip(int index)

@@ -161,7 +161,9 @@ public partial class DataEditorWindow
     {
         if (cell < 1 || cell > editor.Columns.Count) return;
         var column = editor.Columns[cell - 1];
-        var current = editor.HeaderText(cell);
+        var full = editor.HeaderText(cell);
+        var current = DataEditorViewModel.PlainName(full);   // the {verb} is set on the column's verb button, not typed here
+        var verbPrefix = full.Trim().StartsWith('{') && full.IndexOf('}') is var close and > 0 ? full.Trim()[..(close + 1)] : string.Empty;
         var box = new TextBox { Text = current, MinWidth = 260, Tag = "rename-header", Watermark = "Header name" };
         var flyout = new Flyout { Placement = PlacementMode.Bottom };
         var closeButton = new Button { Content = "✕", Tag = "rename-header-close", Padding = new Avalonia.Thickness(8, 2) };
@@ -176,7 +178,7 @@ public partial class DataEditorWindow
         {
             var text = box.Text ?? string.Empty;
             flyout.Hide();
-            if (text.Trim() != current) editor.RenameColumnTo(cell, text);
+            if (text.Trim() != current) editor.RenameColumnTo(cell, verbPrefix + DataEditorViewModel.PlainName(text));
         }
         box.KeyDown += (_, k) =>
         {

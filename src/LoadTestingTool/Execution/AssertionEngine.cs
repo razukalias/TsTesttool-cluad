@@ -116,9 +116,24 @@ public sealed class AssertionEngine
     {
         values.TryGetValue(d.ResponsePath, out var actual);
         var op = string.IsNullOrWhiteSpace(d.AssertionVerb) ? "eq" : d.AssertionVerb.ToLowerInvariant();
-        var passed = Test(op, actual, d.ExpectedValue, values.ContainsKey(d.ResponsePath), d.AssertionVerb);
+        var exists = values.ContainsKey(d.ResponsePath);
+        bool passed;
+        string described;
+        if (AssertionAlternatives.HasAny(d.ExpectedValue))
+        {
+            var (primary, alternatives) = AssertionAlternatives.Parse(d.ExpectedValue, op);
+            foreach (var verb in alternatives.Select(a => a.Verb).Prepend(op))
+                if (!AssertionAlternatives.CanCombine(verb)) throw new InvalidDataException($"The verb '{verb}' cannot be combined with <or:> / <and:>; use one of: {string.Join(", ", AssertionAlternatives.Combinable)}.");
+            passed = AssertionAlternatives.Evaluate(op, primary, alternatives, (verb, value) => Test(verb.ToLowerInvariant(), actual, value, exists, verb));
+            described = AssertionAlternatives.Describe(op, primary, alternatives);
+        }
+        else
+        {
+            passed = Test(op, actual, d.ExpectedValue, exists, d.AssertionVerb);
+            described = $"{op} '{d.ExpectedValue}'";
+        }
         var actualValue = actual ?? "<missing>";
-        var failureMessage = passed ? "" : $"Assertion failed: {d.ResponsePath} {op} '{d.ExpectedValue}', actual '{actualValue}'.";
+        var failureMessage = passed ? "" : $"Assertion failed: {d.ResponsePath} {described}, actual '{actualValue}'.";
         return new AssertionResult { RunId = runId, RequestId = requestId, TestcaseIndex = d.TestcaseIndex, Testcase = d.Testcase, DataId = d.DataId, StepName = d.StepName, ResponsePath = d.ResponsePath, AssertionVerb = op, AssertionType = AssertionSemantics.Type(op, actualValue, failureMessage), AssertionMeaning = AssertionSemantics.Meaning(op, actualValue, failureMessage), ExpectedValue = d.ExpectedValue, ActualValue = actualValue, Result = passed ? "PASS" : "FAIL", FailureMessage = failureMessage, ExtractVariable = d.ExtractVariable, ExcelRowNumber = d.ExcelRowNumber, ExpectedValueColumn = d.ExpectedValueColumn };
     }
 

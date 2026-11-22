@@ -48,7 +48,10 @@ public class ToolbarLayoutTests
         using var dir = new TempDir();
         var (window, _) = Open(dir);
         var texts = ButtonTexts(window).ToList();
-        foreach (var gone in new[] { "▦  Table view", "⚙  Config edit mode", "☰  Record view", "Add column", "Rename / remove column", "Import CSV…", "Export CSV…", "Re-run…", "Compare runs…" })
+        foreach (var gone in new[] { "▦  Table view", "⚙  Config edit mode", "☰  Record view", "Add column", "Rename / remove column", "Import CSV…", "Export CSV…", "Re-run…" })
+            Assert.DoesNotContain(gone, texts);
+        Assert.Contains("Compare runs…", texts);   // a visible button next to History & logs…
+        foreach (var gone in Array.Empty<string>())
             Assert.DoesNotContain(gone, texts);
         Assert.DoesNotContain(texts, t => t.StartsWith("Column filters"));
         Assert.DoesNotContain(window.GetVisualDescendants().OfType<ToggleButton>(), b => b.Content as string == "Preview request");

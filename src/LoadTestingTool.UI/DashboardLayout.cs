@@ -482,9 +482,7 @@ public sealed partial class MainWindow
         foreach (var filter in new[] { _overviewStepStatus, _overviewStepEnvironment, _overviewStepTestcase, _overviewStepName })
             filter.Changed += (_, _) => { if (!_overviewStepFilterRefreshing) RefreshDashboardDetails(true); };
         _assertionSearch.TextChanged += (_, _) => RefreshAssertionList();
-        var assertionActions = new WrapPanel { Children = { DashboardStyle.Action("Copy assertions", () => _ = CopyAssertionsAsync()), DashboardStyle.Action("Select failed", () => { if (_selectedInstance is not null) foreach (var a in _selectedInstance.Assertions.Where(a => a.Result == "FAIL")) a.Selected = true; RefreshAssertionList(); }),
-            DashboardStyle.Action("Clear", () => { if (_selectedInstance is not null) foreach (var a in _selectedInstance.Assertions) a.Selected = false; RefreshAssertionList(); }),
-            DashboardStyle.Action("Apply actual values", ApplySelectedFixes), DashboardStyle.Action("Compare", () => _ = GenerateAssertionComparisonAsync(openInEditor: true)) } };
+        var assertionActions = new WrapPanel { Children = { DashboardStyle.Action("Compare", () => _ = GenerateAssertionComparisonAsync(openInEditor: true)) } };
         var assertionPanel = new DockPanel { Margin = new Thickness(12) };
         var assertionFilterBar = new WrapPanel { Children = { _environmentFilter, _assertionTestcaseFilter, _assertionStepFilter, _assertionResultFilter, _assertionVerbFilter, _assertionSearch, _assertionExclude } };
         foreach (var control in assertionFilterBar.Children) control.Margin = new Thickness(0, 0, 8, 6);
@@ -1738,6 +1736,19 @@ public sealed partial class MainWindow
             })
             .OrderBy(x => x.Testcase, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.DataId, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Environment, StringComparer.OrdinalIgnoreCase).ToList();
     }
+    /// <summary>Old assertion tools kept out of the way: switched off, the dataset editor does their work (Compare, failed-cell list, assign actual).</summary>
+    private Control LegacyAssertionTools()
+    {
+        var buttons = new WrapPanel { Tag = "legacy-assertion-tools" };
+        foreach (var name in new[] { "Apply actual values", "Select failed", "Clear" })
+        {
+            var button = DashboardStyle.Action(name + " (legacy)", () => { });
+            button.IsEnabled = false;
+            buttons.Children.Add(button);
+        }
+        return new StackPanel { Spacing = 4, Children = { DashboardStyle.Text("Legacy assertion functions (disabled)", 13, true), buttons } };
+    }
+
     private void RefreshArtifacts()
     {
         _artifactPanel.Children.Clear(); var item = _selectedInstance;
@@ -1749,6 +1760,7 @@ public sealed partial class MainWindow
             _artifactPanel.Children.Add(DashboardStyle.Action("Handcraft: Edit workbook (legacy)", () => _ = EditWorkbookAsync()));
         }
         _artifactPanel.Children.Add(DashboardStyle.Action("Open latest result workbook", OpenLatestResultWorkbook));
+        _artifactPanel.Children.Add(LegacyAssertionTools());
         _artifactPanel.Children.Add(DashboardStyle.Action("Open Templates folder", OpenTemplatesFolder));
         _artifactPanel.Children.Add(DashboardStyle.Action("Open Results folder", () =>
         {

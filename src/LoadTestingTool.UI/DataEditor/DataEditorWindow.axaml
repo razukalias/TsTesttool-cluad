@@ -261,6 +261,8 @@
         </StackPanel>
         <Button x:Name="HistoryLogsButton" DockPanel.Dock="Bottom" Content="History &amp; logs…" HorizontalAlignment="Left" Margin="0,8,0,0" MinHeight="28" Padding="10,2" FontSize="12"
                 ToolTip.Tip="Choose what runs write to history and the internal log, with profiles for functional tests, debugging and load tests." />
+        <Button x:Name="CompareRunsButton" DockPanel.Dock="Bottom" Content="Compare runs…" HorizontalAlignment="Left" Margin="0,8,0,0" MinHeight="28" Padding="10,2" FontSize="12"
+                ToolTip.Tip="Open the run history of the selected test case to tick two or more runs and compare them; the comparison opens in the dataset editor." />
         <Button x:Name="MockServerButton" DockPanel.Dock="Bottom" Content="Mock server…" HorizontalAlignment="Left" Margin="0,12,0,0" MinHeight="28" Padding="10,2" FontSize="12"
                 ToolTip.Tip="Configure a local test server (any HTTP method, headers, status and body per route), run it as its own process and watch the requests it gets." />
         <Button x:Name="StorageCleanupButton" DockPanel.Dock="Bottom" Content="Storage &amp; cleanup…" HorizontalAlignment="Left" Margin="0,12,0,0" MinHeight="28" Padding="10,2" FontSize="12"

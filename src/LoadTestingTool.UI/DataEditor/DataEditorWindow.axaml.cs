@@ -71,6 +71,7 @@ public partial class DataEditorWindow : Window
     {
         if (this.FindControl<Button>("StorageCleanupButton") is { } cleanup && !_cleanupWired) { _cleanupWired = true; cleanup.Click += (_, _) => _shell.RunDetails?.OpenStorageCleanup(); }
         if (this.FindControl<Button>("MockServerButton") is { } mock && !_mockWired) { _mockWired = true; mock.Click += (_, _) => _shell.RunDetails?.OpenMockServer(); }
+        if (this.FindControl<Button>("CompareRunsButton") is { } compareRuns && compareRuns.Tag is null) { compareRuns.Tag = "wired"; compareRuns.Click += (_, _) => _shell.Current?.OpenHistoryCommand.Execute(null); }
         if (this.FindControl<Button>("HistoryLogsButton") is { } logs && !_logsWired) { _logsWired = true; logs.Click += (_, _) => { if (_shell.SelectedInstanceName is { } name) _shell.RunDetails?.OpenHistoryLogs(name); }; }
         if (_runDetailsAttached || _shell.RunDetails is not { } details) return;
         _runDetailsAttached = true;
@@ -493,7 +494,7 @@ public partial class DataEditorWindow : Window
         grid.Columns.Add(CreateResultColumn());
         foreach (var column in editor.Columns)
         {
-            var created = CreateColumn(column, editor.ExcelLetterOf(column), column.Group == ColumnGroup.Response ? OpenVerbMenu : null);
+            var created = CreateColumn(column, editor.ExcelLetterOf(column), column.Group == ColumnGroup.Response ? OpenVerbMenu : null, verb: column.Group == ColumnGroup.Response ? editor.VerbOf(editor.Columns.ToList().IndexOf(column) + 1) : string.Empty);
             if (created is FormattedTextColumn formatted)
             {
                 formatted.ExpectedColumn = column.Group == ColumnGroup.Response;
@@ -623,10 +624,10 @@ public partial class DataEditorWindow : Window
         })
     };
 
-    private static DataGridTextColumn CreateColumn(GridColumn column, string letter = "", Action<GridColumn, Control>? openVerbs = null, bool step = false) => new FormattedTextColumn(column.CellIndex, step ? column.Title : null)
+    private static DataGridTextColumn CreateColumn(GridColumn column, string letter = "", Action<GridColumn, Control>? openVerbs = null, bool step = false, string verb = "") => new FormattedTextColumn(column.CellIndex, step ? column.Title : null)
     {
         Tag = column.CellIndex,
-        Header = CreateHeader(step ? column with { Group = ColumnGroup.Id } : column, letter, openVerbs),
+        Header = CreateHeader(step ? column with { Group = ColumnGroup.Id } : column, letter, openVerbs, verb),
         Binding = new Binding($"Cells[{column.CellIndex}]") { Mode = BindingMode.TwoWay },
         MinWidth = 110,
         MaxWidth = 320,
@@ -638,7 +639,7 @@ public partial class DataEditorWindow : Window
     /// A column header: a grey bar with the Excel letter on top (click it to pick the column, Ctrl/Shift for several, right-click for the menu),
     /// then REQUEST / EXPECTED and the name. Expected columns also get a ✦ button for the assertion verb.
     /// </summary>
-    private static Control CreateHeader(GridColumn column, string letter = "", Action<GridColumn, Control>? openVerbs = null)
+    private static Control CreateHeader(GridColumn column, string letter = "", Action<GridColumn, Control>? openVerbs = null, string verb = "")
     {
         var (label, color) = column.Group switch
         {
@@ -652,21 +653,21 @@ public partial class DataEditorWindow : Window
             var bar = new Avalonia.Controls.Grid { Tag = "column-letter", ColumnDefinitions = new ColumnDefinitions("*,Auto") };
             var text = new TextBlock { Text = letter, FontSize = 10.5, FontWeight = FontWeight.SemiBold, Foreground = new SolidColorBrush(Color.Parse("#B7C7D9")), HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center };
             bar.Children.Add(text);
-            if (openVerbs is not null)
-            {
-                var wizard = new Button { Content = "✦", Tag = "header-wizard", FontSize = 11, Padding = new Avalonia.Thickness(4, 0), MinHeight = 0, MinWidth = 0, Background = Brushes.Transparent, BorderThickness = new Avalonia.Thickness(0), Foreground = new SolidColorBrush(Color.Parse("#F6C76B")) };
-                ToolTip.SetTip(wizard, "Assertion verb of this column (eq, contains, …)");
-                wizard.Click += (_, e) => { e.Handled = true; openVerbs(column, wizard); };
-                Avalonia.Controls.Grid.SetColumn(wizard, 1);
-                bar.Children.Add(wizard);
-            }
             var holder = new Border { Background = new SolidColorBrush(Color.Parse("#26374A")), CornerRadius = new Avalonia.CornerRadius(3), Padding = new Avalonia.Thickness(4, 1), Margin = new Avalonia.Thickness(0, 0, 0, 2), Child = bar, Tag = "column-letter-bar" };
             ToolTip.SetTip(holder, $"{(column.Group == ColumnGroup.Response ? "Response" : "Request")} sheet, column {letter}. Click to pick the column, Ctrl+click or Shift+click for several, right-click for the menu, double-click the header to rename it.");
             panel.Children.Add(holder);
+            if (openVerbs is not null)
+            {
+                var words = verb.Length == 0 ? "equals" : LoadTestingTool.Editing.ValueParts.Conditions.Where(c => c.Verb.Equals(verb, StringComparison.OrdinalIgnoreCase)).Select(c => c.Words).FirstOrDefault() ?? verb;
+                var verbButton = new Button { Content = words + " ▾", Tag = "header-verb", FontSize = 10.5, Padding = new Avalonia.Thickness(4, 1), MinHeight = 0, MinWidth = 0, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch, HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center, Background = new SolidColorBrush(Color.Parse("#1D3B33")), Foreground = new SolidColorBrush(Color.Parse("#39D39B")), Margin = new Avalonia.Thickness(0, 0, 0, 2) };
+                ToolTip.SetTip(verbButton, "Assertion verb of this column: click to change it (equals, contains, greater than …)");
+                verbButton.Click += (_, e) => { e.Handled = true; openVerbs(column, verbButton); };
+                panel.Children.Add(verbButton);
+            }
         }
         if (label.Length > 0)
             panel.Children.Add(new TextBlock { Text = label, FontSize = 9.5, FontWeight = FontWeight.Bold, Foreground = new SolidColorBrush(Color.Parse(color)) });
-        panel.Children.Add(new TextBlock { Text = column.Title, FontSize = 12.5, FontWeight = FontWeight.SemiBold });
+        panel.Children.Add(new TextBlock { Text = DataEditorViewModel.PlainName(column.Title), FontSize = 12.5, FontWeight = FontWeight.SemiBold });
         return panel;
     }
 }

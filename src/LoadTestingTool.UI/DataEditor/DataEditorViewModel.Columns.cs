@@ -118,6 +118,9 @@ public sealed partial class DataEditorViewModel
            && string.Equals(prefix, step, StringComparison.OrdinalIgnoreCase)
            && string.Equals(StripVerb(header), $"{step}.{path}", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>A header without its {verb} prefix: what the user sees and renames.</summary>
+    public static string PlainName(string header) => StripVerb(header);
+
     private static string StripVerb(string header)
     {
         var text = header.Trim();

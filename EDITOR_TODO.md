@@ -931,3 +931,13 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - [ ] Not done: at 150 % and more the Assertions filter block takes most of the height of a short panel (the list gets little room); put the filters in a collapsible or scrollable block.
 - [ ] Not done: the ActionManual tab, the Workbook tab and the History explorer are not under the shared scale.
 
+
+## Not done: OR / AND assertions, header, button moves (2026-11-22)
+- OR/AND (`<or: …>` / `<and: …>`) only on value verbs (eq, ne, lt, lte, gt, gte, contains, notcontains, startswith, endswith, regex, in); a value cannot contain `>` (the wizard replaces it with `)`).
+- No OR/AND at header level (one verb per column); the header only shows the verb, the "+ OR / + AND" buttons live in the cell wizard.
+- WorkbookValidator does not yet warn about <or:>/<and:> on non-combinable verbs (the engine throws a clear error at run time).
+- "Assign actual" / failed-cell list do not understand cells with <or:>/<and:> tags (they treat the whole text as the value).
+- Header verb button has no hover preview of the alternatives used in the column; no screenshot test of the new header.
+- Legacy Apply actual values / Select failed / Clear are disabled placeholders in the Artifacts tab; delete once nobody misses them.
+- "Compare runs…" opens the History Explorer (tick runs there); it does not pre-tick the last two runs.
+- Flaky under full-suite load: MockServerWindowTests (passes alone).

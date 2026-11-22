@@ -20,7 +20,7 @@ public sealed partial class DataEditorWindow
     private void ApplyEditOnly(string workbookPath)
     {
         _editOnly = true;
-        foreach (var name in new[] { "RunTickedButton", "RunShownButton", "HistoryLogsButton", "MockServerButton", "StorageCleanupButton", "GlobalRunSettingsButton", "OpenSeparateToolButton", "ViewModeBox", "InstanceTreePanel", "TreeSplitter", "BodySplitter", "RightHost" })
+        foreach (var name in new[] { "RunTickedButton", "RunShownButton", "HistoryLogsButton", "CompareRunsButton", "MockServerButton", "StorageCleanupButton", "GlobalRunSettingsButton", "OpenSeparateToolButton", "ViewModeBox", "InstanceTreePanel", "TreeSplitter", "BodySplitter", "RightHost" })
             if (this.FindControl<Control>(name) is { } control) control.IsVisible = false;
         // only the middle panel: no instance tree on the left, no preview / run panel on the right
         if (this.FindControl<Grid>("RootGrid") is { } root) { root.ColumnDefinitions[0].MinWidth = 0; root.ColumnDefinitions[0].Width = new GridLength(0); }

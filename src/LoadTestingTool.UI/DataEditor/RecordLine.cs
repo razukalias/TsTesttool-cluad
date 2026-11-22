@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using LoadTestingTool.Editing;
+using LoadTestingTool.Execution;
 
 namespace LoadTestingTool.UI.DataEditor;
 
@@ -52,6 +53,18 @@ public sealed partial class RecordLineViewModel : ObservableObject
 
     public ObservableCollection<ValuePart> Parts { get; } = [];
 
+    /// <summary>One extra check of the same response field: OR or AND, with its own verb and value (written as &lt;or: …&gt; / &lt;and: …&gt; after the cell's value).</summary>
+    public sealed record AlternativeItem(bool IsOr, string Verb, string Value);
+
+    public ObservableCollection<AlternativeItem> Alternatives { get; } = [];
+
+    /// <summary>OR / AND fit only verbs that compare with a value (eq, ne, gt, contains, regex …), not exists, empty or notempty.</summary>
+    public bool CanCombine => HasCondition && AssertionAlternatives.CanCombine(Verb);
+
+    public void AddAlternative(bool isOr) { if (!CanCombine) return; Alternatives.Add(new AlternativeItem(isOr, Verb, string.Empty)); Write(); }
+    public void RemoveAlternative(int index) { if (index >= 0 && index < Alternatives.Count) { Alternatives.RemoveAt(index); Write(); } }
+    public void ChangeAlternative(int index, AlternativeItem item) { if (index >= 0 && index < Alternatives.Count && Alternatives[index] != item) { Alternatives[index] = item; Write(); } }
+
     /// <summary>The request column <c>dontrun</c>: the steps this one row skips.</summary>
     public bool IsDontRun => !IsExpected && Title.Equals("dontrun", StringComparison.OrdinalIgnoreCase);
 
@@ -87,6 +100,13 @@ public sealed partial class RecordLineViewModel : ObservableObject
         var text = _row.Cells[_cell] ?? string.Empty;
         var (cellVerb, value) = HasCondition ? ValueParts.SplitCell(text) : (null, text);
         Verb = cellVerb ?? _headerVerb;
+        Alternatives.Clear();
+        if (HasCondition && AssertionAlternatives.HasAny(value))
+        {
+            var (primary, extra) = AssertionAlternatives.Parse(value, Verb);
+            value = primary;
+            foreach (var a in extra) Alternatives.Add(new AlternativeItem(a.IsOr, a.Verb, a.Value));
+        }
         Parts.Clear();
         foreach (var part in ValueParts.Parse(value)) Parts.Add(part);
         Refresh();
@@ -100,11 +120,14 @@ public sealed partial class RecordLineViewModel : ObservableObject
         Example = ValueParts.Example(Parts);
         OnPropertyChanged(nameof(ShowsValue));
         OnPropertyChanged(nameof(ConditionWords));
+        OnPropertyChanged(nameof(CanCombine));
     }
 
     private void Write()
     {
         var value = ValueParts.Format(Parts);
+        if (HasCondition && ShowsValue && CanCombine && Alternatives.Count > 0)
+            value = (value + " " + string.Join(" ", Alternatives.Select(a => AssertionAlternatives.Tag(a.IsOr, a.Verb, a.Value, Verb)))).Trim();
         var text = HasCondition ? ValueParts.JoinCell(Verb, _headerVerb, ShowsValue ? value : string.Empty) : value;
         _writing = true;
         try { if ((_row.Cells[_cell] ?? string.Empty) != text) _row.Cells[_cell] = text; }
@@ -129,6 +152,7 @@ public sealed partial class RecordLineViewModel : ObservableObject
         if (!HasCondition || verb == Verb) return;
         Verb = verb;
         if (!ValueParts.NeedsValue(verb)) Parts.Clear();
+        if (!AssertionAlternatives.CanCombine(verb)) Alternatives.Clear();   // the other checks only fit verbs that compare with a value
         Write();
     }
 

@@ -45,13 +45,13 @@ public class ColumnBarTests
         {
             var column = grid.Columns.First(c => (c.Header as Avalonia.Controls.StackPanel)?.Children.OfType<TextBlock>().Any(t => t.Text == title) == true);
             var bar = ((Avalonia.Controls.StackPanel)column.Header!).Children.OfType<Border>().Single(b => b.Tag as string == "column-letter-bar");
-            return ((Avalonia.Controls.Grid)bar.Child!).Children.OfType<Button>().Any(b => b.Tag as string == "header-wizard");
+            return ((Avalonia.Controls.Grid)bar.Child!).Children.OfType<Button>().Any(b => b.Tag as string == "header-wizard") || ((Avalonia.Controls.StackPanel)column.Header!).Children.OfType<Button>().Any(b => b.Tag as string == "header-verb");
         }
 
         Assert.Equal("F", Letter("CreateCustomer.email"));                 // request sheet: testcaseindex, testcase, dataid, dontrun, name, email
-        Assert.Equal("E", Letter("{notempty}CreateCustomer.id"));                    // response sheet column E
+        Assert.Equal("E", Letter("CreateCustomer.id"));                    // response sheet column E
         Assert.False(HasVerbButton("CreateCustomer.email"));
-        Assert.True(HasVerbButton("{notempty}CreateCustomer.id"));
+        Assert.True(HasVerbButton("CreateCustomer.id"));
         window.Close();
     }
 
