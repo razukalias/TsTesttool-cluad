@@ -42,6 +42,8 @@ public sealed partial class MockServerWindow : Window
     private readonly TextBlock _problems = DashboardStyle.Text("", 12, false, DashboardStyle.Red);
     /// <summary>Set by the editor: points the selected instance's step URLs at the given address (and whether remote ones too); returns what happened.</summary>
     public Func<string, bool, string>? UseInInstance { get; set; }
+    /// <summary>The central settings file; the sample database registers its connection profile there. Null: the profile is not registered.</summary>
+    public string? SettingsFile { get; set; }
     internal TextBlock StatusText => _status;
     internal TextBlock ProblemText => _problems;
 
@@ -85,7 +87,9 @@ public sealed partial class MockServerWindow : Window
         var copy = DashboardStyle.Action("Copy URL", async () => { if (Clipboard is { } clipboard) await clipboard.SetTextAsync(BaseUrl()); });
         var use = DashboardStyle.Action("Use in instance", UseInSelectedInstance);
         ToolTip.SetTip(use, "Point the step URLs (targetUrl) of the instance selected in the editor at this server. 127.0.0.1 and localhost URLs only, unless 'also non-local URLs' is ticked. One undo step; save the instance to keep it.");
-        var runBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _runButton, _light, _status, copy, use, _includeRemote } };
+        var sample = DashboardStyle.Action("Sample SQL database", () => CreateSampleDatabase());
+        ToolTip.SetTip(sample, "Create a small SQLite database (customers, orders, order lines) and a connection profile SampleSqlite in appsettings.json, so a SQL step can be tried without installing a database server.");
+        var runBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _runButton, _light, _status, copy, use, _includeRemote, sample } };
         _name.TextChanged += (_, _) => Edit(() => _config.Name = _name.Text ?? "");
         _basePath.TextChanged += (_, _) => Edit(() => _config.BasePath = _basePath.Text?.Trim() ?? "");
         _allInterfaces.IsCheckedChanged += (_, _) => Edit(() => _config.AllInterfaces = _allInterfaces.IsChecked == true);
@@ -196,6 +200,26 @@ public sealed partial class MockServerWindow : Window
         var problems = _config.Validate();
         if (problems.Count > 0) { _status.Text = "Fix the problems first: " + problems[0]; return; }
         _status.Text = UseInInstance?.Invoke(BaseUrl(), _includeRemote.IsChecked == true) ?? "Open this window from the editor to use it in an instance.";
+    }
+
+    /// <summary>Makes MockServers/sample.db (kept if it exists) and registers the connection profile SampleSqlite in the central settings.</summary>
+    internal string CreateSampleDatabase()
+    {
+        string message;
+        try
+        {
+            var path = Path.Combine(_serversFolder, "sample.db");
+            var created = LoadTestingTool.Execution.SampleDatabase.Create(path);
+            var registered = SettingsFile is { } settings && LoadTestingTool.Execution.SampleDatabase.RegisterProfile(settings, path);
+            message = (created ? "Sample database created: " : "Sample database found: ") + path + (SettingsFile is null ? "." : registered ? $". Connection profile {LoadTestingTool.Execution.SampleDatabase.ProfileName} added to appsettings.json." : $". Connection profile {LoadTestingTool.Execution.SampleDatabase.ProfileName} is already in appsettings.json.")
+                + $" In a SQL step use ConnectionProfile {LoadTestingTool.Execution.SampleDatabase.ProfileName}, e.g. select * from orders where id = @id.";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException or System.Text.Json.JsonException)
+        {
+            message = "The sample database could not be made: " + exception.Message;
+        }
+        _status.Text = message;
+        return message;
     }
 
     // ----- run / stop / poll -----

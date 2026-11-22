@@ -39,6 +39,9 @@ TEMPLATES in the body and in header values
     {{query.name}}  {{header.name}}  {{json.customer.name}}  {{json.lines[0].sku}}
 An unknown name gives an empty text. Example body:   {""id"":""{{path.id}}"",""by"":""{{header.X-User}}"",""at"":""{{now}}""}
 
+SAMPLE SQL DATABASE
+The ""Sample SQL database"" button creates MockServers/sample.db (a SQLite file with customers C1..C4, orders O1..O4 and order lines) and adds the connection profile SampleSqlite to appsettings.json. Try it in a SQL step: ConnectionProfile SampleSqlite, CommandText   select id, status, total from orders where customer_id = @c   with Parameters {""c"": ""C1""}. A profile with ""Provider"": ""Sqlite"" and ""ConnectionString"": ""Data Source=Files/my.db"" works for your own SQLite files too (a relative file is looked for from the instance folder and must exist).
+
 MONITOR
 Every request the server gets appears here with time, method, URL, status, duration and the route that answered. Select one to see its request headers and body next to the response. Requests no route fitted are marked ""no route""; ""Route from request"" makes a route out of the selected one.
 Filter: type part of a method, URL, status or route. Pause stops the list from moving; the server keeps recording (up to the last 2000 requests).";

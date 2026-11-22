@@ -116,6 +116,8 @@ public sealed class SqlConnectionProfile
 {
     public string ConnectionString { get; set; } = string.Empty;
     public bool UseIntegratedSecurity { get; set; } = true;
+    /// <summary>SqlServer (the default) or Sqlite. A Sqlite connection string is like <c>Data Source=Files/sample.db</c>; a relative file is looked for from the instance folder, and the file must exist.</summary>
+    public string Provider { get; set; } = "SqlServer";
 }
 
 public sealed class GraphQlStepOptions

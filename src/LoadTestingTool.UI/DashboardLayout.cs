@@ -749,6 +749,7 @@ public sealed partial class MainWindow
         if (_mockServerWindow is { } open) { open.Activate(); return; }
         var folder = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(_config.SettingsFile))!, "MockServers");
         var window = new MockServerWindow(Path.GetFullPath(_config.RunnerDll), folder);
+        window.SettingsFile = Path.GetFullPath(_config.SettingsFile);
         window.UseInInstance = (origin, all) => (_hostWindow as DataEditor.DataEditorWindow)?.Shell.PointSelectedInstanceAt(origin, all) ?? "Open the editor with an instance first.";
         window.Closed += (_, _) => _mockServerWindow = null;
         _mockServerWindow = window;

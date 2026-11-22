@@ -90,7 +90,7 @@ public sealed class StepTypeSection : UserControl
                     new Spec("Inline", "Query", Kind.Multi, Hint: "Used when no template is set."), new Spec("Variables", "Variables", Kind.Json));
                 break;
             case "sql":
-                AddAll(new Spec("ConnectionProfile", "Connection", Kind.Text, Hint: "Profile name from appsettings.json"), new Spec("CommandType", "Command type", Kind.Combo, ["Text", "StoredProcedure"]),
+                AddAll(new Spec("ConnectionProfile", "Connection", Kind.Text, Hint: "Profile name from appsettings.json (SQL Server or SQLite)"), new Spec("CommandType", "Command type", Kind.Combo, ["Text", "StoredProcedure"]),
                     new Spec("CommandText", "Command", Kind.Multi, Visible: c => !IsProcedure(c)), new Spec("Procedure", "Procedure", Kind.Text, Visible: IsProcedure),
                     new Spec("Source", "Command file", Kind.Path, Hint: "Optional. Overrides the template.", Folder: "Queries"), new Spec("Parameters", "Parameters", Kind.Json), new Spec("Outputs", "Outputs", Kind.Json, Hint: "Output name → variable name"));
                 break;

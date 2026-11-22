@@ -308,3 +308,28 @@ public class MockServerUseInInstanceTests
         Assert.Contains("Fix the problems", window.StatusText.Text);
     }
 }
+
+public class MockServerSampleDatabaseTests
+{
+    [AvaloniaFact]
+    public void SampleDatabaseButtonCreatesTheFileAndRegistersTheProfile()
+    {
+        using var dir = new TempDir();
+        var settings = dir.Combine("appsettings.json");
+        File.WriteAllText(settings, "{ \"Connections\": { \"MainDatabase\": { \"ConnectionString\": \"Server=x\" } } }");
+        var window = new MockServerWindow(Path.Combine(AppContext.BaseDirectory, "LoadTestingTool.dll"), dir.Combine("MockServers")) { SettingsFile = settings };
+        window.Show();
+        var first = window.CreateSampleDatabase();
+        Assert.Contains("Sample database created", first);
+        Assert.Contains("added to appsettings.json", first);
+        Assert.True(File.Exists(Path.Combine(dir.Path, "MockServers", "sample.db")));
+        var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(settings)).RootElement.GetProperty("Connections");
+        Assert.Equal("Sqlite", json.GetProperty("SampleSqlite").GetProperty("Provider").GetString());
+        Assert.Equal("Server=x", json.GetProperty("MainDatabase").GetProperty("ConnectionString").GetString());
+        var second = window.CreateSampleDatabase();
+        Assert.Contains("found", second);
+        Assert.Contains("already in appsettings.json", second);
+        Assert.Equal(second, window.StatusText.Text);
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+    }
+}

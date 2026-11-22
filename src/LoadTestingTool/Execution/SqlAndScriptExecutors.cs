@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.Scripting;
 using Microsoft.Data.SqlClient;
+using System.Data.Common;
 using LoadTestingTool.Domain;
 
 namespace LoadTestingTool.Execution;
@@ -26,18 +27,22 @@ public sealed class SqlStepExecutor : IStepExecutor
             if (string.IsNullOrWhiteSpace(commandText)) throw new InvalidDataException("SQL requires CommandText, Procedure, or Source.");
             commandText = request.Context.Resolve(commandText);
             result.RequestText = JsonSerializer.Serialize(new { commandType = options.CommandType, commandText, parameters = options.Parameters });
-            await using var connection = new SqlConnection(request.Context.Resolve(profile.ConnectionString));
+            await using var connection = SqlProviders.Create(profile, request.Context.Resolve(profile.ConnectionString), request.WorkspaceRoot);
             await connection.OpenAsync(request.CancellationToken);
             await using var command = connection.CreateCommand();
             command.CommandText = commandText;
-            command.CommandType = options.CommandType.Equals("StoredProc", StringComparison.OrdinalIgnoreCase) || options.CommandType.Equals("StoredProcedure", StringComparison.OrdinalIgnoreCase) ? System.Data.CommandType.StoredProcedure : System.Data.CommandType.Text;
+            var storedProcedure = options.CommandType.Equals("StoredProc", StringComparison.OrdinalIgnoreCase) || options.CommandType.Equals("StoredProcedure", StringComparison.OrdinalIgnoreCase);
+            if (storedProcedure && SqlProviders.Normalise(profile.Provider) == SqlProviders.Sqlite) throw new InvalidDataException("SQLite has no stored procedures. Use CommandType Text with the SQL statement.");
+            command.CommandType = storedProcedure ? System.Data.CommandType.StoredProcedure : System.Data.CommandType.Text;
             var loggedParameters = new Dictionary<string, object?>();
             foreach (var parameter in options.Parameters)
             {
                 var value = Resolve(parameter.Value, request.Context);
                 loggedParameters[parameter.Key] = value;
-                var sqlParameter = command.Parameters.AddWithValue(parameter.Key.StartsWith("@", StringComparison.Ordinal) ? parameter.Key : "@" + parameter.Key, value ?? DBNull.Value);
-                _ = sqlParameter;
+                var sqlParameter = command.CreateParameter();
+                sqlParameter.ParameterName = parameter.Key.StartsWith("@", StringComparison.Ordinal) ? parameter.Key : "@" + parameter.Key;
+                sqlParameter.Value = value ?? DBNull.Value;
+                command.Parameters.Add(sqlParameter);
             }
             result.LogMethod = options.CommandType;
             result.LogBody = commandText;
@@ -65,7 +70,21 @@ public sealed class SqlStepExecutor : IStepExecutor
         return result;
     }
 
-    private static object? Resolve(object? value, LoadTestingTool.Domain.ExecutionContext context) => value is string text ? context.Resolve(text) : value;
+    /// <summary>A parameter value from the step config: text gets its tokens resolved; JSON numbers, booleans and null become plain values the database accepts.</summary>
+    private static object? Resolve(object? value, LoadTestingTool.Domain.ExecutionContext context) => value switch
+    {
+        string text => context.Resolve(text),
+        JsonElement element => element.ValueKind switch
+        {
+            JsonValueKind.String => context.Resolve(element.GetString() ?? string.Empty),
+            JsonValueKind.Number => element.TryGetInt64(out var whole) ? whole : element.GetDouble(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null or JsonValueKind.Undefined => null,
+            _ => element.GetRawText()
+        },
+        _ => value
+    };
 }
 
 public sealed class CSharpScriptStepExecutor : IStepExecutor
