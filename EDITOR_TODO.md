@@ -961,7 +961,7 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - Kept because the data editor uses them: TestcaseWizardWindow, InstanceBuilderWindow, HistoryComparisonWindow, SpreadsheetPreviewWindow.
 
 ## Variable references in step config (From_request_…) — validation + wizard (open)
-- Report: a URL in the config sheet concatenates `<From_request_customeridww_r>`; the column exists in the request sheet, yet the Workbook tab shows a validation error. Need the exact error text (not yet seen) and the workbook to reproduce. Reader leaves request refs in config cells untouched (WorkbookReader.Compile), so the error comes from another check; find which.
+- Report (corrected): a config-sheet URL concatenates `<From_request_customeridww_r>` but the request sheet has NO such column, and the Workbook tab shows NO error. Cause: nothing validates `From_` references at all (WorkbookValidator only checks a ForEach hint; the reader deliberately leaves request refs in config cells for run time). The mistake only shows when the run fails with "Missing request variable". Add the checker below.
 - Validation design (to build): one reference checker used by the validator, the preview and the global validation, instead of three regexes.
   - Parse `<From_{sheet}_{name}_{r|n}>` once; check the sheet exists, the column exists (case-insensitive, also the step-prefixed `Step.name` form and the shared plain form), and for `response` refs that the step comes earlier in the testcase and has an extractvariable/assertion path.
   - Each problem says what is wrong and offers the fix: "Column 'customeridww' not found in request. Did you mean 'customerid'? [Use it] [Add column to request]" (closest-name suggestion, one click).
