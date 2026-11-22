@@ -741,6 +741,19 @@ public sealed partial class MainWindow
 
     internal void ShowStorageCleanup() => OpenStorageCleanup();
 
+    private MockServerWindow? _mockServerWindow;
+
+    /// <summary>Opens (or brings forward) the Mock server window. Its files live in a MockServers folder beside the central settings file.</summary>
+    internal void ShowMockServer()
+    {
+        if (_mockServerWindow is { } open) { open.Activate(); return; }
+        var folder = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(_config.SettingsFile))!, "MockServers");
+        var window = new MockServerWindow(Path.GetFullPath(_config.RunnerDll), folder);
+        window.Closed += (_, _) => _mockServerWindow = null;
+        _mockServerWindow = window;
+        if (_hostWindow is { } host) window.Show(host); else window.Show();
+    }
+
     /// <summary>Opens the "History &amp; logs" form for an instance (the selected one when no name is given).</summary>
     internal void ShowHistoryLogs(string? instanceName = null)
     {

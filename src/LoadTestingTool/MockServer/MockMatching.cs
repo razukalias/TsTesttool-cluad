@@ -1,0 +1,174 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+
+namespace LoadTestingTool.MockServer;
+
+/// <summary>What the matcher and templates see of one incoming request.</summary>
+public sealed record MockRequest(string Method, string Path, IReadOnlyDictionary<string, string> Query, IReadOnlyDictionary<string, string> Headers, string Body);
+
+public sealed record MockMatch(MockRoute Route, IReadOnlyDictionary<string, string> PathParams);
+
+/// <summary>Turns a path pattern into a matcher.</summary>
+public static class MockPath
+{
+    private static readonly Regex Name = new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
+
+    /// <summary>The pattern as a regular expression, or null when it is not valid.</summary>
+    public static Regex? Compile(string pattern)
+    {
+        var trimmed = pattern.Trim('/');
+        var parts = trimmed.Length == 0 ? [] : trimmed.Split('/');
+        var text = new StringBuilder("^");
+        for (var i = 0; i < parts.Length; i++)
+        {
+            var part = parts[i];
+            if (part == "**")
+            {
+                if (i != parts.Length - 1) return null;
+                text.Append("(?:/.*)?");
+            }
+            else if (part == "*") text.Append("/[^/]+");
+            else if (part.StartsWith('{') && part.EndsWith('}'))
+            {
+                var name = part[1..^1];
+                if (!Name.IsMatch(name)) return null;
+                text.Append("/(?<").Append(name).Append(">[^/]+)");
+            }
+            else if (part.Length == 0 || part.Contains('{') || part.Contains('}')) return null;
+            else text.Append('/').Append(Regex.Escape(part));
+        }
+        text.Append("/?$");
+        return new Regex(text.ToString(), RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    }
+
+    public static Dictionary<string, string>? Match(string pattern, string path)
+    {
+        var regex = Compile(pattern);
+        if (regex is null) return null;
+        var m = regex.Match(path);
+        if (!m.Success) return null;
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Group group in m.Groups) if (group.Success && !int.TryParse(group.Name, out _)) values[group.Name] = Uri.UnescapeDataString(group.Value);
+        return values;
+    }
+}
+
+public static class MockRouteMatcher
+{
+    /// <summary>The first enabled route that fits, or null.</summary>
+    public static MockMatch? Find(MockServerConfig config, MockRequest request)
+    {
+        var path = request.Path;
+        if (config.BasePath.Length > 0)
+        {
+            var baseTrim = config.BasePath.TrimEnd('/');
+            if (!path.Equals(baseTrim, StringComparison.OrdinalIgnoreCase) && !path.StartsWith(baseTrim + "/", StringComparison.OrdinalIgnoreCase)) return null;
+            path = path.Length == baseTrim.Length ? "/" : path[baseTrim.Length..];
+        }
+        foreach (var route in config.Routes)
+        {
+            if (!route.Enabled) continue;
+            if (!route.Method.Equals("ANY", StringComparison.OrdinalIgnoreCase) && !route.Method.Equals(request.Method, StringComparison.OrdinalIgnoreCase)) continue;
+            var values = MockPath.Match(route.Path, path);
+            if (values is null) continue;
+            if (route.Conditions.All(c => Holds(c, request))) return new MockMatch(route, values);
+        }
+        return null;
+    }
+
+    public static bool Holds(MockCondition condition, MockRequest request)
+    {
+        string? actual = condition.Source.ToLowerInvariant() switch
+        {
+            "query" => request.Query.TryGetValue(condition.Name, out var q) ? q : null,
+            "header" => request.Headers.TryGetValue(condition.Name, out var h) ? h : null,
+            "body" => request.Body,
+            "json" => MockJson.Get(request.Body, condition.Name),
+            _ => null
+        };
+        switch (condition.Op.ToLowerInvariant())
+        {
+            case "exists": return actual is not null;
+            case "notexists": return actual is null;
+            case "equals": return actual is not null && actual == condition.Value;
+            case "contains": return actual is not null && actual.Contains(condition.Value, StringComparison.OrdinalIgnoreCase);
+            case "regex":
+                try { return actual is not null && Regex.IsMatch(actual, condition.Value); } catch (ArgumentException) { return false; }
+            default: return false;
+        }
+    }
+}
+
+/// <summary>Reads one value out of a JSON text by a path like order.lines[0].sku.</summary>
+public static class MockJson
+{
+    private static readonly Regex Part = new(@"([^.\[\]]+)|\[(\d+)\]", RegexOptions.Compiled);
+
+    public static string? Get(string json, string path)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var current = document.RootElement;
+            foreach (Match part in Part.Matches(path))
+            {
+                if (part.Groups[2].Success)
+                {
+                    if (current.ValueKind != JsonValueKind.Array || !int.TryParse(part.Groups[2].Value, out var index) || index >= current.GetArrayLength()) return null;
+                    current = current[index];
+                }
+                else
+                {
+                    if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(part.Groups[1].Value, out var next)) return null;
+                    current = next;
+                }
+            }
+            return current.ValueKind == JsonValueKind.String ? current.GetString() : current.GetRawText();
+        }
+        catch (JsonException) { return null; }
+    }
+}
+
+/// <summary>
+/// {{method}} {{path}} {{url}} {{now}} {{guid}} {{random}} {{path.id}} {{query.name}} {{header.name}} {{body}} {{json.order.id}}.
+/// Unknown names give an empty text.
+/// </summary>
+public static class MockTemplate
+{
+    private static readonly Regex Token = new(@"\{\{\s*([^{}]+?)\s*\}\}", RegexOptions.Compiled);
+
+    public static string Render(string text, MockRequest request, IReadOnlyDictionary<string, string> pathParams)
+    {
+        if (string.IsNullOrEmpty(text) || !text.Contains("{{", StringComparison.Ordinal)) return text;
+        return Token.Replace(text, m => Value(m.Groups[1].Value, request, pathParams));
+    }
+
+    private static string Value(string key, MockRequest request, IReadOnlyDictionary<string, string> pathParams)
+    {
+        switch (key.ToLowerInvariant())
+        {
+            case "method": return request.Method;
+            case "path": return request.Path;
+            case "url": return request.Path + (request.Query.Count == 0 ? "" : "?" + string.Join("&", request.Query.Select(p => $"{p.Key}={p.Value}")));
+            case "now": return DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture);
+            case "guid": return Guid.NewGuid().ToString();
+            case "random": return Random.Shared.Next(0, 1_000_000).ToString(CultureInfo.InvariantCulture);
+            case "body": return request.Body;
+        }
+        var dot = key.IndexOf('.');
+        if (dot < 0) return "";
+        var kind = key[..dot].ToLowerInvariant();
+        var name = key[(dot + 1)..];
+        return kind switch
+        {
+            "path" => pathParams.TryGetValue(name, out var p) ? p : "",
+            "query" => request.Query.TryGetValue(name, out var q) ? q : "",
+            "header" => request.Headers.TryGetValue(name, out var h) ? h : "",
+            "json" => MockJson.Get(request.Body, name) ?? "",
+            _ => ""
+        };
+    }
+}

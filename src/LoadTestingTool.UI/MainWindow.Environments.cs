@@ -48,6 +48,8 @@ public sealed partial class MainWindow
 
         public void OpenStorageCleanup() => window.ShowStorageCleanup();
 
+        public void OpenMockServer() => window.ShowMockServer();
+
         public void OpenHistoryLogs(string instanceName) => window.ShowHistoryLogs(instanceName);
 
         public void Stop(string instanceName)

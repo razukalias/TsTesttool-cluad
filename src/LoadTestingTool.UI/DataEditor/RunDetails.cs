@@ -29,6 +29,9 @@ public interface IRunDetails
     /// <summary>Opens the Storage &amp; Cleanup window (backups, logs, history and results).</summary>
     void OpenStorageCleanup() { }
 
+    /// <summary>Opens the Mock server window (a configurable local test server and its monitor).</summary>
+    void OpenMockServer() { }
+
     /// <summary>Opens the "History &amp; logs" form for an instance.</summary>
     void OpenHistoryLogs(string instanceName) { }
 }

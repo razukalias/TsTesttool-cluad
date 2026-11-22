@@ -261,6 +261,8 @@
         </StackPanel>
         <Button x:Name="HistoryLogsButton" DockPanel.Dock="Bottom" Content="History &amp; logs…" HorizontalAlignment="Left" Margin="0,8,0,0" MinHeight="28" Padding="10,2" FontSize="12"
                 ToolTip.Tip="Choose what runs write to history and the internal log, with profiles for functional tests, debugging and load tests." />
+        <Button x:Name="MockServerButton" DockPanel.Dock="Bottom" Content="Mock server…" HorizontalAlignment="Left" Margin="0,12,0,0" MinHeight="28" Padding="10,2" FontSize="12"
+                ToolTip.Tip="Configure a local test server (any HTTP method, headers, status and body per route), run it as its own process and watch the requests it gets." />
         <Button x:Name="StorageCleanupButton" DockPanel.Dock="Bottom" Content="Storage &amp; cleanup…" HorizontalAlignment="Left" Margin="0,12,0,0" MinHeight="28" Padding="10,2" FontSize="12"
                 ToolTip.Tip="Preview and permanently delete old workbook backups, logs, history and results." />
         <CheckBox DockPanel.Dock="Bottom" Content="Load instances only when opened" IsChecked="{Binding LazyLoading, Mode=TwoWay}" Margin="6,12,0,0" FontSize="12"

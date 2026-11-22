@@ -65,10 +65,12 @@ public partial class DataEditorWindow : Window
 
     private bool _cleanupWired;
     private bool _logsWired;
+    private bool _mockWired;
 
     private void AttachRunDetails()
     {
         if (this.FindControl<Button>("StorageCleanupButton") is { } cleanup && !_cleanupWired) { _cleanupWired = true; cleanup.Click += (_, _) => _shell.RunDetails?.OpenStorageCleanup(); }
+        if (this.FindControl<Button>("MockServerButton") is { } mock && !_mockWired) { _mockWired = true; mock.Click += (_, _) => _shell.RunDetails?.OpenMockServer(); }
         if (this.FindControl<Button>("HistoryLogsButton") is { } logs && !_logsWired) { _logsWired = true; logs.Click += (_, _) => { if (_shell.SelectedInstanceName is { } name) _shell.RunDetails?.OpenHistoryLogs(name); }; }
         if (_runDetailsAttached || _shell.RunDetails is not { } details) return;
         _runDetailsAttached = true;

@@ -22,6 +22,14 @@ internal static class Program
         {
             var settingsPath = GetCommandLineValue(args, "--config", "--settings");
             var instanceKey = GetCommandLineValue(args, "--instance");
+            var serveConfig = GetCommandLineValue(args, "--serve");
+            if (serveConfig is not null)
+            {
+                using var stop = new CancellationTokenSource();
+                Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
+                var portText = GetCommandLineValue(args, "--port");
+                return await MockServer.MockServerCli.RunAsync(serveConfig, int.TryParse(portText, out var servePort) ? servePort : null, Console.Out, Console.Error, stop.Token);
+            }
             if (args.Any(x => x.Equals("--run-all", StringComparison.OrdinalIgnoreCase))) return await RunAllInstancesAsync(settingsPath);
             var config = LoadConfig(settingsPath, instanceKey);
             loadedConfig = config;

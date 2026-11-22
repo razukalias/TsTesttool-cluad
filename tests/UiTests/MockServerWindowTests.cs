@@ -1,0 +1,212 @@
+using System.Net;
+using System.Text;
+using Avalonia.Controls;
+using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
+using LoadTestingTool.MockServer;
+using LoadTestingTool.UI;
+using Xunit;
+
+namespace UiTests;
+
+public class MockServerWindowTests
+{
+    private static string Runner => Path.Combine(AppContext.BaseDirectory, "LoadTestingTool.dll");
+
+    private static MockServerWindow Open(TempDir dir)
+    {
+        var window = new MockServerWindow(Runner, dir.Combine("MockServers"));
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        return window;
+    }
+
+    private static Button ButtonWith(Control root, string content) => root.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Content, content));
+
+    [AvaloniaFact]
+    public void StartsWithSampleRoutesAndTheNoMatchEntry()
+    {
+        using var dir = new TempDir();
+        var window = Open(dir);
+        Assert.Equal(4, window.RouteList.ItemCount);
+        Assert.Equal(0, window.RouteList.SelectedIndex);
+        Assert.Equal(3, window.Config.Routes.Count);
+        Assert.Equal(404, window.CurrentResponse.Status);
+    }
+
+    [AvaloniaFact]
+    public void EditingARouteChangesTheModelTheRowAndTheProblems()
+    {
+        using var dir = new TempDir();
+        var window = Open(dir);
+        window.SelectedItem = 2;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var path = window.GetVisualDescendants().OfType<TextBox>().First(t => t.Watermark == "/orders/{id}");
+        Assert.Equal("/orders/{id}", path.Text);
+        path.Text = "/orders/{id}/lines"; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("/orders/{id}/lines", window.Config.Routes[1].Path);
+        Assert.Contains("/orders/{id}/lines", ((List<string>)window.RouteList.ItemsSource!)[2]);
+        Assert.Equal("", window.ProblemText.Text);
+        path.Text = "orders"; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Contains("must start with /", window.ProblemText.Text);
+        Assert.StartsWith("Mock server *", window.Title);
+    }
+
+    [AvaloniaFact]
+    public void ResponseFieldsEditTheSelectedRouteOrTheNoMatchResponse()
+    {
+        using var dir = new TempDir();
+        var window = Open(dir);
+        var body = window.GetVisualDescendants().OfType<TextBox>().First(t => t.AcceptsReturn && t.FontFamily.Name.StartsWith("Consolas") && !t.IsReadOnly);
+        body.Text = "{\"gone\":true}"; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("{\"gone\":true}", window.Config.Fallback.Body);
+        window.SelectedItem = 1;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("{\"status\":\"ok\"}", body.Text);
+        body.Text = "changed"; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("changed", window.Config.Routes[0].Response.Body);
+        Assert.Equal("{\"gone\":true}", window.Config.Fallback.Body);
+    }
+
+    [AvaloniaFact]
+    public void AddDuplicateMoveAndDeleteRoutes()
+    {
+        using var dir = new TempDir();
+        var window = Open(dir);
+        ButtonWith(window, "＋").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(4, window.Config.Routes.Count);
+        Assert.Equal(4, window.SelectedItem);
+        ButtonWith(window, "⧉").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(5, window.Config.Routes.Count);
+        Assert.Equal("New route copy", window.Config.Routes[4].Name);
+        window.SelectedItem = 5;
+        ButtonWith(window, "▲").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal("New route copy", window.Config.Routes[3].Name);
+        ButtonWith(window, "✕").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(4, window.Config.Routes.Count);
+        Assert.DoesNotContain(window.Config.Routes, r => r.Name == "New route copy");
+    }
+
+    [AvaloniaFact]
+    public void ConditionsAndHeadersAreAddedAndEdited()
+    {
+        using var dir = new TempDir();
+        var window = Open(dir);
+        window.SelectedItem = 2;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        ButtonWith(window, "＋ Condition").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        ButtonWith(window, "＋ Header").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var route = window.Config.Routes[1];
+        Assert.Single(route.Conditions);
+        Assert.Single(route.Response.Headers);
+        window.GetVisualDescendants().OfType<TextBox>().First(t => t.Watermark == "name / json path").Text = "tenant"; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        window.GetVisualDescendants().OfType<TextBox>().First(t => t.Watermark == "Header-Name").Text = "X-Id"; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("tenant", route.Conditions[0].Name);
+        Assert.Equal("X-Id", route.Response.Headers[0].Name);
+    }
+
+    [AvaloniaFact]
+    public async Task SaveWritesTheFileAndNewFromStarterResets()
+    {
+        using var dir = new TempDir();
+        var window = Open(dir);
+        window.Config.Name = "My/ server";
+        Assert.Null(await window.SaveAsync());
+        var file = window.FilePath!;
+        Assert.StartsWith(Path.GetFullPath(dir.Combine("MockServers")), file);
+        Assert.DoesNotContain('/', Path.GetFileName(file));
+        Assert.Equal(3, MockServerConfig.Load(file).Routes.Count);
+        window.Config.Routes[0].Path = "bad";
+        Assert.Contains("Fix the problems", await window.SaveAsync());
+        window.NewServer();
+        Assert.Null(window.FilePath);
+        Assert.Equal("Mock server", window.Config.Name);
+    }
+
+    [AvaloniaFact]
+    public async Task RunServesRequestsMonitorShowsThemAndStopEndsIt()
+    {
+        Assert.True(File.Exists(Runner), "the runner dll must sit beside the tests");
+        using var dir = new TempDir();
+        var window = Open(dir);
+        window.Config.Port = MockServerHost.FreePort();
+        window.Config.Routes[0].Response.Body = "{\"v\":1}";
+        try
+        {
+            await window.ToggleRunAsync();
+            Assert.StartsWith("Running on", window.StatusText.Text);
+            using var http = new HttpClient();
+            var url = $"http://127.0.0.1:{window.Config.Port}";
+            Assert.Equal("{\"v\":1}", await http.GetStringAsync(url + "/health"));
+            Assert.Equal(HttpStatusCode.NotFound, (await http.PostAsync(url + "/nope?x=1", new StringContent("hi", Encoding.UTF8, "text/plain"))).StatusCode);
+            await window.PollAsync();
+            Assert.Equal(2, window.Entries.Count);
+            Assert.Equal(2, window.LogList.ItemCount);
+
+            // a change saved while running reaches the server without a restart
+            window.Config.Routes[0].Response.Body = "{\"v\":2}";
+            Assert.Null(await window.SaveAsync());
+            Assert.Equal("{\"v\":2}", await http.GetStringAsync(url + "/health"));
+
+            // an unmatched request becomes a route
+            window.LogList.SelectedIndex = 1;
+            Assert.True(window.RouteFromSelected());
+            Assert.Equal(4, window.Config.Routes.Count);
+            Assert.Equal("/nope", window.Config.Routes[3].Path);
+            Assert.Equal("POST", window.Config.Routes[3].Method);
+
+            await window.ToggleRunAsync();
+            Assert.Equal("Stopped", window.StatusText.Text);
+            await Assert.ThrowsAnyAsync<HttpRequestException>(() => http.GetStringAsync(url + "/health"));
+        }
+        finally { using var client = new MockServerClient(window.Config.Port); await client.StopAsync(); }
+    }
+
+    [AvaloniaFact]
+    public async Task RunReportsABusyPortAndAMissingRunner()
+    {
+        using var dir = new TempDir();
+        var window = Open(dir);
+        using var busy = new MockServerHost(new MockServerConfig { Name = "Other", Port = MockServerHost.FreePort() });
+        busy.Start();
+        window.Config.Port = busy.Port;
+        await window.ToggleRunAsync();
+        Assert.Contains("already answers on port", window.StatusText.Text);
+
+        var broken = new MockServerWindow(Path.Combine(dir.Path, "nope", "Runner.exe"), dir.Combine("MockServers"));
+        broken.Config.Port = MockServerHost.FreePort();
+        await broken.ToggleRunAsync();
+        Assert.Contains("runner was not found", broken.StatusText.Text);
+    }
+
+    [AvaloniaFact]
+    public void MonitorFilterAndUnmatchedMarking()
+    {
+        using var dir = new TempDir();
+        var window = Open(dir);
+        window.AddEntries([
+            new MockLogEntry { Seq = 1, Time = DateTimeOffset.Now, Method = "GET", Url = "/health", Status = 200, Matched = true, Route = "Health" },
+            new MockLogEntry { Seq = 2, Time = DateTimeOffset.Now, Method = "DELETE", Url = "/orders/9", Status = 404, Matched = false }]);
+        window.Tabs!.SelectedIndex = 1;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(2, window.LogList.ItemCount);
+        var filter = window.GetVisualDescendants().OfType<TextBox>().First(t => t.Watermark?.StartsWith("Filter") == true);
+        filter.Text = "delete"; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(1, window.LogList.ItemCount);
+        filter.Text = "no route"; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(1, window.LogList.ItemCount);
+        filter.Text = ""; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(2, window.LogList.ItemCount);
+    }
+
+    [AvaloniaFact]
+    public void HelpIsAvailable()
+    {
+        using var dir = new TempDir();
+        var window = Open(dir);
+        Assert.Contains("--serve", MockServerHelp.Text);
+        Assert.Contains("{{path.id}}", MockServerHelp.Text);
+        ButtonWith(window, "Help").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+    }
+}
