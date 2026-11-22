@@ -88,6 +88,20 @@ public class MockServerWindowTests
     }
 
     [AvaloniaFact]
+    public void GraphQlButtonAddsAnOperationRoute()
+    {
+        using var dir = new TempDir();
+        var window = Open(dir);
+        ButtonWith(window, "GQL").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        var route = window.Config.Routes[^1];
+        Assert.Equal("POST", route.Method);
+        Assert.Equal("/graphql", route.Path);
+        Assert.Equal(("graphql", "operation", "equals", "getOrder"), (route.Conditions[0].Source, route.Conditions[0].Name, route.Conditions[0].Op, route.Conditions[0].Value));
+        Assert.Empty(window.Config.Validate());
+        Assert.Equal(4, window.SelectedItem);
+    }
+
+    [AvaloniaFact]
     public void ConditionsAndHeadersAreAddedAndEdited()
     {
         using var dir = new TempDir();

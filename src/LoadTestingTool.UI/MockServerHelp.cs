@@ -26,9 +26,11 @@ Path – /orders/{id} takes a part of the path as a named value; * is any single
 Conditions – more rules a request must meet, for the same path with different answers:
     query    a query-string value        header   a request header (name not case sensitive)
     body     the whole body              json     a value in a JSON body, for example order.lines[0].sku
+    graphql  what a GraphQL request asks for; name: operation (the operationName or the name in ""query GetOrder"", else the first field), type (query / mutation / subscription) or field (the first field)
     equals / contains / regex / exists / notexists
 Response – status code, content type, extra headers, body, and an optional body file (a path inside the MockServers folder; it replaces the body). Response time: ""from"" is how long the server waits before answering (ms); with a ""to"" above it, every answer waits a random time between the two, like a real service. 0 and 0 answers at once.
 Failures – ""Fail %"" makes that share of requests fail with 500; with ""drop connection"" they cut the connection in the middle of the answer instead.
+GraphQL – the GQL button adds POST /graphql answered for one operation: condition ""graphql operation equals getOrder"" and a body such as {""data"":{""order"":{""id"":""{{json.variables.id}}""}}}. Add more GQL routes (change the operation name) for the other operations, a mutation route by ""type equals mutation"", and an error answer with a body like {""errors"":[{""message"":""Not found""}]} (status 200, as GraphQL servers do). A request with variables {""id"":""O1""} fills {{json.variables.id}}; {{operation}} is the operation name.
 No-match response – the first item in the list: what is sent when no route fits (404 by default).
 
 TEMPLATES in the body and in header values

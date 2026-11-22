@@ -15,7 +15,7 @@ namespace LoadTestingTool.UI;
 public sealed partial class MockServerWindow : Window
 {
     private static readonly string[] Verbs = ["ANY", "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
-    private static readonly string[] Sources = ["query", "header", "body", "json"];
+    private static readonly string[] Sources = ["query", "header", "body", "json", "graphql"];
     private static readonly string[] Ops = ["equals", "contains", "regex", "exists", "notexists"];
 
     private readonly string _serversFolder;

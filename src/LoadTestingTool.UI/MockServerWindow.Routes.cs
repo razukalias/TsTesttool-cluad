@@ -57,9 +57,20 @@ public sealed partial class MockServerWindow
             _config.Routes.Insert(_selected, clone); _selected++; MarkChanged();
         });
         var remove = Small("✕", "Delete the selected route", () => { if (CurrentRoute is null) return; _config.Routes.RemoveAt(_selected - 1); _selected = Math.Min(_selected, _config.Routes.Count); MarkChanged(); });
+        var graphQl = Small("GQL", "Add a GraphQL operation: POST /graphql answered when the request asks for this operation", () =>
+        {
+            var name = "getOrder";
+            _config.Routes.Add(new MockRoute
+            {
+                Name = "GraphQL " + name, Method = "POST", Path = "/graphql",
+                Conditions = [new MockCondition { Source = "graphql", Name = "operation", Op = "equals", Value = name }],
+                Response = new MockResponse { Body = "{\"data\":{\"order\":{\"id\":\"{{json.variables.id}}\",\"status\":\"NEW\"}}}" }
+            });
+            _selected = _config.Routes.Count; MarkChanged();
+        });
         var up = Small("▲", "Move up: routes are tried from the top", () => Move(-1));
         var down = Small("▼", "Move down", () => Move(1));
-        var tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(0, 0, 0, 6), Children = { add, copy, remove, up, down } };
+        var tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(0, 0, 0, 6), Children = { add, graphQl, copy, remove, up, down } };
         _routeList.SelectionChanged += (_, _) => { if (_refreshing || _routeList.SelectedIndex < 0) return; _selected = _routeList.SelectedIndex; LoadSelected(); };
         var left = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 8, 12, 0), Children = { tools, _routeList } };
         DockPanel.SetDock(tools, Dock.Top);

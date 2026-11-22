@@ -12,8 +12,8 @@ public sealed class MockHeader
 }
 
 /// <summary>
-/// An extra rule a request must meet for a route to apply: Source is query, header, body (the whole body) or json (a path such as
-/// order.lines[0].sku in a JSON body); Op is equals, contains, regex, exists or notexists.
+/// An extra rule a request must meet for a route to apply: Source is query, header, body (the whole body), json (a path such as
+/// order.lines[0].sku in a JSON body) or graphql (Name: operation, type or field of a GraphQL request); Op is equals, contains, regex, exists or notexists.
 /// </summary>
 public sealed class MockCondition
 {
@@ -84,7 +84,7 @@ public sealed class MockServerConfig
     }
 
     private static readonly Regex Token = new("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$", RegexOptions.Compiled);
-    private static readonly string[] Sources = ["query", "header", "body", "json"];
+    private static readonly string[] Sources = ["query", "header", "body", "json", "graphql"];
     private static readonly string[] Ops = ["equals", "contains", "regex", "exists", "notexists"];
 
     /// <summary>Everything wrong with the setup, in plain words; empty when the server can start.</summary>
@@ -105,7 +105,8 @@ public sealed class MockServerConfig
             if (route.FailurePercent is < 0 or > 100) problems.Add($"{label}: the failure chance must be 0-100.");
             foreach (var condition in route.Conditions)
             {
-                if (!Sources.Contains(condition.Source, StringComparer.OrdinalIgnoreCase)) problems.Add($"{label}: condition source '{condition.Source}' must be query, header, body or json.");
+                if (!Sources.Contains(condition.Source, StringComparer.OrdinalIgnoreCase)) problems.Add($"{label}: condition source '{condition.Source}' must be query, header, body, json or graphql.");
+                if (condition.Source.Equals("graphql", StringComparison.OrdinalIgnoreCase) && condition.Name.Trim().Length > 0 && !MockGraphQl.Parts.Contains(condition.Name.Trim(), StringComparer.OrdinalIgnoreCase)) problems.Add($"{label}: a graphql condition tests operation, type or field (not '{condition.Name}').");
                 if (!Ops.Contains(condition.Op, StringComparer.OrdinalIgnoreCase)) problems.Add($"{label}: condition '{condition.Op}' must be equals, contains, regex, exists or notexists.");
                 else if (condition.Op.Equals("regex", StringComparison.OrdinalIgnoreCase))
                 {

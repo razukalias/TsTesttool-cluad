@@ -369,3 +369,57 @@ public class MockResponseTimeAndUrlTests
         Assert.InRange(log.Single(e => e.Route == "plain").DurationMs, 140, 600);
     }
 }
+
+public class MockGraphQlTests : IDisposable
+{
+    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(5) };
+    public void Dispose() => _http.Dispose();
+
+    private static string Body(string query, string? operationName = null, string? variables = null)
+        => System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?> { ["query"] = query, ["operationName"] = operationName, ["variables"] = variables is null ? null : System.Text.Json.JsonDocument.Parse(variables).RootElement });
+
+    [Theory]
+    [InlineData("query GetOrder($id: ID!) { order(id: $id) { id } }", null, "operation", "GetOrder")]
+    [InlineData("query GetOrder { order { id } }", "Other", "operation", "Other")]
+    [InlineData("{ customers { id } }", null, "operation", "customers")]
+    [InlineData("{ customers { id } }", null, "type", "query")]
+    [InlineData("mutation CreateOrder { createOrder(input: {}) { id } }", null, "type", "mutation")]
+    [InlineData("mutation CreateOrder { createOrder(input: {}) { id } }", null, "field", "createOrder")]
+    [InlineData("query { mine: order(id: 1) { id } }", null, "field", "order")]
+    [InlineData("subscription OnPaid { paid { id } }", null, "type", "subscription")]
+    public void WhatARequestAsksFor(string query, string? operationName, string part, string expected) => Assert.Equal(expected, MockGraphQl.Part(Body(query, operationName), part));
+
+    [Fact]
+    public void NonGraphQlBodiesGiveNothing()
+    {
+        Assert.Null(MockGraphQl.Part("{\"a\":1}", "operation"));
+        Assert.Null(MockGraphQl.Part("", "operation"));
+        Assert.Null(MockGraphQl.Part("not json", "type"));
+    }
+
+    [Fact]
+    public async Task OneGraphQlPathAnswersEachOperationDifferently()
+    {
+        var config = new MockServerConfig { Port = MockServerHost.FreePort(), Routes =
+        [
+            new MockRoute { Name = "order", Method = "POST", Path = "/graphql", Conditions = [new MockCondition { Source = "graphql", Name = "operation", Op = "equals", Value = "GetOrder" }], Response = new MockResponse { Body = "{\"data\":{\"order\":{\"id\":\"{{json.variables.id}}\",\"op\":\"{{operation}}\"}}}" } },
+            new MockRoute { Name = "mutations", Method = "POST", Path = "/graphql", Conditions = [new MockCondition { Source = "graphql", Name = "type", Op = "equals", Value = "mutation" }], Response = new MockResponse { Status = 200, Body = "{\"errors\":[{\"message\":\"Not allowed\"}]}" } }
+        ]};
+        using var host = new MockServerHost(config); host.Start();
+        var url = $"http://127.0.0.1:{config.Port}/graphql";
+        async Task<string> Post(string body) => await (await _http.PostAsync(url, new StringContent(body, System.Text.Encoding.UTF8, "application/json"))).Content.ReadAsStringAsync();
+        Assert.Equal("{\"data\":{\"order\":{\"id\":\"O1\",\"op\":\"GetOrder\"}}}", await Post(Body("query GetOrder($id: ID!) { order(id: $id) { id } }", null, "{\"id\":\"O1\"}")));
+        Assert.Contains("Not allowed", await Post(Body("mutation Make { make { id } }")));
+        Assert.Contains("No route matched", await Post(Body("query Other { other { id } }")));
+        Assert.Equal(2, host.Snapshot().Count(e => e.Matched));
+    }
+
+    [Fact]
+    public void ValidationKnowsTheGraphQlSource()
+    {
+        var config = new MockServerConfig { Routes = [new MockRoute { Path = "/g", Conditions = [new MockCondition { Source = "graphql", Name = "operaton", Op = "equals" }, new MockCondition { Source = "graphql", Name = "", Op = "equals" }] }] };
+        var text = string.Join("\n", config.Validate());
+        Assert.Contains("operaton", text);
+        Assert.Single(config.Validate());
+    }
+}

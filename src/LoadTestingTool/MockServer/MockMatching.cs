@@ -86,6 +86,7 @@ public static class MockRouteMatcher
             "header" => request.Headers.TryGetValue(condition.Name, out var h) ? h : null,
             "body" => request.Body,
             "json" => MockJson.Get(request.Body, condition.Name),
+            "graphql" => MockGraphQl.Part(request.Body, condition.Name),
             _ => null
         };
         switch (condition.Op.ToLowerInvariant())
@@ -153,6 +154,7 @@ public static class MockTemplate
             case "method": return request.Method;
             case "path": return request.Path;
             case "url": return request.Path + (request.Query.Count == 0 ? "" : "?" + string.Join("&", request.Query.Select(p => $"{p.Key}={p.Value}")));
+            case "operation": return MockGraphQl.Part(request.Body, "operation") ?? "";
             case "now": return DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture);
             case "guid": return Guid.NewGuid().ToString();
             case "random": return Random.Shared.Next(0, 1_000_000).ToString(CultureInfo.InvariantCulture);
@@ -169,6 +171,36 @@ public static class MockTemplate
             "header" => request.Headers.TryGetValue(name, out var h) ? h : "",
             "json" => MockJson.Get(request.Body, name) ?? "",
             _ => ""
+        };
+    }
+}
+
+/// <summary>Reads what a GraphQL request asks for, so one /graphql path can answer different operations differently.</summary>
+public static class MockGraphQl
+{
+    public static readonly string[] Parts = ["operation", "type", "field"];
+    private static readonly Regex Header = new(@"^\s*(?<type>query|mutation|subscription)\b\s*(?<name>[A-Za-z_][A-Za-z0-9_]*)?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex FirstField = new(@"\{\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*:\s*)?(?<field>[A-Za-z_][A-Za-z0-9_]*)", RegexOptions.Compiled);
+
+    /// <summary>
+    /// "operation": the operationName, else the name in "query GetOrder", else the first field; "type": query, mutation or subscription
+    /// (a bare { … } is a query); "field": the first field asked for. Null when the body is not a GraphQL request.
+    /// </summary>
+    public static string? Part(string body, string part)
+    {
+        var query = MockJson.Get(body, "query");
+        if (query is null) return null;
+        var type = "query"; string? name = null;
+        var header = Header.Match(query);
+        if (header.Success) { type = header.Groups["type"].Value.ToLowerInvariant(); if (header.Groups["name"].Success) name = header.Groups["name"].Value; }
+        var field = FirstField.Match(query) is { Success: true } f ? f.Groups["field"].Value : null;
+        var operationName = MockJson.Get(body, "operationName");
+        return (string.IsNullOrWhiteSpace(part) ? "operation" : part.Trim().ToLowerInvariant()) switch
+        {
+            "type" => type,
+            "field" => field,
+            "operation" => !string.IsNullOrWhiteSpace(operationName) && operationName != "null" ? operationName : name ?? field,
+            _ => null
         };
     }
 }
