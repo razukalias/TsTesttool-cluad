@@ -11,6 +11,9 @@ public sealed class EditorSettings
     /// <summary>Per workbook, the sheets whose tab is hidden in Table view (empty or missing = all sheets).</summary>
     public Dictionary<string, List<string>> HiddenSheets { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Rows per page of the history lists (50, 100 or 250).</summary>
+    public int HistoryPageSize { get; set; } = 100;
+
     /// <summary>The folder each file picker (import, sample headers, response, export) was last used in, by picker name.</summary>
     public Dictionary<string, string> LastFolders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 

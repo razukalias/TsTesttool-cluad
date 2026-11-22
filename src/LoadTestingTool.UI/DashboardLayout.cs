@@ -325,6 +325,8 @@ public sealed partial class MainWindow
     private readonly TextBox _historySearch = new() { Watermark = "Filter instance, testcase, step, Data ID, status…", Width = 330 };
     private readonly ComboBox _historyStatus = new() { ItemsSource = new[] { "All statuses", "Passed", "Failed", "Cancelled" }, SelectedIndex = 0, Width = 140 };
     private readonly StackPanel _historyResults = new() { Spacing = 5 };
+    private readonly Pager _historyPager = new();
+    private PagerBar? _historyPagerBar;
     private readonly List<HistoryEntry> _historyEntries = [];
     private readonly HashSet<string> _historySelected = new(StringComparer.OrdinalIgnoreCase);
     private readonly TextBlock _historyCompare = DashboardStyle.Text("Select two history files to compare.", 12, false, DashboardStyle.Muted);
@@ -1853,11 +1855,14 @@ public sealed partial class MainWindow
         var compare = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { DashboardStyle.Action("Compare selected", CompareHistory), _historyCompare } };
         _historyPanel.Children.Add(DashboardStyle.Card(compare, new Thickness(10)));
         _historyPanel.Children.Add(new Border { Height = 1, Background = DashboardStyle.Line });
+        _historyPagerBar ??= new PagerBar(_historyPager);
+        _historyPager.Changed -= RenderHistoryEntries; _historyPager.Changed += RenderHistoryEntries;
+        _historyPanel.Children.Add(_historyPagerBar);
         _historyPanel.Children.Add(new ScrollViewer { Content = _historyResults, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         RenderHistoryEntries();
     }
 
-    private void HistoryFilterChanged(object? sender, EventArgs e) => RenderHistoryEntries();
+    private void HistoryFilterChanged(object? sender, EventArgs e) { _historyPager.Reset(); RenderHistoryEntries(); }
 
     private void RenderHistoryEntries()
     {
@@ -1866,7 +1871,7 @@ public sealed partial class MainWindow
         var status = _historyStatus.SelectedItem?.ToString() ?? "All statuses";
         var visible = _historyEntries.Where(x => status == "All statuses" || x.Status.Equals(status, StringComparison.OrdinalIgnoreCase))
             .Where(x => string.IsNullOrWhiteSpace(query) || x.SearchText.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
-        foreach (var entry in visible.Take(200))
+        foreach (var entry in _historyPager.Slice(visible))
         {
             var selected = _historySelected.Contains(entry.Path);
             var check = new CheckBox { IsChecked = selected, VerticalAlignment = VerticalAlignment.Top };
@@ -1880,7 +1885,7 @@ public sealed partial class MainWindow
             _historyResults.Children.Add(DashboardStyle.Card(grid, new Thickness(10)));
         }
         if (visible.Count == 0) _historyResults.Children.Add(DashboardStyle.Text("No history matches the current filters.", color: DashboardStyle.Muted));
-        else if (visible.Count > 200) _historyResults.Children.Add(DashboardStyle.Text($"Showing the first 200 of {visible.Count} matches. Use filters to narrow the list.", color: DashboardStyle.Muted));
+        _historyPagerBar?.Update();
         _historyCompare.Text = $"{_historySelected.Count} history file(s) selected; choose exactly two to compare.";
     }
 

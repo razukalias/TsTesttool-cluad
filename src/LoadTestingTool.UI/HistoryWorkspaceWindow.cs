@@ -28,6 +28,8 @@ public sealed class HistoryWorkspaceWindow : Window
     private readonly string _settingsPath;
     private readonly HistoryComparisonSettings _comparisonSettings;
     private readonly StackPanel _results = new() { Spacing = 8 };
+    private readonly Pager _pager = new();
+    private readonly PagerBar _pagerBar;
     private readonly TextBox _search = new() { Watermark = "Search instance, testcase, environment, filename, run ID…", MinWidth = 360 };
     private readonly TextBox _instance = new() { Watermark = "Instance" };
     private readonly TextBox _status = new() { Watermark = "Status" };
@@ -49,6 +51,8 @@ public sealed class HistoryWorkspaceWindow : Window
         _instancesRoot = Path.GetFullPath(instancesRoot);
         _settingsPath = ResolveSettingsPath(_instancesRoot);
         _comparisonSettings = HistoryComparisonSettings.Load(_settingsPath);
+        _pagerBar = new PagerBar(_pager);
+        _pager.Changed += Render;
         Title = "LoadTestingTool • History Explorer";
         Width = 1450; Height = 900; MinWidth = 1050; MinHeight = 650;
         WindowState = WindowState.Maximized;
@@ -76,17 +80,17 @@ public sealed class HistoryWorkspaceWindow : Window
         var help = DashboardStyle.Text("Browse executions as grouped runs or as individual history files. The initial scan reads filenames only, so damaged workbooks cannot freeze the dashboard.", 12, false, DashboardStyle.Muted);
         var viewButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children =
         {
-            DashboardStyle.Action("Grouped runs", () => { _grouped = true; Render(); }, "primary"),
-            DashboardStyle.Action("Individual files", () => { _grouped = false; Render(); }),
+            DashboardStyle.Action("Grouped runs", () => { _grouped = true; _pager.Reset(); Render(); }, "primary"),
+            DashboardStyle.Action("Individual files", () => { _grouped = false; _pager.Reset(); Render(); }),
             DashboardStyle.Action("Refresh", RefreshAsync),
             DashboardStyle.Action("Clear filters", ClearFilters)
         }};
         var top = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         top.Children.Add(new StackPanel { Spacing = 4, Children = { title, help } }); Grid.SetColumn(viewButtons, 1); top.Children.Add(viewButtons);
 
-        foreach (var field in new[] { _search, _instance, _status, _environment, _testcase, _runId }) field.TextChanged += (_, _) => Render();
-        _dateFrom.SelectedDateChanged += (_, _) => Render();
-        _dateTo.SelectedDateChanged += (_, _) => Render();
+        foreach (var field in new[] { _search, _instance, _status, _environment, _testcase, _runId }) field.TextChanged += (_, _) => { _pager.Reset(); Render(); };
+        _dateFrom.SelectedDateChanged += (_, _) => { _pager.Reset(); Render(); };
+        _dateTo.SelectedDateChanged += (_, _) => { _pager.Reset(); Render(); };
         var filters = new Grid { ColumnDefinitions = new ColumnDefinitions("2*,*,*,*,*,*,*,*"), RowDefinitions = new RowDefinitions("Auto,Auto"), Margin = new Thickness(0, 12, 0, 4) };
         AddFilter(filters, _search, 0, 0, 8);
         AddFilter(filters, _instance, 0, 1); AddFilter(filters, _status, 1, 1); AddFilter(filters, _environment, 2, 1); AddFilter(filters, _testcase, 3, 1); AddFilter(filters, _runId, 4, 1); AddFilter(filters, _dateFrom, 5, 1); AddFilter(filters, _dateTo, 6, 1);
@@ -98,7 +102,7 @@ public sealed class HistoryWorkspaceWindow : Window
             DashboardStyle.Action("Compare selected", CompareSelected),
             DashboardStyle.Action("Clear selection", () => { _selected.Clear(); Render(); })
         }};
-        var header = new StackPanel { Spacing = 4, Children = { top, filters, _summary, actions, _message, new Border { Height = 1, Background = DashboardStyle.Line, Margin = new Thickness(0, 4) } } };
+        var header = new StackPanel { Spacing = 4, Children = { top, filters, _summary, actions, _pagerBar, _message, new Border { Height = 1, Background = DashboardStyle.Line, Margin = new Thickness(0, 4) } } };
         _views.HorizontalAlignment = HorizontalAlignment.Stretch;
         _views.HorizontalContentAlignment = HorizontalAlignment.Stretch;
         _views.ItemsSource = new[] { new TabItem { Header = "Results", HorizontalContentAlignment = HorizontalAlignment.Stretch, Content = new ScrollViewer { HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Content = _results, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled } } };
@@ -188,9 +192,11 @@ public sealed class HistoryWorkspaceWindow : Window
         _summary.Text = $"{visible.Count} matching file(s) of {_files.Count}. View: {(_grouped ? "Grouped runs" : "Individual files")}. Selected: {_selected.Count}.";
         if (_grouped)
         {
-            foreach (var group in visible.GroupBy(x => $"{x.Instance}|{x.RunId}").OrderByDescending(x => x.Max(y => y.Timestamp))) _results.Children.Add(BuildGroup(group.Key, group.ToList()));
+            var groups = visible.GroupBy(x => $"{x.Instance}|{x.RunId}").OrderByDescending(x => x.Max(y => y.Timestamp)).ToList();
+            foreach (var group in _pager.Slice(groups)) _results.Children.Add(BuildGroup(group.Key, group.ToList()));
         }
-        else foreach (var file in visible) _results.Children.Add(BuildFile(file));
+        else foreach (var file in _pager.Slice(visible)) _results.Children.Add(BuildFile(file));
+        _pagerBar.Update();
         if (_results.Children.Count == 0) _results.Children.Add(DashboardStyle.Text("No history files match the current filters.", 13, false, DashboardStyle.Muted));
     }
 
