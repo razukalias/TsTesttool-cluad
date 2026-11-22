@@ -5,7 +5,7 @@ namespace LoadTestingTool.Execution;
 /// <summary>
 /// <c>&lt;from_filepath&gt;path</c> puts the content of a file into a request cell; <c>&lt;from_filepath_base64&gt;path</c> puts the file's bytes there as base64.
 /// The token is the whole cell. A bare file name is read from the instance's <c>Files</c> folder; a relative path with folders is tried in
-/// <c>Files</c> and then in the instance folder; an absolute path is used as it is. The file is read when the step runs and used exactly as it is.
+/// <c>Files</c> and then in the instance folder; a path starting with <c>../</c> is relative to the instance folder (files elsewhere in the application); an absolute path is used as it is. The file is read when the step runs and used exactly as it is.
 /// </summary>
 public static class FileTokens
 {
@@ -31,7 +31,9 @@ public static class FileTokens
         if (Path.IsPathRooted(normalized)) return File.Exists(normalized) ? normalized : null;
         var filesFolder = Path.Combine(instanceFolder, FilesFolder);
         var bare = normalized.IndexOf(Path.DirectorySeparatorChar) < 0;
-        foreach (var baseFolder in bare ? new[] { filesFolder } : new[] { filesFolder, instanceFolder })
+        // A path that starts with ".." is relative to the instance folder only (that is how the file picker writes files outside the instance, so the app can be moved).
+        var instanceRelative = normalized == ".." || normalized.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+        foreach (var baseFolder in instanceRelative ? new[] { instanceFolder } : bare ? new[] { filesFolder } : new[] { filesFolder, instanceFolder })
         {
             var found = FindIn(baseFolder, normalized);
             if (found is not null) return found;

@@ -350,3 +350,41 @@ public class ResponseFieldsWindowTests
         form.Close();
     }
 }
+
+public class PickedFileTests
+{
+    [Fact]
+    public void A_picked_file_gets_a_portable_path_and_one_outside_the_application_is_copied_into_Files()
+    {
+        using var dir = new TempDir();
+        var app = dir.Combine("app");
+        var inst = System.IO.Path.Combine(app, "Instances", "Main");
+        Directory.CreateDirectory(System.IO.Path.Combine(inst, "Files"));
+        Directory.CreateDirectory(System.IO.Path.Combine(app, "Shared"));
+        File.WriteAllText(System.IO.Path.Combine(inst, "Files", "a.txt"), "a");
+        File.WriteAllText(System.IO.Path.Combine(app, "Shared", "s.txt"), "s");
+        var outsideDir = dir.Combine("elsewhere"); Directory.CreateDirectory(outsideDir);
+        var outside = System.IO.Path.Combine(outsideDir, "o.txt"); File.WriteAllText(outside, "o");
+
+        Assert.Equal(("a.txt", null), PickedFile.Prepare(inst, System.IO.Path.Combine(inst, "Files", "a.txt")));
+        var shared = PickedFile.Prepare(inst, System.IO.Path.Combine(app, "Shared", "s.txt"));
+        Assert.Equal("../../Shared/s.txt", shared.Path); Assert.Contains("keeps working when the application is moved", shared.Note);
+        var copied = PickedFile.Prepare(inst, outside);
+        Assert.Equal("o.txt", copied.Path); Assert.Contains("copied", copied.Note);
+        Assert.Equal("o", File.ReadAllText(System.IO.Path.Combine(inst, "Files", "o.txt")));
+        Assert.Equal("o2.txt", PickedFile.Prepare(inst, outside).Path);   // the name is taken: a free one
+    }
+
+    [Fact]
+    public void The_file_menu_offers_pickers_that_report_the_choice_for_text_and_base64()
+    {
+        var calls = new List<bool>();
+        var file = Assert.Single(RecordMenu.Root(new(["a"], [], [], []), null, new RecordMenu.FileHooks((b, _) => calls.Add(b))), n => n.Title == "File");
+        var items = file.Children!();
+        items.Single(n => n.Title == "Pick a file as text…").Open!(_ => { });
+        items.Single(n => n.Title == "Pick a file as Base64…").Open!(_ => { });
+        Assert.Equal([false, true], calls);
+        Assert.Contains(items, n => n.Title == "File content as text");   // typing a name still works
+        Assert.DoesNotContain(RecordMenu.Root(new(["a"], [], [], [])).Single(n => n.Title == "File").Children!(), n => n.Title.StartsWith("Pick"));
+    }
+}

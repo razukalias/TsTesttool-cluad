@@ -163,7 +163,10 @@ public static class RecordMenu
     /// <summary>What the Script entries do: use an existing template, or write a new one. Both end by handing over a part.</summary>
     public sealed record ScriptHooks(Action<Action<ValuePart>> UseTemplate, Action<Action<ValuePart>> NewTemplate);
 
-    public static IReadOnlyList<MenuNode> Root(Sources sources, ScriptHooks? scripts = null) =>
+    /// <summary>Picks a file (text or Base64) and hands over a part whose path keeps working when the application folder is moved.</summary>
+    public sealed record FileHooks(Action<bool, Action<ValuePart>> Pick);
+
+    public static IReadOnlyList<MenuNode> Root(Sources sources, ScriptHooks? scripts = null, FileHooks? files = null) =>
     [
         new() { Title = "Text", Prompt = "Text", FromInput = t => t.Length == 0 ? null : ValuePart.Text(t) },
         new() { Title = "From", Children = () => FromSheets(sources) },
@@ -171,6 +174,9 @@ public static class RecordMenu
         new() { Title = "GUID", Children = GuidFormats },
         new() { Title = "Date and time", Children = DateFormats },
         new() { Title = "File", Children = () => [
+            .. (files is null ? Array.Empty<MenuNode>() :
+            [new MenuNode { Title = "Pick a file as text…", Open = add => files.Pick(false, add) },
+             new MenuNode { Title = "Pick a file as Base64…", Open = add => files.Pick(true, add) }]),
             new MenuNode { Title = "File content as text", Prompt = "File name or path", FromInput = p => p.Trim().Length == 0 ? null : ValuePart.File(p.Trim()) },
             new MenuNode { Title = "File content as Base64", Prompt = "File name or path", FromInput = p => p.Trim().Length == 0 ? null : ValuePart.File(p.Trim(), base64: true) } ] },
         .. (scripts is null ? Array.Empty<MenuNode>() : [new MenuNode { Title = "Script", Children = () => [

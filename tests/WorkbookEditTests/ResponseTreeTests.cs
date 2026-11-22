@@ -186,3 +186,62 @@ public class CountHeaderWorkbookTests
         Assert.Equal("PASS", Assert.Single(result).Result);
     }
 }
+
+public class PortablePathTests
+{
+    private static string P(params string[] parts) => Path.Combine(parts);
+
+    [Fact]
+    public void Files_in_the_files_folder_the_instance_and_the_application_get_relative_slash_paths()
+    {
+        var app = P(Path.GetTempPath(), "app1");
+        var inst = P(app, "Instances", "Main");
+        Assert.Equal(("a.pdf", PathPlace.InFiles), PortablePaths.ToPortable(inst, app, P(inst, "Files", "a.pdf")));
+        Assert.Equal(("invoices/2026/a.pdf", PathPlace.InFiles), PortablePaths.ToPortable(inst, app, P(inst, "Files", "invoices", "2026", "a.pdf")));
+        Assert.Equal(("Templates/t.json", PathPlace.InInstance), PortablePaths.ToPortable(inst, app, P(inst, "Templates", "t.json")));
+        Assert.Equal(("../../Shared/a.pdf", PathPlace.InApplication), PortablePaths.ToPortable(inst, app, P(app, "Shared", "a.pdf")));
+        Assert.Equal(("../Other/Files/x.bin", PathPlace.InApplication), PortablePaths.ToPortable(inst, app, P(app, "Instances", "Other", "Files", "x.bin")));
+        var outside = P(Path.GetTempPath(), "elsewhere", "z.txt");
+        Assert.Equal((Path.GetFullPath(outside), PathPlace.Outside), PortablePaths.ToPortable(inst, app, outside));
+    }
+
+    [Fact]
+    public void A_folder_whose_name_only_starts_like_files_is_not_inside_it()
+    {
+        var app = P(Path.GetTempPath(), "app2");
+        var inst = P(app, "Instances", "Main");
+        Assert.Equal(PathPlace.InInstance, PortablePaths.ToPortable(inst, app, P(inst, "Files2", "a.txt")).Place);
+    }
+
+    [Fact]
+    public void The_application_root_is_the_folder_above_Instances()
+        => Assert.Equal(P(Path.GetTempPath(), "app3"), PortablePaths.ApplicationRootOf(P(Path.GetTempPath(), "app3", "Instances", "Main")));
+
+    [Fact]
+    public void The_runner_finds_files_by_the_paths_the_picker_writes_even_after_the_application_folder_is_moved()
+    {
+        using var dir = new TempDir();
+        var app = dir.Combine("app");
+        var inst = P(app, "Instances", "Main");
+        Directory.CreateDirectory(P(inst, "Files", "sub"));
+        Directory.CreateDirectory(P(app, "Shared"));
+        Directory.CreateDirectory(P(inst, "Templates"));
+        File.WriteAllText(P(inst, "Files", "sub", "a.txt"), "A");
+        File.WriteAllText(P(app, "Shared", "s.txt"), "S");
+        File.WriteAllText(P(inst, "Templates", "t.txt"), "T");
+        // a decoy where "../../Shared" would land if it were taken from Files
+        Directory.CreateDirectory(P(app, "Instances", "Shared"));
+        File.WriteAllText(P(app, "Instances", "Shared", "s.txt"), "DECOY");
+
+        var picked = new[] { P(inst, "Files", "sub", "a.txt"), P(app, "Shared", "s.txt"), P(inst, "Templates", "t.txt") }
+            .Select(f => PortablePaths.ToPortable(inst, app, f).Path).ToArray();
+        Assert.Equal(["sub/a.txt", "../../Shared/s.txt", "Templates/t.txt"], picked);
+
+        var moved = dir.Combine("moved");
+        Directory.Move(app, moved);
+        var instMoved = P(moved, "Instances", "Main");
+        Assert.Equal("A", File.ReadAllText(FileTokens.Find(instMoved, picked[0])!));
+        Assert.Equal("S", File.ReadAllText(FileTokens.Find(instMoved, picked[1])!));
+        Assert.Equal("T", File.ReadAllText(FileTokens.Find(instMoved, picked[2])!));
+    }
+}

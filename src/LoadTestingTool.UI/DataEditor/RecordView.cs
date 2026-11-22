@@ -329,6 +329,28 @@ public sealed class RecordLineView : Border
         if (await ScriptPartWindow.AskAsync(owner, _editor, LoadTestingTool.Editing.ScriptTemplates.Token(saved, [])) is { } part) add(part);
     }
 
+    /// <summary>
+    /// Opens the file picker in the instance's Files folder and hands over a path that survives moving the application: relative to Files, to the instance, or to it with ../ for files
+    /// elsewhere in the application. A file outside the application is copied into Files, so the cell never holds a path that only works on this computer.
+    /// </summary>
+    private async Task PickFileAsync(bool base64, Action<ValuePart> add)
+    {
+        if (TopLevel.GetTopLevel(this) is not { } top) return;
+        try
+        {
+            var instance = Path.GetDirectoryName(Path.GetFullPath(_editor.WorkbookPath)) ?? ".";
+            var files = Path.Combine(instance, LoadTestingTool.Execution.FileTokens.FilesFolder);
+            Directory.CreateDirectory(files);
+            var start = await top.StorageProvider.TryGetFolderFromPathAsync(files);
+            var picked = await top.StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions { Title = base64 ? "Choose a file (sent as Base64)" : "Choose a file (sent as text)", SuggestedStartLocation = start, AllowMultiple = false });
+            if (picked.Count == 0 || picked[0].TryGetLocalPath() is not { } file) return;
+            var (path, note) = PickedFile.Prepare(instance, file);
+            add(ValuePart.File(path, base64));
+            if (note is not null) _editor.Notify(note, false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _editor.Notify($"Could not use that file: {ex.Message}", true); }
+    }
+
     private Control AddButton()
     {
         var plus = new Button { Content = "＋", Tag = "add-part", MinHeight = 28, MinWidth = 32, Margin = new Thickness(0, 0, 0, 4), CornerRadius = new CornerRadius(14), Padding = new Thickness(8, 0) };
@@ -337,7 +359,8 @@ public sealed class RecordLineView : Border
         var hooks = new RecordMenu.ScriptHooks(
             add => { flyout.Hide(); _ = AddScriptAsync(add, null); },
             add => { flyout.Hide(); _ = NewTemplateThenAddAsync(add); });
-        var menu = new DrillDownMenu(RecordMenu.Root(_editor.MenuSources(), hooks), part => { flyout.Hide(); _line.Add(part); });
+        var fileHooks = new RecordMenu.FileHooks((base64, add) => { flyout.Hide(); _ = PickFileAsync(base64, add); });
+        var menu = new DrillDownMenu(RecordMenu.Root(_editor.MenuSources(), hooks, fileHooks), part => { flyout.Hide(); _line.Add(part); });
         flyout.Content = menu;
         flyout.Opened += (_, _) => menu.Reset();
         plus.Flyout = flyout;
