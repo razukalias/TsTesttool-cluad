@@ -870,17 +870,6 @@ public sealed partial class MainWindow
             ? $"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}"
             : $"{duration.Minutes:00}:{duration.Seconds:00}";
     }
-
-    private static void UpdatePagination(TextBlock label, Button previous, Button next, int page, int totalItems, int pageSize)
-    {
-        var totalPages = Math.Max(1, (int)Math.Ceiling(totalItems / (double)pageSize));
-        var currentPage = Math.Clamp(page, 1, totalPages);
-        var first = totalItems == 0 ? 0 : ((currentPage - 1) * pageSize) + 1;
-        var last = totalItems == 0 ? 0 : Math.Min(currentPage * pageSize, totalItems);
-        label.Text = $"Page {currentPage} of {totalPages}  ·  Showing {first}–{last} of {totalItems}";
-        previous.IsEnabled = currentPage > 1;
-        next.IsEnabled = currentPage < totalPages;
-    }
     private void BuildConfiguration()
     {
         _configurationPanel.Children.Clear(); var item = _selectedInstance;
@@ -1131,15 +1120,6 @@ public sealed partial class MainWindow
             _details.Text = $"Cannot open the data editor: {ex.Message}";
             return null;
         }
-    }
-
-    private async Task EditWorkbookAsync()
-    {
-        if (_selectedInstance is null) { _details.Text = "Select an instance first."; return; }
-        var editor = new WorkbookEditorWindow(_selectedInstance.WorkbookPath, _selectedInstance.Name);
-        editor.Closed += (_, _) => { if (!string.IsNullOrWhiteSpace(editor.SavedBackup)) { RefreshInstances(); _details.Text = $"Workbook saved. Backup created: {Path.GetFileName(editor.SavedBackup)}"; } };
-        editor.Show(Host);
-        await Task.CompletedTask;
     }
 
     private void OpenInstanceConfiguration(InstanceInfo item)
@@ -1720,23 +1700,6 @@ public sealed partial class MainWindow
 
     private static bool IsUnexpectedRequest(DashboardRequest request)
         => !string.IsNullOrWhiteSpace(request.Error) || (!string.IsNullOrWhiteSpace(request.FailureCategory) && request.FailureCategory is not "None" and not "Assertion" and not "HttpStatus");
-    private static IReadOnlyList<DashboardRowSummary> BuildDashboardRowSummaries(IReadOnlyList<DashboardRequest> requests)
-    {
-        return requests.GroupBy(request => $"{request.Testcase}\u001F{request.DataId}\u001F{request.Environment}", StringComparer.OrdinalIgnoreCase)
-            .Select(group =>
-            {
-                var values = group.ToList();
-                var unexpected = values.Count(IsUnexpectedRequest);
-                var failed = values.Count(x => x.Result.Equals("FAIL", StringComparison.OrdinalIgnoreCase) && !IsUnexpectedRequest(x));
-                var passed = values.Count(x => x.Result.Equals("PASS", StringComparison.OrdinalIgnoreCase));
-                var skipped = values.Count(x => x.Result.Equals("SKIPPED", StringComparison.OrdinalIgnoreCase));
-                var status = unexpected > 0 ? "Unexpected error" : failed > 0 ? "Failed" : skipped > 0 && passed == 0 ? "Cancelled" : passed == values.Count && values.Count > 0 ? "Passed" : "Incomplete";
-                var details = string.Join("  |  ", values.Where(x => !string.IsNullOrWhiteSpace(x.Error) || (!string.IsNullOrWhiteSpace(x.FailureCategory) && x.FailureCategory != "None")).Select(x => $"{x.StepName}: {x.FailureCategory} {x.Error}"));
-                var first = values[0];
-                return new DashboardRowSummary(first.Testcase, first.DataId, string.IsNullOrWhiteSpace(first.Environment) ? "default" : first.Environment, values.Count, passed, failed, unexpected, skipped, status, details);
-            })
-            .OrderBy(x => x.Testcase, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.DataId, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Environment, StringComparer.OrdinalIgnoreCase).ToList();
-    }
     /// <summary>Old assertion tools kept out of the way: switched off, the dataset editor does their work (Compare, failed-cell list, assign actual).</summary>
     private Control LegacyAssertionTools()
     {
@@ -1758,7 +1721,6 @@ public sealed partial class MainWindow
         if (_hostWindow is not { IsVisible: true })
         {
             _artifactPanel.Children.Add(DashboardStyle.Action("Edit data", OpenDataEditor, "primary"));
-            _artifactPanel.Children.Add(DashboardStyle.Action("Handcraft: Edit workbook (legacy)", () => _ = EditWorkbookAsync()));
         }
         _artifactPanel.Children.Add(DashboardStyle.Action("Open latest result workbook", OpenLatestResultWorkbook));
         _artifactPanel.Children.Add(LegacyAssertionTools());
@@ -1797,11 +1759,6 @@ public sealed partial class MainWindow
             }
         }
     }
-    private void OpenSpreadsheetPreview()
-    {
-        if (_selectedInstance is null) { _details.Text = "Select an instance first."; return; }
-        LaunchSpreadsheetProcess(_selectedInstance.WorkbookPath, "dataset editor");
-    }
 
     private void LaunchSpreadsheetProcess(string workbookPath, string description)
     {
@@ -1832,12 +1789,6 @@ public sealed partial class MainWindow
             $"Run ID: {item.CurrentRunId}", $"Last event: {item.LastEvent}"
         };
         lines.AddRange(item.Requests.Select(r => $"{r.Result} | {r.Testcase} | {r.DataId} | {r.StepType}/{r.StepName} | {r.DurationMs} ms | {r.Error}"));
-        await CopyTextAsync(string.Join(Environment.NewLine, lines));
-    }
-    private async Task CopyAssertionsAsync()
-    {
-        if (_selectedInstance is null) return;
-        var lines = _selectedInstance.Assertions.Select(a => $"{a.Result} | {a.Environment} | {a.Testcase} | {a.DataId} | {a.StepName} | {a.ResponsePath} {a.AssertionVerb} | type={a.AssertionType} | meaning={a.AssertionMeaning} | expected={a.ExpectedValue} | actual={a.ActualValue}");
         await CopyTextAsync(string.Join(Environment.NewLine, lines));
     }
     private async Task CopyTextAsync(string text)

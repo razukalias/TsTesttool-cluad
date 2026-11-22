@@ -344,7 +344,6 @@ public sealed class SpreadsheetPreviewWindow : Window
     }
 
     private static string Cell(Dictionary<(int Col, int Row), string> cells, int col, int row) => cells.TryGetValue((col, row), out var value) ? value : "";
-    private static string RowText(Dictionary<(int Col, int Row), string> cells, int row) => string.Join(" ", cells.Where(x => x.Key.Row == row).OrderBy(x => x.Key.Col).Select(x => x.Value));
 
     private void ReplaceGrid(SheetView view, Dictionary<(int, int), string> projected, HashSet<int> hiddenRows, HashSet<int> hiddenColumns, bool syncExisting = true)
     {
@@ -770,26 +769,6 @@ public sealed class SpreadsheetPreviewWindow : Window
         catch (Exception ex) { _status.Text = $"Auto-fit columns failed: {ex.Message}"; _status.Foreground = DashboardStyle.Red; Log($"Spreadsheet auto-fit columns failed. error={ex}"); }
     }
 
-    private void AutoFitSelectedRows()
-    {
-        var view = SelectedSheet();
-        var grid = view?.Grid;
-        if (view is null || grid is null || grid.Selection.Count == 0) return;
-        try
-        {
-            var heights = new Dictionary<int, double>();
-            foreach (var range in grid.Selection)
-            {
-                var top = Math.Clamp(range.Top, 0, Math.Max(0, view.RowCount - 1));
-                var bottom = Math.Clamp(range.Bottom, top, Math.Max(0, view.RowCount - 1));
-                for (var row = top; row <= bottom; row++) heights[row] = Math.Clamp(22d + Math.Min(6, Cell(view.Cells, 0, row).Length / 80) * 15d, 22d, 112d);
-            }
-            if (heights.Count > 0) grid.SetHeight(heights);
-            _status.Text = $"Auto-fit {heights.Count} row(s)."; _status.Foreground = DashboardStyle.Green;
-        }
-        catch (Exception ex) { _status.Text = $"Auto-fit rows failed: {ex.Message}"; _status.Foreground = DashboardStyle.Red; Log($"Spreadsheet auto-fit rows failed. error={ex}"); }
-    }
-
     private static void ShiftRows(SheetView view, int start, int delta)
     {
         var cells = view.Cells.ToArray();
@@ -1203,8 +1182,6 @@ public sealed class SpreadsheetPreviewWindow : Window
         _status.Text = $"Added sheet '{name}'. Press Ctrl+S or click Save workbook to write it.";
     }
 
-    private void RemoveSheet() => RemoveSheet(SelectedSheet());
-
     private void RemoveSheet(SheetView? view)
     {
         if (view is null) return;
@@ -1224,8 +1201,6 @@ public sealed class SpreadsheetPreviewWindow : Window
         _status.Foreground = DashboardStyle.Green;
         _status.Text = $"Removed sheet '{view.Name}'. Press Ctrl+S or click Save workbook to write it.";
     }
-
-    private void RenameSheet() => RenameSheet(SelectedSheet());
 
     private void RenameSheet(SheetView? view)
     {

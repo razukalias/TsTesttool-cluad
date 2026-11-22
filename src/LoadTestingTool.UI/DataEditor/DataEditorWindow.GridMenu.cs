@@ -277,9 +277,6 @@ public partial class DataEditorWindow
     private static Control? HeaderOf(DataGrid grid, int cell)
         => grid.GetVisualDescendants().OfType<DataGridColumnHeader>().FirstOrDefault(h => grid.Columns.FirstOrDefault(c => ReferenceEquals(c.Header, h.Content))?.Tag is int t && t == cell);
 
-    private static List<(IFormattedRow Row, int Cell)> ColumnCells(DataEditorViewModel editor, int cell)
-        => editor.VisibleRows.Select(row => ((IFormattedRow)row, cell)).ToList();
-
     // ---- Other sheets: row and column menus ------------------------------------------------------
 
     private ContextMenu BuildSheetRowMenu(DataEditorViewModel editor, DataGrid grid)

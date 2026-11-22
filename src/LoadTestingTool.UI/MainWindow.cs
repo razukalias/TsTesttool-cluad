@@ -302,125 +302,9 @@ public sealed partial class MainWindow : Window
         _assertionVerbFilter.SetOptions(assertions.Select(a => a.AssertionVerb));
     }
 
-    private void ApplyAssertionEdit(AssertionInfo assertion, AssertionEditResult result)
-    {
-        if (_selectedInstance is null) return;
-        try
-        {
-            var workbookPath = _selectedInstance.WorkbookPath;
-            var backup = DataEngineBackup.CreateBackup(workbookPath);
-            using var workbook = new XLWorkbook(workbookPath);
-            var sheet = workbook.Worksheet("response");
-            var header = sheet.Cell(1, assertion.ExpectedValueColumn);
-            var responseHeader = result.ResponseHeader.Trim();
-            header.Value = responseHeader;
-            var cell = sheet.Cell(assertion.ExcelRowNumber, assertion.ExpectedValueColumn);
-            cell.Value = result.ExpectedValue;
-            workbook.Save();
-            NotifyEditorWorkbookChanged(_selectedInstance);
-            assertion.ResponseHeader = responseHeader;
-            assertion.ResponsePath = HeaderPath(responseHeader, assertion.StepName);
-            assertion.AssertionVerb = HeaderVerb(responseHeader, result.ExpectedValue);
-            assertion.ExpectedValue = HeaderExpected(result.ExpectedValue);
-            _details.Text = $"Assertion corrected. Backup created: {Path.GetFileName(backup)}. Extract-variable editing is no longer part of this form. Run the instance again to validate it.";
-            UiLog($"Assertion corrected. instance={_selectedInstance.Name}; testcase={assertion.Testcase}; dataId={assertion.DataId}; step={assertion.StepName}; header={responseHeader}; backup={backup}");
-            RefreshAssertionList(); RefreshDashboardDetails(true);
-        }
-        catch (Exception ex) { _details.Text = $"Assertion correction failed: {ex.Message}"; UiLog($"Assertion correction failed: {ex}"); }
-    }
-
     /// <summary>The workbook was changed on disk from a dashboard panel: lets the open data editor pick it up (after the file is closed again).</summary>
     private void NotifyEditorWorkbookChanged(InstanceInfo item)
         => Dispatcher.UIThread.Post(() => (_hostWindow as DataEditor.DataEditorWindow)?.Shell.ReloadAfterExternalChange(item.Name), DispatcherPriority.Background);
-
-    private void ApplySelectedFixes()
-    {
-        if (_selectedInstance is null) { UiLog("Apply selected values ignored. reason=no-selected-instance"); return; }
-        var selected = _selectedInstance.Assertions.Where(a => a.Selected && a.Result == "FAIL").ToList();
-        UiLog($"Apply selected values started. instance={_selectedInstance.Name}; selectedFailed={selected.Count}");
-        if (selected.Count == 0) { _details.Text = "Select one or more failed assertions first."; UiLog($"Apply selected values ignored. instance={_selectedInstance.Name}; reason=no-failed-assertions-selected"); return; }
-        try
-        {
-            var backup = DataEngineBackup.CreateBackup(_selectedInstance.WorkbookPath);
-            using var workbook = new XLWorkbook(_selectedInstance.WorkbookPath);
-            var sheet = workbook.Worksheet("response");
-            var skippedMissing = 0;
-            var skippedVariables = 0;
-            var updated = 0;
-            var addedHeaders = 0;
-            foreach (var assertion in selected)
-            {
-                if (assertion.ActualValue == "<missing>") { skippedMissing++; continue; }
-                if (assertion.ExcelRowNumber <= 0) continue;
-                var column = assertion.ExpectedValueColumn;
-                var added = false;
-                if (IsUnexpectedAssertion(assertion) || column <= 0)
-                {
-                    var header = $"{assertion.StepName}.{assertion.ResponsePath}";
-                    column = FindResponseHeaderColumn(sheet, header);
-                    if (column <= 0)
-                    {
-                        column = (sheet.Row(1).LastCellUsed()?.Address.ColumnNumber ?? 0) + 1;
-                        var headerCell = sheet.Cell(1, column);
-                        headerCell.Value = header;
-                        headerCell.Style.Font.Bold = true;
-                        headerCell.Style.Fill.BackgroundColor = XLColor.LightGreen;
-                        headerCell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-                        added = true;
-                        addedHeaders++;
-                    }
-                }
-                var currentCell = sheet.Cell(assertion.ExcelRowNumber, column);
-                if (ContainsWorkbookVariable(currentCell.GetString()))
-                {
-                    skippedVariables++;
-                    continue;
-                }
-                currentCell.Value = assertion.ActualValue;
-                if (added)
-                {
-                    currentCell.Style.Fill.BackgroundColor = XLColor.LightGreen;
-                }
-                updated++;
-            }
-            workbook.Save();
-            NotifyEditorWorkbookChanged(_selectedInstance);
-            _details.Text = $"Updated {updated} assertion value(s); added {addedHeaders} response header(s). Skipped {skippedMissing} missing response value(s) and {skippedVariables} variable cell(s); dynamic values were not overwritten. New headers are highlighted green. Backup created: {Path.GetFileName(backup)}. Run the instance again to validate.";
-            UiLog($"Apply selected values completed. instance={_selectedInstance.Name}; updated={updated}; addedHeaders={addedHeaders}; skippedMissing={skippedMissing}; skippedVariables={skippedVariables}; backup={backup}");
-        }
-        catch (Exception ex) { _details.Text = $"Workbook update failed: {ex.Message}"; UiLog($"Apply selected values failed. instance={_selectedInstance.Name}; error={ex}"); }
-    }
-
-    private static bool IsUnexpectedAssertion(AssertionInfo assertion) => assertion.AssertionVerb.Equals("contract", StringComparison.OrdinalIgnoreCase) || assertion.ExpectedValue.Equals("<response-sheet-path>", StringComparison.OrdinalIgnoreCase);
-
-    private static int FindResponseHeaderColumn(IXLWorksheet sheet, string header)
-    {
-        var used = sheet.Row(1).CellsUsed();
-        return used.FirstOrDefault(cell => cell.GetString().Trim().Equals(header, StringComparison.OrdinalIgnoreCase))?.Address.ColumnNumber ?? 0;
-    }
-
-    private static bool ContainsWorkbookVariable(string value) => System.Text.RegularExpressions.Regex.IsMatch(value ?? string.Empty, @"<[^<>]+>");
-    private static string HeaderVerb(string header, string cell)
-    {
-        if (cell.TrimStart().StartsWith("{", StringComparison.Ordinal) && cell.IndexOf('}') > 1)
-            return cell[1..cell.IndexOf('}')].Trim().ToLowerInvariant();
-        if (header.TrimStart().StartsWith("{", StringComparison.Ordinal) && header.IndexOf('}') > 1)
-            return header[(header.IndexOf('{') + 1)..header.IndexOf('}')].Trim().ToLowerInvariant();
-        return "eq";
-    }
-    private static string HeaderExpected(string cell)
-    {
-        var value = cell.Trim();
-        if (value.StartsWith("{", StringComparison.Ordinal) && value.IndexOf('}') > 1) return value[(value.IndexOf('}') + 1)..];
-        return value;
-    }
-    private static string HeaderPath(string header, string fallbackStep)
-    {
-        var value = header.Trim();
-        if (value.StartsWith("{", StringComparison.Ordinal) && value.IndexOf('}') > 1) value = value[(value.IndexOf('}') + 1)..].Trim();
-        var separator = value.IndexOf('.');
-        return separator > 0 ? value[(value.StartsWith(fallbackStep + ".", StringComparison.OrdinalIgnoreCase) ? fallbackStep.Length + 1 : 0)..] : value;
-    }
 
     /// <summary>Re-reads the testcases, steps and data ids the dashboard knows about an instance from its workbook. A run checks its choice against this list, so it must be current after every save.</summary>
     internal void ReloadWorkbookCatalog(InstanceInfo item, string? workbookPath = null)
@@ -735,44 +619,10 @@ public sealed partial class MainWindow : Window
         catch (Exception ex) { UiLog($"Could not save reporting settings for {item.Name}: {ex}"); _details.Text = $"Could not save reporting settings: {ex.Message}"; }
     }
 
-    private void OpenStepWizardForInstance(InstanceInfo item)
-    {
-        _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item);
-        var wizard = new TestStepWizardWindow(step => SaveWizardStep(item, step), templatesFolder: item.TemplatesFolder, instanceName: item.Name);
-        wizard.Show(Host);
-    }
-
     private void OpenSpreadsheetForInstance(InstanceInfo item)
     {
         _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item);
         OpenDataEditor();
-    }
-
-    private void EditStepForInstance(InstanceInfo item)
-    {
-        _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item);
-        if (item.TestcaseOptions.Count == 0) { SetStatusForInstance($"No editable steps found for {item.Name}.", true); return; }
-        var picker = new StepPickerWindow(item.Name, item.TestcaseOptions, (testcaseIndex, stepName) => OpenExistingStepWizard(item, testcaseIndex, stepName));
-        picker.Show(Host);
-    }
-
-    private void OpenExistingStepWizard(InstanceInfo item, int testcaseIndex, string stepName)
-    {
-        try
-        {
-            using var workbookStream = new FileStream(item.WorkbookPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            using var workbook = new XLWorkbook(workbookStream);
-            var sheet = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("config", StringComparison.OrdinalIgnoreCase));
-            if (sheet is null) { SetStatusForInstance($"No config sheet found in {item.Name}.", true); return; }
-            var used = sheet.FirstRowUsed();
-            var headers = used?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(c => c.GetString().Trim(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? [];
-            var row = sheet.RowsUsed().Skip(1).FirstOrDefault(r => int.TryParse(r.Cell(headers.GetValueOrDefault("testcaseindex")).GetString(), out var index) && index == testcaseIndex && r.Cell(headers.GetValueOrDefault("stepname")).GetString().Trim().Equals(stepName, StringComparison.OrdinalIgnoreCase));
-            if (row is null) { SetStatusForInstance($"Could not locate config row for testcase {testcaseIndex}, step {stepName}.", true); return; }
-            var values = headers.ToDictionary(pair => pair.Key, pair => row.Cell(pair.Value).GetString(), StringComparer.OrdinalIgnoreCase);
-            var wizard = new TestStepWizardWindow(step => SaveWizardStep(item, step), new WizardStepDraft(row.RowNumber(), values), item.TemplatesFolder, item.Name);
-            wizard.Show(Host);
-        }
-        catch (Exception ex) { SetStatusForInstance($"Could not open step editor: {ex.Message}", true); }
     }
 
     private void OpenWorkbookForInstance(InstanceInfo item)
@@ -789,10 +639,6 @@ public sealed partial class MainWindow : Window
     {
         item.Selected = true; _selectedInstance = item; _instanceList.SelectedItem = item; StopSelected(false);
     }
-    private void OpenInstanceLog(InstanceInfo item)
-    {
-        _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item); OpenLatestInternalLog();
-    }
     private void OpenSelectedInternalLogForInstance(InstanceInfo item, string testcase, string environment, string result, string run)
     {
         _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item);
@@ -805,10 +651,6 @@ public sealed partial class MainWindow : Window
     private void OpenAllInternalLogsForInstance(InstanceInfo item)
     {
         _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item); OpenAllInternalLogs();
-    }
-    private void OpenInstanceHistory(InstanceInfo item)
-    {
-        _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item); OpenLatestResultWorkbook();
     }
     private void OpenSelectedHistoryForInstance(InstanceInfo item, string testcase, string environment, string result, string row, bool trySpreadsheet)
     {
@@ -830,14 +672,6 @@ public sealed partial class MainWindow : Window
         var path = ArtifactCatalog.History(item).OrderByDescending(x => File.GetLastWriteTimeUtc(x.Path)).Select(x => x.Path).FirstOrDefault();
         OpenHistoryPath(path, trySpreadsheet, "latest history");
     }
-    private void OpenAggregateHistoryForInstance(InstanceInfo item, string result, bool trySpreadsheet)
-    {
-        _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item);
-        var candidates = FindHistoryFiles(item).Where(x => Path.GetFileName(x).StartsWith("Execution_History_", StringComparison.OrdinalIgnoreCase));
-        if (!string.IsNullOrWhiteSpace(item.CurrentRunId)) candidates = candidates.Where(x => Path.GetFileName(x).Contains(item.CurrentRunId, StringComparison.OrdinalIgnoreCase));
-        if (!result.Equals("All", StringComparison.OrdinalIgnoreCase)) candidates = candidates.Where(x => FindHistoryResult(x).Equals(result, StringComparison.OrdinalIgnoreCase));
-        OpenHistoryPath(candidates.OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault(), trySpreadsheet, "aggregate history");
-    }
     private void OpenHistoryPath(string? path, bool trySpreadsheet, string description)
     {
         if (path is null)
@@ -849,51 +683,6 @@ public sealed partial class MainWindow : Window
         UiLog($"Opening {description}. path={path}; method={(trySpreadsheet ? "try-spreadsheet" : "default-excel")}");
         if (trySpreadsheet) LaunchSpreadsheetProcess(path, description);
         else OpenExcelFile(path, description);
-    }
-    private static string[] FindHistoryFiles(InstanceInfo item) => Directory.Exists(item.HistoryFolder)
-        ? Directory.GetFiles(item.HistoryFolder, "*.xlsx", SearchOption.AllDirectories).Where(x => !Path.GetFileName(x).StartsWith("~$", StringComparison.OrdinalIgnoreCase)).ToArray()
-        : [];
-    private static string FindHistoryResult(string path)
-    {
-        var parts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
-        return parts.LastOrDefault(x => x.Equals("passed", StringComparison.OrdinalIgnoreCase) || x.Equals("failed", StringComparison.OrdinalIgnoreCase) || x.Equals("cancelled", StringComparison.OrdinalIgnoreCase)) ?? "unknown";
-    }
-    private static string FindHistoryEnvironment(string path, InstanceInfo item)
-    {
-        var parts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
-        foreach (var environment in item.EnvironmentOptions.OrderByDescending(x => x.Length))
-            if (parts.Any(x => x.Equals(environment, StringComparison.OrdinalIgnoreCase))) return string.IsNullOrWhiteSpace(environment) ? "default" : environment;
-        var resultIndex = Array.FindIndex(parts, x => x.Equals("passed", StringComparison.OrdinalIgnoreCase) || x.Equals("failed", StringComparison.OrdinalIgnoreCase) || x.Equals("cancelled", StringComparison.OrdinalIgnoreCase));
-        return resultIndex > 0 ? parts[resultIndex - 1] : "default";
-    }
-    private static string FindHistoryTestcase(string path)
-    {
-        var name = Path.GetFileNameWithoutExtension(path); var marker = name.IndexOf("_Row", StringComparison.OrdinalIgnoreCase);
-        return marker > 0 ? name[..marker] : name;
-    }
-    private static string FindHistoryRow(string path)
-    {
-        var name = Path.GetFileNameWithoutExtension(path); var marker = name.IndexOf("_Row", StringComparison.OrdinalIgnoreCase);
-        if (marker < 0) return "";
-        var end = name.IndexOf('_', marker + 4);
-        return end > marker ? name[marker..end] : name[marker..];
-    }
-
-    private void SaveWizardStep(InstanceInfo item, WizardStepDraft step)
-    {
-        try
-        {
-            using var workbook = new XLWorkbook(item.WorkbookPath);
-            var sheet = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("config", StringComparison.OrdinalIgnoreCase)) ?? workbook.AddWorksheet("config");
-            var headers = sheet.FirstRowUsed()?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(c => c.GetString().Trim(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? [];
-            if (headers.Count == 0) { SetStatusForInstance($"Cannot add step to {item.Name}: config sheet has no headers.", true); return; }
-            var row = step.Row ?? ((sheet.RangeUsed()?.RangeAddress.LastAddress.RowNumber ?? 1) + 1);
-            foreach (var pair in step.Values) if (headers.TryGetValue(pair.Key, out var column)) sheet.Cell(row, column).Value = pair.Value;
-            var backup = DataEngineBackup.CreateBackup(item.WorkbookPath); workbook.Save();
-            SetStatusForInstance($"Added step '{step.Get("stepname")}' to {item.Name}. Backup: {Path.GetFileName(backup)}");
-            RefreshInstances();
-        }
-        catch (Exception ex) { SetStatusForInstance($"Could not add step: {ex.Message}", true); }
     }
 
     private void CreateTestcaseForInstance(InstanceInfo item, TestcaseWizardDraft draft)
@@ -1400,34 +1189,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OpenSelectedInternalLog()
-    {
-        if (_selectedInstance is null)
-        {
-            _details.Text = "Select an instance first.";
-            UiLog("Open selected internal log ignored. reason=no-selected-instance");
-            return;
-        }
-
-        var testcase = _internalLogTestcase.SelectedItem?.ToString();
-        if (string.IsNullOrWhiteSpace(testcase) || testcase.Equals("No testcases found", StringComparison.OrdinalIgnoreCase))
-        {
-            _details.Text = "Select a testcase first.";
-            UiLog($"Open selected internal log ignored. instance={_selectedInstance.Name}; reason=no-testcase-selected");
-            return;
-        }
-
-        var environment = _internalLogEnvironment.SelectedItem?.ToString();
-        if (string.IsNullOrWhiteSpace(environment) || environment.Equals("No environments found", StringComparison.OrdinalIgnoreCase))
-        {
-            _details.Text = "Select an environment first.";
-            UiLog($"Open selected internal log ignored. instance={_selectedInstance.Name}; reason=no-environment-selected");
-            return;
-        }
-
-        OpenInternalLogForSelection(_selectedInstance, testcase, environment, "All", "Latest run");
-    }
-
     private void OpenInternalLogForSelection(InstanceInfo item, string testcase, string environment, string result, string run)
     {
         var candidates = FindInternalLogs(item)
@@ -1447,13 +1208,6 @@ public sealed partial class MainWindow : Window
 
         UiLog($"Opening selected internal log. instance={item.Name}; testcase={testcase}; environment={environment}; result={result}; run={run}; path={path}");
         OpenFile(path, $"internal log ({testcase}, {environment})");
-    }
-
-    private void OpenSelectedDataEngine()
-    {
-        if (_selectedInstance is null) { _details.Text = "Select an instance first."; UiLog("Open DataEngine ignored. reason=no-selected-instance"); return; }
-        UiLog($"Opening DataEngine workbook. instance={_selectedInstance.Name}; path={_selectedInstance.WorkbookPath}");
-        OpenExcelFile(_selectedInstance.WorkbookPath, "DataEngine workbook");
     }
 
     private void OpenLatestResultWorkbook()

@@ -200,11 +200,6 @@ public sealed class InstanceConfigurationWindow : Window
         Close();
     }
 
-    private static Control Field(string label, Control control)
-    {
-        return new StackPanel { Spacing = 4, Children = { DashboardStyle.Text(label, 11, false, DashboardStyle.Muted), control } };
-    }
-
     private static Control KeyValue(string label, string value)
     {
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("180,*"), Margin = new Thickness(0, 2) };

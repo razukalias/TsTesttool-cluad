@@ -952,3 +952,8 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - An unexpected exception in a background step marks the row failed (logged as ASYNC STEP FAILED) but produces no result line for that step.
 - No validation hint when a later step uses a value of an async step without a wait; no async marker in History/result workbooks; the instance builder / step wizard (old forms) have no async box.
 - Parallel async inside an already async block runs in sequence (not nested background).
+
+## Old dashboard cleanup (stage 1+2 done, rest pending)
+- Removed: AssertionEditorWindow, AssertionWorkbenchWindow, DataIdSelectionWindow, HistorySettingsWindow, WorkbookEditorWindow, TestStepWizardWindow, StepPickerWindow, GlobalValidationWindow (service kept as GlobalValidationService), 34 unused private members.
+- Still pending (old instance-list shell is also the engine host; needs a split before deleting): InstanceRow list UI, InstanceConfigurationWindow, TestStepConfigurationEditor, RunSelectionWindow/Editor, EnvironmentManagerWindow, `--dashboard` startup path. Check LaunchAsync (uses ChooseRunSelectionAsync) before removing.
+- Kept because the data editor uses them: TestcaseWizardWindow, InstanceBuilderWindow, HistoryComparisonWindow, SpreadsheetPreviewWindow.

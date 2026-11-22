@@ -187,7 +187,6 @@ internal static class HistoryComparisonWorkbook
         if (header is "failurecategory" or "errormessage" or "failuremessage") return !value.Equals("none", StringComparison.OrdinalIgnoreCase) && !value.Equals("[none]", StringComparison.OrdinalIgnoreCase);
         return false;
     }
-    private static string SafeSheetName(string name) => (name.Length > 31 ? name[..31] : name).Replace("[", "_").Replace("]", "_").Replace(":", "_").Replace("*", "_").Replace("/", "_").Replace("\\", "_").Replace("?", "_");
     private static void Style(IXLWorksheet sheet) { sheet.Row(1).Style.Font.Bold = true; sheet.Row(1).Style.Fill.BackgroundColor = XLColor.LightBlue; sheet.SheetView.FreezeRows(1); sheet.Columns().AdjustToContents(); foreach (var column in sheet.Columns()) if (column.Width > 70) column.Width = 70; }
     private sealed record ComparisonCell(string Sheet, string Cell, IReadOnlyList<string> Values, IReadOnlyList<bool> FailureFlags);
 }
