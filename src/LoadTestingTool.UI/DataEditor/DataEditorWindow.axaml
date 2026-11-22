@@ -186,6 +186,7 @@
             <Button x:Name="NewInstanceButton" Content="＋" Classes="treemove" FontSize="13" ToolTip.Tip="New instance: a blank workbook with its folders" />
             <Button x:Name="RefreshInstancesButton" Content="⟳" Classes="treemove" FontSize="13" ToolTip.Tip="Refresh instances: pick up instance folders added or removed outside the editor, and create any missing standard folders" />
             <Button x:Name="DuplicateInstanceButton" Content="⧉" Classes="treemove" FontSize="13" ToolTip.Tip="Duplicate the selected instance (workbook, templates and files; no results or logs)" />
+            <Button x:Name="OpenSeparateButton" Content="↗" Classes="treemove" FontSize="13" ToolTip.Tip="Open the selected instance's workbook in a separate window: the same table view and filters, for editing only (no running, no results). Save here first" />
           </StackPanel>
           <Button Grid.Column="3" Content="Refresh results" Command="{Binding RefreshResultsCommand}" IsEnabled="{Binding !IsLoadingResults}" MinHeight="28" Padding="10,2" FontSize="12" />
         </Grid>
@@ -512,7 +513,7 @@
 
       <Grid Grid.Column="0" RowDefinitions="Auto,Auto,*" Margin="0,0,6,0" ClipToBounds="True">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
-          <ComboBox Tag="view-mode" ItemsSource="{Binding ViewModes}" SelectedIndex="{Binding ViewModeIndex, Mode=TwoWay}" MinWidth="210" MinHeight="36" ToolTip.Tip="View mode. Table view: the rows of the request and response sheets, one row per data row. Config edit mode: the steps of the testcase as forms. Record view: one data row as a list, each value built from parts." />
+          <ComboBox x:Name="ViewModeBox" Tag="view-mode" ItemsSource="{Binding ViewModes}" SelectedIndex="{Binding ViewModeIndex, Mode=TwoWay}" MinWidth="210" MinHeight="36" ToolTip.Tip="View mode. Table view: the rows of the request and response sheets, one row per data row. Config edit mode: the steps of the testcase as forms. Record view: one data row as a list, each value built from parts." />
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" IsVisible="{Binding ShowData}" VerticalAlignment="Center"><TextBlock Text="{Binding RowCountText}" Foreground="#8EA4BC" VerticalAlignment="Center" /><TextBlock Text="{Binding SelectionText}" Foreground="#8CC1FF" FontWeight="SemiBold" VerticalAlignment="Center" /></StackPanel>
         </Grid>
         <StackPanel Grid.Row="1" Spacing="10" Margin="0,0,0,10">

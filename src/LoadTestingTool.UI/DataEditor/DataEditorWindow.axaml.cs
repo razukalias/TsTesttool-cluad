@@ -138,6 +138,7 @@ public partial class DataEditorWindow : Window
         _subscribed = _shell.Current;
         if (_subscribed is null) return;
         Title = $"Data editor — {_subscribed.InstanceName}";
+        UpdateEditOnlyTitle();
         _subscribed.ColumnsChanged += OnColumnsChanged;
         _subscribed.FailedColumnsChanged += OnFailedColumnsChanged;
         _subscribed.SheetColumnsChanged += OnSheetColumnsChanged;

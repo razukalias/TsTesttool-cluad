@@ -72,8 +72,11 @@ public sealed class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var args = desktop.Args ?? Array.Empty<string>();
+            var tableIndex = Array.FindIndex(args, x => x.Equals("--table-editor", StringComparison.OrdinalIgnoreCase));
             var editorIndex = Array.FindIndex(args, x => x.Equals("--dataset-editor", StringComparison.OrdinalIgnoreCase));
-            if (editorIndex >= 0 && editorIndex + 1 < args.Length)
+            if (tableIndex >= 0 && tableIndex + 1 < args.Length)
+                desktop.MainWindow = DataEditor.DataEditorWindow.OpenEditOnly(args[tableIndex + 1]);
+            else if (editorIndex >= 0 && editorIndex + 1 < args.Length)
                 desktop.MainWindow = new SpreadsheetPreviewWindow(args[editorIndex + 1]);
             else
             {
