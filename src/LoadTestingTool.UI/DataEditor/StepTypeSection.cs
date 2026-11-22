@@ -19,7 +19,7 @@ namespace LoadTestingTool.UI.DataEditor;
 public sealed class StepTypeSection : UserControl
 {
     private enum Kind { Text, Multi, Combo, Json, Number, Path }
-    private sealed record Spec(string Key, string Label, Kind Kind, string[]? Options = null, string? Hint = null, Func<JsonObject, bool>? Visible = null);
+    private sealed record Spec(string Key, string Label, Kind Kind, string[]? Options = null, string? Hint = null, Func<JsonObject, bool>? Visible = null, string Folder = "Files");
 
     private static readonly IBrush Muted = Brush.Parse("#8EA4BC");
     private static readonly IBrush Line = Brush.Parse("#22364F");
@@ -86,13 +86,13 @@ public sealed class StepTypeSection : UserControl
         switch (type)
         {
             case "graphql" or "caseql":
-                AddAll(new Spec("OperationName", "Operation name", Kind.Text), new Spec("Source", "Query file", Kind.Path, Hint: "Optional. Overrides the template."),
+                AddAll(new Spec("OperationName", "Operation name", Kind.Text), new Spec("Source", "Query file", Kind.Path, Hint: "Optional. Overrides the template.", Folder: "Queries"),
                     new Spec("Inline", "Query", Kind.Multi, Hint: "Used when no template is set."), new Spec("Variables", "Variables", Kind.Json));
                 break;
             case "sql":
                 AddAll(new Spec("ConnectionProfile", "Connection", Kind.Text, Hint: "Profile name from appsettings.json"), new Spec("CommandType", "Command type", Kind.Combo, ["Text", "StoredProcedure"]),
                     new Spec("CommandText", "Command", Kind.Multi, Visible: c => !IsProcedure(c)), new Spec("Procedure", "Procedure", Kind.Text, Visible: IsProcedure),
-                    new Spec("Source", "Command file", Kind.Path, Hint: "Optional. Overrides the template."), new Spec("Parameters", "Parameters", Kind.Json), new Spec("Outputs", "Outputs", Kind.Json, Hint: "Output name → variable name"));
+                    new Spec("Source", "Command file", Kind.Path, Hint: "Optional. Overrides the template.", Folder: "Queries"), new Spec("Parameters", "Parameters", Kind.Json), new Spec("Outputs", "Outputs", Kind.Json, Hint: "Output name → variable name"));
                 break;
             case "file":
                 AddAll(new Spec("Action", "Action", Kind.Combo, ["Read", "Json", "ReadBinary", "Write", "Append", "WriteBinary", "AppendBinary"]), new Spec("Path", "File", Kind.Path),
@@ -101,7 +101,7 @@ public sealed class StepTypeSection : UserControl
                     new Spec("ContentType", "Content type", Kind.Combo, ContentTypes), new Spec("MaxBytes", "Max bytes", Kind.Number));
                 break;
             case "script":
-                AddAll(new Spec("Source", "Script file", Kind.Path), new Spec("Inline", "Inline script", Kind.Multi, Hint: "Used when no file is set."));
+                AddAll(new Spec("Source", "Script file", Kind.Path, Folder: "Scripts"), new Spec("Inline", "Inline script", Kind.Multi, Hint: "Used when no file is set."));
                 break;
             case "http" when string.Equals(_step.Value("contenttype").Trim(), "multipart/form-data", StringComparison.OrdinalIgnoreCase):
                 _body.Children.Add(BuildParts());
@@ -167,7 +167,7 @@ public sealed class StepTypeSection : UserControl
                 if (spec.Kind == Kind.Path)
                 {
                     var browse = new Button { Content = "Browse…", Margin = new Thickness(6, 0, 0, 0) };
-                    browse.Click += async (_, _) => { if (await PickFileAsync() is { } picked) { box.Text = picked; Commit(spec, picked, error); } };
+                    browse.Click += async (_, _) => { if (await PickFileAsync(spec.Folder) is { } picked) { box.Text = picked; Commit(spec, picked, error); } };
                     var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
                     row.Children.Add(box); Grid.SetColumn(browse, 1); row.Children.Add(browse);
                     input = row;
@@ -269,7 +269,7 @@ public sealed class StepTypeSection : UserControl
             var browse = new Button { Content = "Browse…", IsVisible = isFile, Margin = new Thickness(6, 0, 0, 0) };
             browse.Click += async (_, _) =>
             {
-                if (await PickFileAsync() is not { } picked) return;
+                if (await PickFileAsync("Files") is not { } picked) return;
                 row.Source.SelectedItem = "Fixed value"; row.Value.Text = picked;
                 if (string.IsNullOrWhiteSpace(row.FileName.Text)) row.FileName.Text = System.IO.Path.GetFileName(picked);
                 Write();
@@ -321,19 +321,29 @@ public sealed class StepTypeSection : UserControl
 
     // ---- helpers -------------------------------------------------------------------------------
 
-    private async Task<string?> PickFileAsync()
+    /// <summary>Opens the picker in the instance's folder for this kind of file (Files, Queries or Scripts); the path comes back relative to the instance, copying a file from elsewhere in first.</summary>
+    private async Task<string?> PickFileAsync(string folderName)
     {
         var provider = TopLevel.GetTopLevel(this)?.StorageProvider;
         if (provider is null) return null;
-        var files = await provider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "Choose a file", AllowMultiple = false });
-        if (files.Count == 0 || files[0].TryGetLocalPath() is not { } path) return null;
-        var root = _step.Editor is { } editor ? System.IO.Path.GetDirectoryName(editor.WorkbookPath) : null;
-        if (root is not null)
+        var instance = _step.Editor is { } editor ? System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(editor.WorkbookPath)) : null;
+        Avalonia.Platform.Storage.IStorageFolder? start = null;
+        if (instance is not null)
         {
-            var relative = System.IO.Path.GetRelativePath(root, path);
-            if (!relative.StartsWith("..", StringComparison.Ordinal) && !System.IO.Path.IsPathRooted(relative)) return relative.Replace('\\', '/');
+            var folder = System.IO.Path.Combine(instance, folderName);
+            Directory.CreateDirectory(folder);
+            start = await provider.TryGetFolderFromPathAsync(folder);
         }
-        return path.Replace('\\', '/');
+        var files = await provider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "Choose a file", SuggestedStartLocation = start, AllowMultiple = false });
+        if (files.Count == 0 || files[0].TryGetLocalPath() is not { } path) return null;
+        if (instance is null) return path.Replace('\\', '/');
+        try
+        {
+            var (relative, note) = PickedFile.PrepareForStep(instance, path, folderName);
+            if (note is not null) _step.Editor?.Notify(note, false);
+            return relative;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _step.Editor?.Notify($"Could not use that file: {ex.Message}", true); return null; }
     }
 
     private static TextBlock Note(string text) => new() { Text = text, FontSize = 11, Foreground = Muted, TextWrapping = TextWrapping.Wrap };

@@ -260,8 +260,10 @@ public partial class DataEditorWindow : Window
                 SuggestedFileName = (editor.ExportBaseName + (request.SelectionOnly ? "-selection" : string.Empty)).Replace(' ', '_') + (excel ? ".xlsx" : ".csv"),
                 DefaultExtension = excel ? "xlsx" : "csv",
                 FileTypeChoices = [type],
+                SuggestedStartLocation = await PickerFolders.StartAsync(StorageProvider, "export", System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(editor.WorkbookPath))),
             });
             if (file is null) return;
+            if (Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(file) is { } savedTo) PickerFolders.Remember("export", savedTo);
             await using var stream = await file.OpenWriteAsync();
             if (excel)
             {

@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -82,6 +83,29 @@ internal sealed class TestStepWizardWindow : Window
     }
 
     private static TextBox Field(string value) => new() { Text = value, MinWidth = 240 };
+    /// <summary>A text box with Browse…: the picker opens in the instance's folder for this kind of file and the path comes back relative to the instance (a file from elsewhere is copied in).</summary>
+    private Control WithBrowse(TextBox box, string folderName)
+    {
+        var browse = new Button { Content = "Browse…", Margin = new Thickness(6, 0, 0, 0), Tag = "wizard-browse" };
+        browse.Click += async (_, _) =>
+        {
+            try
+            {
+                var instance = Path.GetDirectoryName(_templatesFolder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) ?? ".";
+                var folder = Path.Combine(instance, folderName);
+                Directory.CreateDirectory(folder);
+                var start = await StorageProvider.TryGetFolderFromPathAsync(folder);
+                var picked = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions { Title = "Choose a file", SuggestedStartLocation = start, AllowMultiple = false });
+                if (picked.Count == 0 || picked[0].TryGetLocalPath() is not { } path) return;
+                box.Text = DataEditor.PickedFile.PrepareForStep(instance, path, folderName).Path;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { box.Text = box.Text; _ = ex; }
+        };
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        row.Children.Add(box); Grid.SetColumn(browse, 1); row.Children.Add(browse);
+        return row;
+    }
+
     private static Control Labeled(string label, Control control)
     {
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("170,*") };
@@ -110,8 +134,8 @@ internal sealed class TestStepWizardWindow : Window
         if (type == "File") _typeFields.Children.Add(Labeled("File actions", new TextBlock { Text = "Read, Json, Write, Append, ReadBinary, WriteBinary, AppendBinary", TextWrapping = TextWrapping.Wrap }));
         if (type == "Script") _typeFields.Children.Add(Labeled("Security", new TextBlock { Text = "Trusted scripts must be enabled in the instance settings.", TextWrapping = TextWrapping.Wrap }));
         if (type == "GraphQL") { _typeFields.Children.Add(Labeled("Query", _graphqlQuery)); _typeFields.Children.Add(Labeled("Operation name", _graphqlOperation)); _typeFields.Children.Add(Labeled("Variables JSON", _graphqlVariables)); _typeFields.Children.Add(DashboardStyle.Action("Generate GraphQL StepConfig", GenerateStepConfig)); }
-        if (type == "File") { _typeFields.Children.Add(Labeled("Action", _fileAction)); _typeFields.Children.Add(Labeled("Path", _filePath)); _typeFields.Children.Add(Labeled("Output variable", _fileOutput)); _typeFields.Children.Add(Labeled("Output mode", _fileMode)); _typeFields.Children.Add(DashboardStyle.Action("Generate File StepConfig", GenerateStepConfig)); }
-        if (type == "Script") { _typeFields.Children.Add(Labeled("Script source", _scriptSource)); _typeFields.Children.Add(DashboardStyle.Action("Generate Script StepConfig", GenerateStepConfig)); }
+        if (type == "File") { _typeFields.Children.Add(Labeled("Action", _fileAction)); _typeFields.Children.Add(Labeled("Path", WithBrowse(_filePath, "Files"))); _typeFields.Children.Add(Labeled("Output variable", _fileOutput)); _typeFields.Children.Add(Labeled("Output mode", _fileMode)); _typeFields.Children.Add(DashboardStyle.Action("Generate File StepConfig", GenerateStepConfig)); }
+        if (type == "Script") { _typeFields.Children.Add(Labeled("Script source", WithBrowse(_scriptSource, "Scripts"))); _typeFields.Children.Add(DashboardStyle.Action("Generate Script StepConfig", GenerateStepConfig)); }
         if (type == "SQL") { _typeFields.Children.Add(Labeled("Connection", _sqlConnection)); _typeFields.Children.Add(Labeled("Command type", _sqlCommandType)); _typeFields.Children.Add(Labeled("Query", _sqlQuery)); _typeFields.Children.Add(DashboardStyle.Action("Generate SQL StepConfig", GenerateStepConfig)); }
         if (type == "HTTP" && string.Equals(_contentType.SelectedItem?.ToString(), "multipart/form-data", StringComparison.OrdinalIgnoreCase)) _typeFields.Children.Add(_multipartEditor);
     }

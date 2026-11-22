@@ -388,3 +388,50 @@ public class PickedFileTests
         Assert.DoesNotContain(RecordMenu.Root(new(["a"], [], [], [])).Single(n => n.Title == "File").Children!(), n => n.Title.StartsWith("Pick"));
     }
 }
+
+public class PickedFileStepTests
+{
+    [Fact]
+    public void A_step_setting_gets_a_path_inside_the_instance_and_an_outside_file_is_copied_into_the_kind_of_folder()
+    {
+        using var dir = new TempDir();
+        var inst = dir.Combine("Main");
+        Directory.CreateDirectory(System.IO.Path.Combine(inst, "Files", "sub"));
+        File.WriteAllText(System.IO.Path.Combine(inst, "Files", "sub", "a.txt"), "a");
+        var outsideDir = dir.Combine("elsewhere"); Directory.CreateDirectory(outsideDir);
+        var q = System.IO.Path.Combine(outsideDir, "q.graphql"); File.WriteAllText(q, "{ me }");
+
+        Assert.Equal(("Files/sub/a.txt", null), PickedFile.PrepareForStep(inst, System.IO.Path.Combine(inst, "Files", "sub", "a.txt"), "Files"));
+        var copied = PickedFile.PrepareForStep(inst, q, "Queries");
+        Assert.Equal("Queries/q.graphql", copied.Path); Assert.Contains("only reads files inside the instance", copied.Note);
+        Assert.Equal("{ me }", File.ReadAllText(System.IO.Path.Combine(inst, "Queries", "q.graphql")));
+        Assert.Equal("Queries/q2.graphql", PickedFile.PrepareForStep(inst, q, "Queries").Path);
+        // the runner's guard accepts what the picker writes
+        Assert.Equal(System.IO.Path.GetFullPath(System.IO.Path.Combine(inst, "Queries", "q.graphql")), LoadTestingTool.Domain.WorkspaceGuard.Resolve(inst, copied.Path));
+    }
+}
+
+public class PickerFolderTests
+{
+    [Fact]
+    public void A_picker_remembers_the_folder_it_was_last_used_in_and_falls_back_when_that_is_gone()
+    {
+        using var dir = new TempDir();
+        var original = EditorSettings.FilePath;
+        EditorSettings.FilePath = System.IO.Path.Combine(dir.Combine("settings"), "data-editor.json");
+        try
+        {
+            var a = dir.Combine("a"); Directory.CreateDirectory(a);
+            var fallback = dir.Combine("fb"); Directory.CreateDirectory(fallback);
+            Assert.Equal(fallback, PickerFolders.Last("import", fallback));
+            Assert.Null(PickerFolders.Last("import"));
+            File.WriteAllText(System.IO.Path.Combine(a, "x.csv"), "x");
+            PickerFolders.Remember("import", System.IO.Path.Combine(a, "x.csv"));
+            Assert.Equal(a, PickerFolders.Last("import", fallback));
+            Assert.Equal(fallback, PickerFolders.Last("export", fallback));   // each picker has its own
+            Directory.Delete(a, true);
+            Assert.Equal(fallback, PickerFolders.Last("import", fallback));
+        }
+        finally { EditorSettings.FilePath = original; }
+    }
+}

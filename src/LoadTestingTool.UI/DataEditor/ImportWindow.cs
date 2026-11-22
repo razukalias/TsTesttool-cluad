@@ -171,8 +171,8 @@ public sealed class ImportWindow : Window
             new FilePickerFileType("Excel and CSV files") { Patterns = ["*.xlsx", "*.xlsm", "*.csv", "*.txt"] },
             new FilePickerFileType("All files") { Patterns = ["*"] },
         };
-        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "Import from Excel or CSV", FileTypeFilter = types, AllowMultiple = false });
-        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path) LoadFile(path);
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "Import from Excel or CSV", FileTypeFilter = types, AllowMultiple = false, SuggestedStartLocation = await PickerFolders.StartAsync(storage, "import") });
+        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path) { PickerFolders.Remember("import", path); LoadFile(path); }
     }
 
     /// <summary>Opens a file (also used by the tests).</summary>

@@ -268,8 +268,9 @@ public sealed class ResponseColumnsPane : Grid
     private async Task PickFileAsync()
     {
         if (Session is not { } s || s.CurrentRow.Length == 0 || TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
-        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = $"Response for row {s.CurrentRow}", AllowMultiple = false });
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = $"Response for row {s.CurrentRow}", AllowMultiple = false, SuggestedStartLocation = await PickerFolders.StartAsync(storage, "response-body") });
         if (files.Count == 0 || files[0].TryGetLocalPath() is not { } path) return;
+        PickerFolders.Remember("response-body", path);
         try { s.SetOverride(s.CurrentRow, await File.ReadAllTextAsync(path)); ShowRow(); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _note.Text = $"Could not read the file: {ex.Message}"; }
     }

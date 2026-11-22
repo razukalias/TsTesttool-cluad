@@ -19,4 +19,24 @@ public static class PickedFile
         var copied = Path.GetFileName(target);
         return (copied, $"The file is outside the application folder, so it was copied into this instance's Files folder as {copied}.");
     }
+
+    /// <summary>
+    /// For a step setting (the File step's file, a query/command/script file, a multipart file part). The runner only reads inside the instance folder, so the path is relative to it
+    /// (<c>Files/a.pdf</c>, <c>Queries/q.graphql</c>); a file from elsewhere is copied into <paramref name="folderName"/> first.
+    /// </summary>
+    public static (string Path, string? Note) PrepareForStep(string instanceFolder, string file, string folderName)
+    {
+        var instance = Path.GetFullPath(instanceFolder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var full = Path.GetFullPath(file);
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (full.StartsWith(instance + Path.DirectorySeparatorChar, comparison)) return (Path.GetRelativePath(instance, full).Replace('\\', '/'), null);
+        var folder = Path.Combine(instance, folderName);
+        Directory.CreateDirectory(folder);
+        var name = Path.GetFileName(full);
+        var target = Path.Combine(folder, name);
+        for (var n = 2; File.Exists(target); n++) target = Path.Combine(folder, $"{Path.GetFileNameWithoutExtension(name)}{n}{Path.GetExtension(name)}");
+        File.Copy(full, target);
+        var relative = folderName + "/" + Path.GetFileName(target);
+        return (relative, $"The file is outside this instance, so it was copied to {relative}; the runner only reads files inside the instance folder.");
+    }
 }

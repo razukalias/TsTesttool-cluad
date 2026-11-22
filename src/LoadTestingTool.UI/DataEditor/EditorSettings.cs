@@ -11,6 +11,9 @@ public sealed class EditorSettings
     /// <summary>Per workbook, the sheets whose tab is hidden in Table view (empty or missing = all sheets).</summary>
     public Dictionary<string, List<string>> HiddenSheets { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The folder each file picker (import, sample headers, response, export) was last used in, by picker name.</summary>
+    public Dictionary<string, string> LastFolders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>The last choices made importing a file of this name into a testcase or sheet, so importing it again starts where the last import ended.</summary>
     public Dictionary<string, ImportChoice> ImportChoices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 

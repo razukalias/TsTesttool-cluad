@@ -872,3 +872,9 @@ Today the C# condition editor completes only `_variable_` names and `<From_…>`
 
 ### Pagination of history lists
 - [ ] Every history list (history explorer, run list, request history, log lists, saved runs, comparison picker) gets **pagination, 100 rows per page**: page controls (first / previous / next / last, "page 3 of 17", jump to page), the total count, and a page-size setting (50 / 100 / 250, default 100). Sorting and filters apply to the whole list, not to the page; the selection and "select all" say clearly whether they mean the page or all results. Large histories load a page at a time (no full load into memory). Tests with 1 000+ rows: page count, edges, filter then page, sort across pages.
+
+### Pickers (done 2026-11-22)
+- File step "File", multipart file parts, query/command/script file (step form) and the old step wizard (File path, Script source): Browse opens in the instance's `Files` / `Queries` / `Scripts` folder; the path is relative to the instance (`Files/a.pdf`); a file from elsewhere is copied in (the runner's workspace guard refuses `../` for step settings). Template picker unchanged (starts in Templates, copies in).
+- Grid ✦ wizard shares the Record view line, so it has Pick a file… (portable cell paths).
+- Import, sample response headers, response pick and Export remember their last folder (editor settings `LastFolders`, not in the workbook).
+- Not done: Add columns form has no `<from_filepath>` picker (it writes headers, not file cells).

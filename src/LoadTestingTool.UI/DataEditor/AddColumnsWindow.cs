@@ -47,8 +47,8 @@ public sealed class AddColumnsWindow : Window
         pickHeaders.Click += async (_, _) =>
         {
             if (StorageProvider is not { } storage) return;
-            var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "Sample response headers (Name: value per line)", AllowMultiple = false });
-            if (files.Count > 0 && files[0].TryGetLocalPath() is { } path) LoadHeaders(path);
+            var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "Sample response headers (Name: value per line)", AllowMultiple = false, SuggestedStartLocation = await PickerFolders.StartAsync(storage, "response-headers") });
+            if (files.Count > 0 && files[0].TryGetLocalPath() is { } path) { PickerFolders.Remember("response-headers", path); LoadHeaders(path); }
         };
 
         _tabs.Items.Add(new TabItem { Header = "Request", Tag = "tab-request", Content = Tab(_requestNote, _requestList) });
