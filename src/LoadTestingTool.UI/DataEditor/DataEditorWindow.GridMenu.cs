@@ -163,7 +163,15 @@ public partial class DataEditorWindow
         var column = editor.Columns[cell - 1];
         var current = editor.HeaderText(cell);
         var box = new TextBox { Text = current, MinWidth = 260, Tag = "rename-header", Watermark = "Header name" };
-        var flyout = new Flyout { Content = new StackPanel { Spacing = 4, Children = { new TextBlock { Text = $"Rename header ({(column.Group == ColumnGroup.Response ? "response" : "request")} sheet)", FontSize = 11, Opacity = 0.75 }, box } }, Placement = PlacementMode.Bottom };
+        var flyout = new Flyout { Placement = PlacementMode.Bottom };
+        var closeButton = new Button { Content = "✕", Tag = "rename-header-close", Padding = new Avalonia.Thickness(8, 2) };
+        var okButton = new Button { Content = "OK", Classes = { "primary" }, Tag = "rename-header-ok" };
+        var titleBar = new Avalonia.Controls.Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        titleBar.Children.Add(new TextBlock { Text = $"Rename header ({(column.Group == ColumnGroup.Response ? "response" : "request")} sheet)", FontSize = 11, Opacity = 0.75, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center });
+        Avalonia.Controls.Grid.SetColumn(closeButton, 1); titleBar.Children.Add(closeButton);
+        flyout.Content = new StackPanel { Spacing = 6, Children = { titleBar, box, new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { okButton } } } };
+        closeButton.Click += (_, _) => flyout.Hide();
+        okButton.Click += (_, _) => Commit();
         void Commit()
         {
             var text = box.Text ?? string.Empty;

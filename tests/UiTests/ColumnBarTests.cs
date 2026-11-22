@@ -234,6 +234,22 @@ public class ColumnBarTests
             ?? Avalonia.Controls.Primitives.OverlayLayer.GetOverlayLayer(window)?.GetVisualDescendants().OfType<TextBox>().FirstOrDefault(t => t.Tag as string == "rename-header");
         Assert.NotNull(box);
         Assert.Equal("CreateCustomer.name", box!.Text);
+
+        // the popup has a ✕ that leaves without renaming and an OK that renames
+        Button? Find(string tag) => window.GetVisualDescendants().Concat(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(TopLevel.GetTopLevel(window)!)).OfType<Button>().FirstOrDefault(b => b.Tag as string == tag)
+            ?? Avalonia.Controls.Primitives.OverlayLayer.GetOverlayLayer(window)?.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.Tag as string == tag);
+        box.Text = "CreateCustomer.title";
+        Find("rename-header-close")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        Assert.DoesNotContain("CreateCustomer.title", vm.Columns.Select(c => c.Title));
+        window.ShowRenameHeader(vm, CellOf(vm, "CreateCustomer.name"), grid);
+        Dispatcher.UIThread.RunJobs();
+        box = window.GetVisualDescendants().Concat(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(TopLevel.GetTopLevel(window)!)).OfType<TextBox>().FirstOrDefault(t => t.Tag as string == "rename-header")
+            ?? Avalonia.Controls.Primitives.OverlayLayer.GetOverlayLayer(window)?.GetVisualDescendants().OfType<TextBox>().FirstOrDefault(t => t.Tag as string == "rename-header");
+        box!.Text = "CreateCustomer.title";
+        Find("rename-header-ok")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Contains("CreateCustomer.title", vm.Columns.Select(c => c.Title));
         window.Close();
     }
 }

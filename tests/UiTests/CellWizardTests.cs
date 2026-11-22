@@ -51,6 +51,45 @@ public class CellWizardTests
     }
 }
 
+public class CellWizardButtonsTests
+{
+    [AvaloniaFact]
+    public void The_wizard_has_an_X_that_discards_and_an_OK_that_keeps_the_change()
+    {
+        using var dir = new TempDir();
+        var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 3), "Customers");
+        window.Width = 1440; window.Height = 700; window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var grid = window.FindControl<DataGrid>("Grid")!;
+        var column = grid.Columns.OfType<FormattedTextColumn>().First(c => c.Tag is int tag && tag > 0);
+        var row = window.ViewModel.VisibleRows[1];
+        var cellIndex = (int)column.Tag!;
+        grid.SelectedItem = row; grid.CurrentColumn = column;
+        Dispatcher.UIThread.RunJobs();
+        var original = row.Cells[cellIndex];
+        var anchor = grid.GetVisualDescendants().OfType<Button>().First(b => b.Tag as string == "cell-wizard" && b.IsVisible);
+
+        Button? Find(string tag) => Avalonia.Controls.Primitives.OverlayLayer.GetOverlayLayer(window)?.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.Tag as string == tag)
+            ?? window.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.Tag as string == tag);
+
+        column.OpenWizard!(anchor.FindAncestorOfType<DataGridCell>()!, anchor);
+        Dispatcher.UIThread.RunJobs();
+        Assert.NotNull(Find("cell-wizard-ok"));
+        row.Cells[cellIndex] = "changed-by-wizard";
+        Find("cell-wizard-close")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(original, row.Cells[cellIndex]);
+
+        column.OpenWizard!(anchor.FindAncestorOfType<DataGridCell>()!, anchor);
+        Dispatcher.UIThread.RunJobs();
+        row.Cells[cellIndex] = "kept-by-ok";
+        Find("cell-wizard-ok")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("kept-by-ok", row.Cells[cellIndex]);
+        window.Close();
+    }
+}
+
 public class CellWizardShot
 {
     [AvaloniaFact]

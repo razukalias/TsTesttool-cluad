@@ -897,3 +897,8 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - Grid ✦ wizard shares the Record view line, so it has Pick a file… (portable cell paths).
 - Import, sample response headers, response pick and Export remember their last folder (editor settings `LastFolders`, not in the workbook).
 - Not done: Add columns form has no `<from_filepath>` picker (it writes headers, not file cells).
+
+## Table-view popups: OK and ✕
+- [x] The cell wizard (✦ on a table cell) has a ✕ (discard) and an OK (keep); the rename-column-header popup has a ✕ and an OK as well. Enter / Escape and clicking away work as before.
+- [ ] Not done: the same ✕ / OK on the other-sheet and step-grid cell wizards' extra panels, the bug-comment popup and the failed-cell popup (they have their own buttons, not a common pattern).
+- [ ] Not done: rename of several picked columns at once (Rename header is disabled when more than one column is picked).

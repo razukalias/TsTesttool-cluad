@@ -100,8 +100,22 @@ public sealed partial class DataEditorWindow
         }
         if (others.Count > 0)
             content.Children.Add(new TextBlock { Text = $"The result is written to this {noun} and the {others.Count} other selected {(others.Count == 1 ? noun : noun + "s")}.", FontSize = 11, Foreground = Avalonia.Media.Brush.Parse("#8EA4BC"), Tag = "cell-wizard-note" });
+        if (targets is not { Count: > 0 })
+        {
+            // Single cell: a ✕ that leaves without keeping the change and an OK that keeps it (clicking away also keeps it, as before)
+            var closeOne = new Button { Content = "✕", Tag = "cell-wizard-close", Padding = new Avalonia.Thickness(8, 2), HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right };
+            ToolTip.SetTip(closeOne, "Close without keeping the change");
+            closeOne.Click += (_, _) => { cancelled = true; row.Cells[cellIndex] = before; flyout.Hide(); };
+            content.Children.Add(closeOne);
+        }
         content.Children.Add(new RecordLineView(line, editor));
         if (extra is not null) content.Children.Add(extra);
+        if (targets is not { Count: > 0 })
+        {
+            var ok = new Button { Content = "OK", Classes = { "primary" }, Tag = "cell-wizard-ok", HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right };
+            ok.Click += (_, _) => flyout.Hide();
+            content.Children.Add(ok);
+        }
         if (targets is { Count: > 0 })
         {
             var cancel = new Button { Content = "Cancel", Tag = "cell-wizard-cancel" };
