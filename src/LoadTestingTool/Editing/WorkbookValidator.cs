@@ -10,7 +10,7 @@ namespace LoadTestingTool.Editing;
 /// </summary>
 public static class WorkbookValidator
 {
-    private static readonly string[] BooleanColumns = ["enabled", "stoponfailure", "ignoreempty", "assert", "assertenabled", "assertonlyresponse", "assertonlyinresponse"];
+    private static readonly string[] BooleanColumns = ["enabled", "async", "stoponfailure", "ignoreempty", "assert", "assertenabled", "assertonlyresponse", "assertonlyinresponse"];
     private static readonly string[] NumberColumns = ["wait", "timeout", "responsetimeout", "manualtimeoutminutes", "expectedstatus"];
     private static readonly HashSet<string> ReservedResponseColumns = new(["testcaseindex", "testcase", "dataid", "extractvariable"], StringComparer.OrdinalIgnoreCase);
 

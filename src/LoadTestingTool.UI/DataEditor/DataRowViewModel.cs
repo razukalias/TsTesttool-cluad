@@ -40,12 +40,14 @@ public sealed partial class StepNode(TestcaseItem owner, string name, int positi
     public int Position { get; } = position;
     /// <summary>The outline number (2, 2.1, 2.2.1); the plain position until the nesting is known.</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))] private string _number = string.Empty;
-    public string Title => $"{(Number.Length > 0 ? Number : Position.ToString())} · {Name}{(IsControl ? $"  ({TypeName})" : string.Empty)}{(InElse ? "  · else" : string.Empty)}";
+    public string Title => $"{(Number.Length > 0 ? Number : Position.ToString())} · {Name}{(IsControl ? $"  ({TypeName})" : string.Empty)}{(InElse ? "  · else" : string.Empty)}{(IsAsync ? "  ⇉ async" : string.Empty)}";
 
     /// <summary>How deep the step sits inside If, While, For and ForEach steps (0 = top level).</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Indent)), NotifyPropertyChangedFor(nameof(Title))] private int _depth;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))] private bool _isControl;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))] private bool _inElse;
+    /// <summary>The step runs in the background (the async column of the config sheet).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))] private bool _isAsync;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Title)), NotifyPropertyChangedFor(nameof(IconData))] private string _typeName = string.Empty;
 
     /// <summary>The line icon of the step type, as path data.</summary>
@@ -53,7 +55,7 @@ public sealed partial class StepNode(TestcaseItem owner, string name, int positi
     public Avalonia.Thickness Indent => new(Depth * 16, 1, 0, 1);
     public string Kind => IsControl ? TypeName : string.Empty;
 
-    internal void ApplyNesting(StepNesting nesting) { Depth = nesting.Depth; IsControl = nesting.IsControl; InElse = nesting.InElse; TypeName = nesting.TypeName; }
+    internal void ApplyNesting(StepNesting nesting) { Depth = nesting.Depth; IsControl = nesting.IsControl; InElse = nesting.InElse; TypeName = nesting.TypeName; IsAsync = nesting.IsAsync; }
 }
 
 public sealed partial class TestcaseItem : ObservableObject

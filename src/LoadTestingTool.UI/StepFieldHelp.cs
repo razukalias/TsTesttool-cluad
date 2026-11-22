@@ -14,6 +14,7 @@ public static class StepFieldHelp
         ["steptype"] = ("Type", "What the step does: HTTP, GraphQL, CaseQL, SQL, File, Script, ActionManual (pauses the row until a person continues), or a control step that holds other steps: If (condition, optional else), While (repeats while a condition holds; max, delayms, onlimit), For (from, to or count, step, var) and ForEach (items, var, index, separator). Control settings go in Step config as JSON or key=value;key=value; onfailure=stop|break|continue decides what a failed step inside a loop does."),
         ["stage"] = ("Stage", "Setup runs first, Test is the main part, Teardown runs last (also after a failure) to clean up."),
         ["enabled"] = ("Enabled", "Untick to skip the step without deleting it."),
+        ["async"] = ("Run asynchronously", "Start this step in the background and carry on with the next step at once. The data row finishes only when all its asynchronous steps are done; their results are recorded as usual. Later steps do not wait for it: to use its values, give the later step a Wait (ms). Inside a loop or If block that already runs asynchronously, this is ignored."),
         ["stoponfailure"] = ("Stop on failure", "When ticked, a failing step stops the rest of the testcase for that data row."),
         ["verb"] = ("Verb", "The HTTP method: GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS."),
         ["targeturl"] = ("Target URL", "Where the request is sent. May contain _variable_ placeholders and <From_...> references, e.g. https://host/orders/_orderId_."),

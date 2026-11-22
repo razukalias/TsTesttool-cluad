@@ -31,7 +31,7 @@ public sealed class StepFormView : UserControl
     private static readonly IBrush Orange = Brush.Parse("#F6A623");
     private static readonly IReadOnlyDictionary<string, string> Labels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["steptype"] = "Type", ["stage"] = "Stage", ["enabled"] = "Enabled", ["verb"] = "Verb", ["targeturl"] = "Target URL",
+        ["steptype"] = "Type", ["stage"] = "Stage", ["enabled"] = "Enabled", ["async"] = "Run asynchronously", ["verb"] = "Verb", ["targeturl"] = "Target URL",
         ["templetsource"] = "Template", ["stoponfailure"] = "Stop on failure", ["contenttype"] = "Content type", ["timeout"] = "Timeout (s)", ["responsetimeout"] = "Response timeout (ms)",
         ["wait"] = "Wait before (ms or message)", ["expectedstatus"] = "Expected status", ["assert"] = "Assertions", ["ignoreempty"] = "Ignore empty",
         ["assertonlyresponse"] = "Only response", ["manualtimeoutminutes"] = "Manual timeout (min)", ["parent"] = "Inside (parent)", ["condition"] = "Condition", ["stepconfig"] = "Step config",
@@ -39,20 +39,20 @@ public sealed class StepFormView : UserControl
 
     private static readonly string[] Formats = ["JSON", "XML", "SQL", "GraphQL", "C# script", "Plain text"];
     private static readonly string[] ContentTypeChoices = ["application/json", "application/xml", "text/plain", "application/graphql", "application/x-www-form-urlencoded", "multipart/form-data", "application/octet-stream"];
-    private static readonly HashSet<string> Known = new(["steptype", "stage", "enabled", "stoponfailure", "verb", "targeturl", "contenttype", "templetsource", "expectedstatus", "timeout", "responsetimeout", "wait", "assert", "ignoreempty", "assertonlyresponse", "manualtimeoutminutes", "stepconfig", "parent", "condition"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> Known = new(["steptype", "stage", "enabled", "async", "stoponfailure", "verb", "targeturl", "contenttype", "templetsource", "expectedstatus", "timeout", "responsetimeout", "wait", "assert", "ignoreempty", "assertonlyresponse", "manualtimeoutminutes", "stepconfig", "parent", "condition"], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The fields each step type uses, in the order they are shown.</summary>
     private static string[] FieldsFor(string type) => type.Trim().ToLowerInvariant() switch
     {
-        "graphql" or "caseql" => ["steptype", "parent", "stage", "enabled", "stoponfailure", "targeturl", "templetsource", "expectedstatus", "timeout", "responsetimeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
-        "sql" => ["steptype", "parent", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
-        "file" => ["steptype", "parent", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
-        "script" => ["steptype", "parent", "stage", "enabled", "stoponfailure", "templetsource", "timeout", "wait"],
-        "actionmanual" => ["steptype", "parent", "stage", "enabled", "stoponfailure", "manualtimeoutminutes"],
-        "if" => ["steptype", "parent", "stage", "enabled", "condition"],
-        "while" => ["steptype", "parent", "stage", "enabled", "condition", "stepconfig"],
-        "for" or "foreach" => ["steptype", "parent", "stage", "enabled", "stepconfig"],
-        _ => ["steptype", "parent", "stage", "enabled", "stoponfailure", "verb", "targeturl", "contenttype", "templetsource", "expectedstatus", "timeout", "responsetimeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
+        "graphql" or "caseql" => ["steptype", "parent", "stage", "enabled", "async", "stoponfailure", "targeturl", "templetsource", "expectedstatus", "timeout", "responsetimeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
+        "sql" => ["steptype", "parent", "stage", "enabled", "async", "stoponfailure", "templetsource", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
+        "file" => ["steptype", "parent", "stage", "enabled", "async", "stoponfailure", "templetsource", "timeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
+        "script" => ["steptype", "parent", "stage", "enabled", "async", "stoponfailure", "templetsource", "timeout", "wait"],
+        "actionmanual" => ["steptype", "parent", "stage", "enabled", "async", "stoponfailure", "manualtimeoutminutes"],
+        "if" => ["steptype", "parent", "stage", "enabled", "async", "condition"],
+        "while" => ["steptype", "parent", "stage", "enabled", "async", "condition", "stepconfig"],
+        "for" or "foreach" => ["steptype", "parent", "stage", "enabled", "async", "stepconfig"],
+        _ => ["steptype", "parent", "stage", "enabled", "async", "stoponfailure", "verb", "targeturl", "contenttype", "templetsource", "expectedstatus", "timeout", "responsetimeout", "wait", "assert", "ignoreempty", "assertonlyresponse"],
     };
 
     private static bool IsControl(string type) => type.Trim().ToLowerInvariant() is "if" or "while" or "for" or "foreach";
@@ -199,7 +199,7 @@ public sealed class StepFormView : UserControl
         Control input;
         var options = title.Equals("contenttype", StringComparison.OrdinalIgnoreCase) ? ContentTypeChoices : StepOptions.For(title)?.ToArray();
         var current = _step.Value(title);
-        if (title.ToLowerInvariant() is "enabled" or "stoponfailure" or "assert" or "assertonlyresponse" or "ignoreempty")
+        if (title.ToLowerInvariant() is "enabled" or "async" or "stoponfailure" or "assert" or "assertonlyresponse" or "ignoreempty")
         {
             var check = new CheckBox { IsChecked = !(current.Trim().ToLowerInvariant() is "false" or "0" or "no" or "off") && (current.Length > 0 || title is "enabled" or "stoponfailure" or "assert") };
             check.IsCheckedChanged += (_, _) => _step.Write(title, check.IsChecked == true ? "True" : "False");

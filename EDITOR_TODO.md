@@ -946,3 +946,9 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - SQL step: the ConnectionProfile box is free text (no list of the profiles in appsettings.json, no "Test connection" button); a wrong name only fails at run time. Runtime itself verified with the sample instance (SQLite).
 - Mock server: closing asks to save only for this window; routes of a server file that is running are applied on Save (not live while typing).
 - Template validation complaining about variables (reported 2026-11-22, user will check and send details; may be an old bug). Suspect: `GlobalValidationService.NormalizeRuntimeVariablesForJson` (GlobalValidationWindow.cs) only knows `_name_` made of letters/digits/`._-`; the runner (`TemplateRenderer`) also accepts `_*name*_` and `[0]` in names, so such templates are reported as "Template JSON is invalid". Fix idea: use the renderer's pattern, make the method internal, test with `_*name*_`, `_items[0].id_`, `_Login.token_`, placeholders inside strings. Also check what the tree shows (icon/text) once the user reports it.
+
+## Async steps (2026-11-22)
+- A background step works on a copy of the row's values; values it extracts are handed over to later steps only after a step's `wait` (or at the start of the next step once it has finished), never while it runs.
+- An unexpected exception in a background step marks the row failed (logged as ASYNC STEP FAILED) but produces no result line for that step.
+- No validation hint when a later step uses a value of an async step without a wait; no async marker in History/result workbooks; the instance builder / step wizard (old forms) have no async box.
+- Parallel async inside an already async block runs in sequence (not nested background).

@@ -3,10 +3,12 @@ using LoadTestingTool.Domain;
 namespace LoadTestingTool.Editing;
 
 /// <summary>A step as the tree shows it: its name, how deep it sits inside control steps and which branch of an If it is in.</summary>
-public sealed record StepNesting(string Name, int Depth, bool IsControl, bool InElse, string TypeName = "");
+public sealed record StepNesting(string Name, int Depth, bool IsControl, bool InElse, string TypeName = "", bool IsAsync = false);
 
 public sealed partial class WorkbookDocument
 {
+    private static bool IsOn(string value) => value.Trim().ToLowerInvariant() is "true" or "1" or "yes" or "on";
+
     private static string ParentName(string parentCell) => parentCell.EndsWith(":else", StringComparison.OrdinalIgnoreCase) ? parentCell[..^5].Trim() : parentCell.Trim();
     private static bool IsElse(string parentCell) => parentCell.EndsWith(":else", StringComparison.OrdinalIgnoreCase);
 
@@ -34,7 +36,7 @@ public sealed partial class WorkbookDocument
             var current = row;
             var seen = new HashSet<TableRow> { row };
             while (ParentName(current.Get("parent")) is { Length: > 0 } parent && byName.TryGetValue(parent, out var up) && seen.Add(up)) { depth++; current = up; }
-            result.Add(new StepNesting(row.Get("stepname").Trim(), depth, IsControlRow(row), IsElse(row.Get("parent")), TypeNameOf(row)));
+            result.Add(new StepNesting(row.Get("stepname").Trim(), depth, IsControlRow(row), IsElse(row.Get("parent")), TypeNameOf(row), IsOn(row.Get("async"))));
         }
         return result;
     }

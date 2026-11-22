@@ -43,7 +43,7 @@ public sealed class WorkbookReader
                 Verb = Text(configHeaders, row, "verb", "POST").ToUpperInvariant(), ContentType = Text(configHeaders, row, "contenttype"),
                 WaitExpression = Compile(Text(configHeaders, row, "wait", "0"), workbook, config, compiledCellCache, row.RowNumber()),
                 WaitMs = ParseWaitMilliseconds(Text(configHeaders, row, "wait", "0")), ExpectedStatus = Compile(Text(configHeaders, row, "expectedstatus"), workbook, config, compiledCellCache, row.RowNumber()),
-                StopOnFailure = Bool(configHeaders, row, "stoponfailure", true), IgnoreEmpty = Bool(configHeaders, row, "ignoreempty", false),
+                StopOnFailure = Bool(configHeaders, row, "stoponfailure", true), RunAsync = Bool(configHeaders, row, "async", false), IgnoreEmpty = Bool(configHeaders, row, "ignoreempty", false),
                 AssertEnabled = Bool(configHeaders, row, "assert", Bool(configHeaders, row, "assertenabled", true)),
                 AssertOnlyResponse = Bool(configHeaders, row, "assertonlyresponse", Bool(configHeaders, row, "assertonlyinresponse", false)),
                 Environments = [], Headers = ExtractHeaders(configHeaders, row, workbook, config, compiledCellCache)

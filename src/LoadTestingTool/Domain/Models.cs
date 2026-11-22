@@ -137,6 +137,8 @@ public sealed class RequestStep
     public string WaitExpression { get; init; } = "0";
     public string ExpectedStatus { get; init; } = string.Empty;
     public bool StopOnFailure { get; init; } = true;
+    /// <summary>Start the step in the background and carry on with the next one; the data row waits for it at its end.</summary>
+    public bool RunAsync { get; init; }
     public bool IgnoreEmpty { get; init; }
     public bool AssertEnabled { get; init; } = true;
     public bool AssertOnlyResponse { get; init; }

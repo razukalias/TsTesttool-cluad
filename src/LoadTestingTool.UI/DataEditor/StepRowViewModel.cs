@@ -155,7 +155,7 @@ public static class StepOptions
         "steptype" => StepTypes,
         "stage" => Stages,
         "verb" => Verbs,
-        "enabled" or "stoponfailure" or "assert" or "assertonlyresponse" => Booleans,
+        "enabled" or "async" or "stoponfailure" or "assert" or "assertonlyresponse" => Booleans,
         _ => null
     };
 }
