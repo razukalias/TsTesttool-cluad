@@ -21,7 +21,9 @@ public sealed class ScriptTemplateWindow : Window
     private readonly TextBox _code = new() { AcceptsReturn = true, AcceptsTab = true, FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontSize = 13, MinHeight = 280, TextWrapping = TextWrapping.NoWrap, Tag = "script-code" };
     private readonly ListBox _problems = new() { MaxHeight = 120, Tag = "script-problems", IsVisible = false };
     private readonly TextBlock _status = new() { FontSize = 12, Foreground = Brush.Parse("#8EA4BC"), TextWrapping = TextWrapping.Wrap, Tag = "script-status" };
-    private readonly ListBox _suggestions = new() { MaxHeight = 190, MinWidth = 380, Tag = "script-suggestions", IsVisible = false };
+    private readonly ScriptAssist _assist;
+    private Avalonia.Controls.Templates.IDataTemplate _insertTemplate = null!;
+    private readonly TextBlock _signature;
     private readonly IReadOnlyList<ScriptHelpItem> _items;
     private readonly bool _existing;
     private string? _saved;
@@ -53,14 +55,14 @@ public sealed class ScriptTemplateWindow : Window
         var cancel = new Button { Content = "Close", Tag = "script-close", MinWidth = 90, IsCancel = true };
         cancel.Click += (_, _) => Close();
 
-        _suggestions.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<ScriptHelpItem>((item, _) => item is null ? null : new StackPanel { Children =
+        _insertTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<ScriptHelpItem>((item, _) => item is null ? null : new StackPanel { Children =
         {
             new TextBlock { Text = item.Name, FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontWeight = FontWeight.SemiBold },
             new TextBlock { Text = item.Detail, FontSize = 11, Foreground = Brush.Parse("#8EA4BC"), TextWrapping = TextWrapping.Wrap, MaxWidth = 460 },
         } });
-        _suggestions.DoubleTapped += (_, _) => Accept();
-        _code.KeyDown += OnCodeKey;
-        _code.TextChanged += (_, _) => UpdateSuggestions(forced: false);
+        _assist = new ScriptAssist(_code, ScriptKind.Template, () => _items.Where(x => x.Insert.StartsWith('_') && x.Insert.EndsWith('_') && x.Insert.Length > 2).Select(x => x.Insert[1..^1]).ToList());
+        _signature = _assist.Signature;
+        _assist.Idle += () => _ = LiveCheckAsync();
         _problems.DoubleTapped += (_, _) => JumpToProblem();
         _problems.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<ScriptDiagnostic>((d, _) => d is null ? null : new TextBlock { Text = $"{(d.IsError ? "✕" : "⚠")} line {d.Line}, column {d.Column}: {d.Message}", Foreground = Brush.Parse(d.IsError ? "#FF7588" : "#F6C76B"), TextWrapping = TextWrapping.Wrap });
 
@@ -75,7 +77,8 @@ public sealed class ScriptTemplateWindow : Window
         DockPanel.SetDock(bottom, Dock.Bottom); left.Children.Add(bottom);
         var editor = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
         editor.Children.Add(_code);
-        Grid.SetRow(_suggestions, 1); editor.Children.Add(_suggestions);
+        var assistPanel = new StackPanel { Spacing = 4, Children = { _assist.Signature, _assist.Suggestions } };
+        Grid.SetRow(assistPanel, 1); editor.Children.Add(assistPanel);
         left.Children.Add(editor);
 
         var help = new ScrollViewer { Content = new StackPanel { Spacing = 10, Children =
@@ -98,7 +101,7 @@ public sealed class ScriptTemplateWindow : Window
     private Control InsertList()
     {
         var list = new ListBox { ItemsSource = _items, MaxHeight = 360, Tag = "script-insert-list" };
-        list.ItemTemplate = _suggestions.ItemTemplate;
+        list.ItemTemplate = _insertTemplate;
         list.DoubleTapped += (_, _) => { if (list.SelectedItem is ScriptHelpItem item) InsertText(item.Insert, replaceTyped: 0); };
         return list;
     }
@@ -110,48 +113,31 @@ public sealed class ScriptTemplateWindow : Window
         var start = Math.Max(0, caret - replaceTyped);
         _code.Text = current[..start] + text + current[caret..];
         _code.CaretIndex = start + text.Length;
-        _suggestions.IsVisible = false;
         _code.Focus();
     }
 
-    // ---- Autocomplete ----------------------------------------------------------------------
+    // ---- Autocomplete: ScriptAssist (members after a dot, names, keywords, snippets, signature help) -------------------------
 
-    /// <summary>The word before the caret that the suggestions are matched on: letters, digits, '_' and '.' (so "Runtime.G" and "_na" work).</summary>
-    private string TypedWord()
+    /// <summary>The suggestions for the code before the caret, for tests: what the list would show now.</summary>
+    internal ScriptSuggestions? SuggestionsNow(bool forced = false)
     {
-        var text = _code.Text ?? string.Empty;
-        var caret = Math.Min(_code.CaretIndex, text.Length);
-        var start = caret;
-        while (start > 0 && (char.IsLetterOrDigit(text[start - 1]) || text[start - 1] is '_' or '.')) start--;
-        return text[start..caret];
+        _assist.UpdateNow(forced);
+        return _assist.Suggestions.IsVisible ? new ScriptSuggestions(0, _assist.Suggestions.Items.OfType<ScriptSuggestion>().ToList()) : null;
     }
 
-    private void UpdateSuggestions(bool forced)
-    {
-        var word = TypedWord();
-        if (!forced && word.Length < 2 && word != "_") { _suggestions.IsVisible = false; return; }
-        var matches = _items.Where(i => word.Length == 0 || i.Name.Contains(word, StringComparison.OrdinalIgnoreCase) || i.Insert.StartsWith(word, StringComparison.OrdinalIgnoreCase)).Take(30).ToList();
-        _suggestions.ItemsSource = matches;
-        _suggestions.IsVisible = matches.Count > 0;
-        if (matches.Count > 0) _suggestions.SelectedIndex = 0;
-    }
+    internal ScriptAssist Assist => _assist;
 
-    private void Accept()
+    /// <summary>Compiles while typing paused, so errors show without pressing Validate (the compile runs in the background).</summary>
+    private async Task LiveCheckAsync()
     {
-        if (_suggestions.SelectedItem is ScriptHelpItem item) InsertText(item.Insert, TypedWord().Length);
-    }
-
-    private void OnCodeKey(object? sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Space && e.KeyModifiers.HasFlag(KeyModifiers.Control)) { UpdateSuggestions(forced: true); e.Handled = true; return; }
-        if (!_suggestions.IsVisible) return;
-        switch (e.Key)
-        {
-            case Key.Down: _suggestions.SelectedIndex = Math.Min(_suggestions.ItemCount - 1, _suggestions.SelectedIndex + 1); e.Handled = true; break;
-            case Key.Up: _suggestions.SelectedIndex = Math.Max(0, _suggestions.SelectedIndex - 1); e.Handled = true; break;
-            case Key.Tab or Key.Enter: Accept(); e.Handled = true; break;
-            case Key.Escape: _suggestions.IsVisible = false; e.Handled = true; break;
-        }
+        var code = _code.Text ?? string.Empty;
+        var found = await Task.Run(() => ScriptTemplates.Validate(code));
+        if (!string.Equals(code, _code.Text ?? string.Empty, StringComparison.Ordinal)) return;
+        _problems.ItemsSource = found;
+        _problems.IsVisible = found.Count > 0;
+        var errors = found.Count(d => d.IsError);
+        _status.Text = errors > 0 ? $"{errors} {(errors == 1 ? "error" : "errors")}. Double-click a line to go to it." : found.Count > 0 ? "No errors; there are warnings." : "The script compiles.";
+        _status.Foreground = Brush.Parse(errors > 0 ? "#FF7588" : "#39D39B");
     }
 
     // ---- Validate and save -------------------------------------------------------------------

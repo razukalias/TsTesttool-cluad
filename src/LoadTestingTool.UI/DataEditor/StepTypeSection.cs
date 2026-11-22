@@ -19,7 +19,7 @@ namespace LoadTestingTool.UI.DataEditor;
 public sealed class StepTypeSection : UserControl
 {
     private enum Kind { Text, Multi, Combo, Json, Number, Path }
-    private sealed record Spec(string Key, string Label, Kind Kind, string[]? Options = null, string? Hint = null, Func<JsonObject, bool>? Visible = null, string Folder = "Files");
+    private sealed record Spec(string Key, string Label, Kind Kind, string[]? Options = null, string? Hint = null, Func<JsonObject, bool>? Visible = null, string Folder = "Files", bool CSharp = false);
 
     private static readonly IBrush Muted = Brush.Parse("#8EA4BC");
     private static readonly IBrush Line = Brush.Parse("#22364F");
@@ -101,7 +101,7 @@ public sealed class StepTypeSection : UserControl
                     new Spec("ContentType", "Content type", Kind.Combo, ContentTypes), new Spec("MaxBytes", "Max bytes", Kind.Number));
                 break;
             case "script":
-                AddAll(new Spec("Source", "Script file", Kind.Path, Folder: "Scripts"), new Spec("Inline", "Inline script", Kind.Multi, Hint: "Used when no file is set."));
+                AddAll(new Spec("Source", "Script file", Kind.Path, Folder: "Scripts"), new Spec("Inline", "Inline script", Kind.Multi, Hint: "Used when no file is set. Ctrl+Space or a dot suggests C#.", CSharp: true));
                 break;
             case "http" when string.Equals(_step.Value("contenttype").Trim(), "multipart/form-data", StringComparison.OrdinalIgnoreCase):
                 _body.Children.Add(BuildParts());
@@ -171,6 +171,22 @@ public sealed class StepTypeSection : UserControl
                     var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
                     row.Children.Add(box); Grid.SetColumn(browse, 1); row.Children.Add(browse);
                     input = row;
+                }
+                else if (spec.CSharp)
+                {
+                    // a script: C# suggestions (members after a dot, names, keywords, signatures) and the compiler's first error while typing paused
+                    var assist = new ScriptAssist(box, LoadTestingTool.Editing.ScriptKind.Template, () => _step.Editor?.MenuSources().RequestHeaders ?? [], "step-script-suggestions");
+                    assist.Idle += async () =>
+                    {
+                        var code = box.Text ?? string.Empty;
+                        if (string.IsNullOrWhiteSpace(code)) { error.IsVisible = false; return; }
+                        var found = await Task.Run(() => LoadTestingTool.Editing.ScriptTemplates.Validate(code));
+                        if (!string.Equals(code, box.Text ?? string.Empty, StringComparison.Ordinal)) return;
+                        var first = found.FirstOrDefault(d => d.IsError);
+                        error.Text = first is null ? string.Empty : $"line {first.Line}, column {first.Column}: {first.Message}";
+                        error.IsVisible = first is not null;
+                    };
+                    input = new StackPanel { Spacing = 4, Children = { box, assist.Signature, assist.Suggestions } };
                 }
                 else input = box;
                 break;

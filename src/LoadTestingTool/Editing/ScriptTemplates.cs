@@ -146,6 +146,10 @@ public static class ScriptTemplates
 
     /// <summary>Short explanations and examples shown beside the template editor.</summary>
     public static string HelpText { get; } = """
+        TYPING HELP
+        A dot lists the members (Runtime. , a text value . , Guid. ...); two letters list names, keywords and snippets; Ctrl+Space lists on demand.
+        Up / Down choose, Tab or Enter insert, Esc closes. The line under the code shows the call you are in and the parameter you are typing.
+
         HOW IT WORKS
         A cell calls a template:  <runscript(template:name, parameter:value, other:<From_request_header_r>)>
         The runner runs name.csx, gives it the parameters as variables, and writes what it returns into the cell.

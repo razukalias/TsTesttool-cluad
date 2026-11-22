@@ -7,6 +7,7 @@ using AvaloniaEdit;
 using AvaloniaEdit.CodeCompletion;
 using AvaloniaEdit.Document;
 using AvaloniaEdit.Editing;
+using LoadTestingTool.Editing;
 using LoadTestingTool.Execution;
 
 namespace LoadTestingTool.UI.DataEditor;
@@ -36,6 +37,7 @@ public sealed class ConditionBuilderWindow : Window
     private readonly TextEditor _script = new() { ShowLineNumbers = true, FontFamily = new FontFamily("Consolas"), FontSize = 14, Foreground = Brush.Parse("#E3EDF9"), MinHeight = 200, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto };
     private readonly Control _wizardPane;
     private readonly Control _scriptPane;
+    private readonly TextBlock _signature = new() { FontSize = 11, Foreground = Brush.Parse("#8EA4BC"), FontFamily = new FontFamily("Consolas,Menlo,monospace"), TextWrapping = TextWrapping.Wrap, IsVisible = false, Tag = "condition-signature" };
     private readonly Avalonia.Controls.Primitives.ToggleButton _wizardMode = new() { Content = "Wizard", Tag = "cond-mode-wizard" };
     private readonly Avalonia.Controls.Primitives.ToggleButton _scriptMode = new() { Content = "C# script", Tag = "cond-mode-script" };
     private CompletionWindow? _completion;
@@ -46,6 +48,7 @@ public sealed class ConditionBuilderWindow : Window
 
     /// <summary>The script's code without the cs: prefix.</summary>
     public string ScriptText { get => _script.Text ?? string.Empty; set => _script.Text = value; }
+    internal TextEditor ScriptEditor => _script;
 
     /// <summary>The condition text to write into the step, or null when the window was cancelled.</summary>
     public string? Result { get; private set; }
@@ -127,8 +130,11 @@ public sealed class ConditionBuilderWindow : Window
         script.Children.Add(scriptHelp);
         script.Children.Add(convert);
         script.Children.Add(new Border { Child = _script, BorderBrush = Brush.Parse("#2A3B52"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(4) });
+        script.Children.Add(_signature);
         _scriptPane = script;
         _script.TextArea.TextEntered += OnScriptTextEntered;
+        _script.TextArea.KeyDown += OnScriptKeyDown;
+        _script.TextArea.Caret.PositionChanged += (_, _) => UpdateScriptSignature();
         _script.TextChanged += (_, _) => Refresh();
         _script.Document.TextChanged += (_, _) => Refresh();
 
@@ -188,19 +194,56 @@ public sealed class ConditionBuilderWindow : Window
 
     private void OnScriptTextEntered(object? sender, TextInputEventArgs e)
     {
-        if (e.Text is not ("_" or "<")) return;
+        if (e.Text is null || e.Text.Length != 1) return;
         var area = _script.TextArea;
         var offset = area.Caret.Offset;
-        if (e.Text == "_" && offset >= 2 && (char.IsLetterOrDigit(area.Document.GetCharAt(offset - 2)) || area.Document.GetCharAt(offset - 2) == '_')) return;
-        var items = CompletionItems(e.Text[0]);
-        if (items.Count == 0) return;
-        _completion = new CompletionWindow(area) { StartOffset = offset - 1, CloseWhenCaretAtBeginning = true };
-        foreach (var (text, description) in items) _completion.CompletionList.CompletionData.Add(new ScriptCompletion(text, description));
+        if (e.Text is "_" or "<")
+        {
+            if (e.Text == "_" && offset >= 2 && (char.IsLetterOrDigit(area.Document.GetCharAt(offset - 2)) || area.Document.GetCharAt(offset - 2) == '_')) return;
+            var items = CompletionItems(e.Text[0]);
+            if (items.Count == 0) return;
+            ShowCompletion(offset - 1, items.Select(i => (i.Text, i.Description)).ToList());
+            return;
+        }
+        // C#: members after a dot, and names once two letters are typed (the open list filters itself while typing)
+        if (e.Text == "." || (_completion is null && char.IsLetter(e.Text[0]))) ShowEngineCompletion(forced: false);
+    }
+
+    /// <summary>Ctrl+Space: the C# suggestions for the caret even when nothing was typed.</summary>
+    private void OnScriptKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Space || !e.KeyModifiers.HasFlag(KeyModifiers.Control)) return;
+        ShowEngineCompletion(forced: true); e.Handled = true;
+    }
+
+    /// <summary>The C# suggestions for the code before the caret (members, names, keywords, snippets, the verbs inside Is(" )).</summary>
+    public ScriptSuggestions? EngineSuggestions(bool forced = false) => ScriptCompletion.Suggest(ScriptKind.Condition, _script.Text ?? string.Empty, _script.TextArea.Caret.Offset, forced);
+
+    private void ShowEngineCompletion(bool forced)
+    {
+        if (_completion is not null) { if (!forced) return; _completion.Close(); }
+        if (EngineSuggestions(forced) is not { } found) return;
+        ShowCompletion(found.Start, found.Items.Select(i => (i.Insert, $"{i.Label}  ·  {i.Detail}")).ToList());
+    }
+
+    private void ShowCompletion(int startOffset, IReadOnlyList<(string Text, string Description)> items)
+    {
+        var area = _script.TextArea;
+        _completion = new CompletionWindow(area) { StartOffset = startOffset, CloseWhenCaretAtBeginning = true };
+        foreach (var (text, description) in items) _completion.CompletionList.CompletionData.Add(new ScriptCompletionData(text, description));
         _completion.Closed += (_, _) => _completion = null;
         _completion.Show();
     }
 
-    private sealed class ScriptCompletion(string text, string description) : ICompletionData
+    /// <summary>The signature of the call the caret is in, shown under the script.</summary>
+    private void UpdateScriptSignature()
+    {
+        var sig = ScriptCompletion.Signature(ScriptKind.Condition, _script.Text ?? string.Empty, _script.TextArea.Caret.Offset);
+        _signature.IsVisible = sig is not null;
+        _signature.Text = sig is null ? string.Empty : sig.Text + (sig.Parameters.Count > 0 ? $"   ▸ {sig.Parameters[Math.Min(sig.Active, sig.Parameters.Count - 1)]}" : "");
+    }
+
+    private sealed class ScriptCompletionData(string text, string description) : ICompletionData
     {
         public string Text => text;
         public object Content => text;
