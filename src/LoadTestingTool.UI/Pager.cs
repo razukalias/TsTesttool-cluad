@@ -13,6 +13,9 @@ public sealed class Pager
 
     private int _pageSize = DefaultPageSize;
     public int PageSize { get => _pageSize; set { var v = PageSizes.Contains(value) ? value : DefaultPageSize; if (v == _pageSize) return; _pageSize = v; Page = 1; Changed?.Invoke(); } }
+    /// <summary>Sets the size without raising <see cref="Changed"/> (used while a bar is being built).</summary>
+    public void SetPageSizeSilently(int value) { _pageSize = PageSizes.Contains(value) ? value : DefaultPageSize; Page = 1; }
+
     public int Page { get; private set; } = 1;
     public int Total { get; private set; }
     public int PageCount => Math.Max(1, (int)Math.Ceiling(Total / (double)PageSize));
@@ -60,7 +63,7 @@ public sealed class PagerBar : StackPanel
     {
         _pager = pager;
         Orientation = Orientation.Horizontal; Spacing = 6; Margin = new Thickness(0, 4);
-        if (rememberSize) pager.PageSize = EditorSettings.Load().HistoryPageSize;
+        if (rememberSize) pager.SetPageSizeSilently(EditorSettings.Load().HistoryPageSize);
         _first.Click += (_, _) => pager.GoTo(1);
         _previous.Click += (_, _) => pager.GoTo(pager.Page - 1);
         _next.Click += (_, _) => pager.GoTo(pager.Page + 1);
@@ -74,6 +77,8 @@ public sealed class PagerBar : StackPanel
             if (rememberSize) { var settings = EditorSettings.Load(); settings.HistoryPageSize = size; settings.Save(); }
         };
         pager.Changed += Update;
+        DetachedFromVisualTree += (_, _) => pager.Changed -= Update;   // bars rebuilt on every refresh must not pile up on the pager
+        AttachedToVisualTree += (_, _) => { pager.Changed -= Update; pager.Changed += Update; Update(); };
         foreach (var control in new Control[] { _first, _previous, new TextBlock { Text = "Page", VerticalAlignment = VerticalAlignment.Center }, _jump, _label, _next, _last,
                      new TextBlock { Text = "per page", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) }, _size })
             Children.Add(control);

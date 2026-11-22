@@ -212,4 +212,25 @@ public class FailedCellsTests
         Assert.NotNull(opened);
         window.Close();
     }
+
+    [AvaloniaFact]
+    public void The_failed_cells_list_shows_100_a_page_and_pages_through_all_of_them()
+    {
+        using var dir = new TempDir();
+        var editor = Open(dir);
+        editor.ShowFailedCells = true;
+        var one = Assert.Single(editor.FailedCells);
+        for (var i = 1; i < 250; i++) editor.FailedCells.Add(one with { Header = "H" + i });
+        var view = new FailedCellsView(editor);
+        var window = new Window { Content = view, Width = 1200, Height = 400 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var list = view.GetVisualDescendants().OfType<ListBox>().Single(l => (l.Tag as string) == "failed-cells-list");
+        var label = () => view.GetVisualDescendants().OfType<TextBlock>().Single(t => Equals(t.Tag, "page-label")).Text;
+        Assert.Equal(100, list.ItemCount); Assert.Equal("of 3  ·  1–100 of 250", label());
+        view.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Tag, "page-last")).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(50, list.ItemCount); Assert.Equal("of 3  ·  201–250 of 250", label());
+        Assert.Equal(250, editor.FailedCells.Count);   // the editor keeps all of them
+        window.Close();
+    }
 }

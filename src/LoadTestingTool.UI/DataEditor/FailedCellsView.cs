@@ -15,6 +15,9 @@ public sealed class FailedCellsView : UserControl
     private readonly DataEditorViewModel _editor;
     private readonly TextBlock _summary = new() { Tag = "failed-cells-summary", Foreground = Brush.Parse("#8EA4BC"), FontSize = 12, Margin = new Thickness(12, 12, 12, 6) };
     private readonly ListBox _list;
+    private readonly Pager _pager = new();
+    private readonly PagerBar _bar;
+    private readonly System.Collections.ObjectModel.ObservableCollection<FailedCell> _page = [];
 
     /// <summary>Opens the ✦ wizard for a failed cell (set by the window, which owns the wizard).</summary>
     public Action<FailedCell, Control>? OpenWizard { get; set; }
@@ -25,15 +28,28 @@ public sealed class FailedCellsView : UserControl
         _list = new ListBox
         {
             Tag = "failed-cells-list", Margin = new Thickness(12, 0), Background = Brushes.Transparent, SelectionMode = SelectionMode.Single,
-            ItemsSource = editor.FailedCells, ItemTemplate = new FuncDataTemplate<FailedCell>((cell, _) => cell is null ? null : Line(cell)),
+            ItemsSource = _page, ItemTemplate = new FuncDataTemplate<FailedCell>((cell, _) => cell is null ? null : Line(cell)),
         };
         var panel = new DockPanel();
+        _bar = new PagerBar(_pager);
+        _pager.Changed += ShowPage;
         DockPanel.SetDock(_summary, Dock.Top);
         panel.Children.Add(_summary);
+        DockPanel.SetDock(_bar, Dock.Top); _bar.Margin = new Thickness(12, 0, 12, 4);
+        panel.Children.Add(_bar);
         panel.Children.Add(_list);
         Content = panel;
-        editor.FailedCells.CollectionChanged += (_, _) => Summarize();
+        editor.FailedCells.CollectionChanged += (_, _) => { _pager.Reset(); ShowPage(); Summarize(); };
+        ShowPage();
         Summarize();
+    }
+
+    /// <summary>The failed cells of the current page (100 a page); the whole list stays in the editor.</summary>
+    private void ShowPage()
+    {
+        _page.Clear();
+        foreach (var cell in _pager.Slice(_editor.FailedCells.ToList())) _page.Add(cell);
+        _bar.Update();
     }
 
     private void Summarize()

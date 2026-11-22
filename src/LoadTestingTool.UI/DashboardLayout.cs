@@ -361,12 +361,13 @@ public sealed partial class MainWindow
     private Control _historyPage = null!;
     private string _detailSignature = "";
     private double _logFontSize = 11;
-    private const int DashboardPageSize = 200;
-    private int _overviewPage = 1;
-    private int _assertionPage = 1;
-    private readonly TextBlock _assertionPageLabel = DashboardStyle.Text("", 11, false, DashboardStyle.Muted);
-    private Button _assertionPreviousButton = null!;
-    private Button _assertionNextButton = null!;
+    private readonly Pager _overviewPager = new();
+    private readonly Pager _assertionPager = new();
+    private PagerBar? _assertionBar;
+    private readonly Pager _artifactPager = new();
+    private readonly Pager _logPager = new();
+    private PagerBar? _logBar;
+    private string _overviewFilterSignature = "", _assertionFilterSignature = "";
 
     private void BuildLayout()
     {
@@ -435,7 +436,10 @@ public sealed partial class MainWindow
         table.Children.Add(toolbar); Grid.SetRow(columnHeader, 1); table.Children.Add(columnHeader); Grid.SetRow(_instanceList, 2); table.Children.Add(_instanceList);
         var tableCard = DashboardStyle.Card(table, new Thickness(0));
         var eventHeader = DashboardStyle.Text("Log", 13, true);
-        var events = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
+        var events = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
+        _logBar = new PagerBar(_logPager);
+        _logPager.Changed += RenderUnifiedLog;
+        Grid.SetRow(_logBar, 2); events.Children.Add(_logBar);
         var logTools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { eventHeader,
             DashboardStyle.Action("−", () => ChangeLogFont(-1)), DashboardStyle.Action("+", () => ChangeLogFont(1)), DashboardStyle.Action("Clear", ClearUnifiedLog) } };
         events.Children.Add(logTools);
@@ -826,38 +830,20 @@ public sealed partial class MainWindow
         Grid.SetColumn(text, 1); grid.Children.Add(text); return grid;
     }
 
-    private Control CreatePaginationBar(bool overview, int totalItems = 0)
+    /// <summary>The Overview and Assertions lists page like the history lists: 100 a page, first / previous / next / last, jump, page size.</summary>
+    private Control CreatePaginationBar(bool overview)
     {
-        // Overview is rebuilt on every refresh. Always create fresh controls for it;
-        // Avalonia controls cannot be attached to a second visual parent.
-        var label = overview ? DashboardStyle.Text("", 11, false, DashboardStyle.Muted) : _assertionPageLabel;
-        var previous = DashboardStyle.Action("Previous", () =>
-        {
-            if (overview) _overviewPage = Math.Max(1, _overviewPage - 1);
-            else _assertionPage = Math.Max(1, _assertionPage - 1);
-            if (overview) RefreshDashboardDetails(true); else RefreshAssertionList();
-        });
-        var next = DashboardStyle.Action("Next", () =>
-        {
-            if (overview) _overviewPage++;
-            else _assertionPage++;
-            if (overview) RefreshDashboardDetails(true); else RefreshAssertionList();
-        });
-        if (!overview) { _assertionPreviousButton = previous; _assertionNextButton = next; }
-        if (overview)
-        {
-            var totalPages = Math.Max(1, (int)Math.Ceiling(totalItems / (double)DashboardPageSize));
-            _overviewPage = Math.Clamp(_overviewPage, 1, totalPages);
-            UpdatePagination(label, previous, next, _overviewPage, totalItems, DashboardPageSize);
-        }
-        return new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            Margin = new Thickness(0, 6, 0, 4),
-            Children = { previous, label, next }
-        };
+        // Overview is rebuilt on every refresh, so it gets a fresh bar each time (a control cannot have two parents); the pager keeps the page.
+        var pager = overview ? _overviewPager : _assertionPager;
+        pager.Changed -= overview ? OverviewPageChanged : AssertionPageChanged;
+        pager.Changed += overview ? OverviewPageChanged : AssertionPageChanged;
+        var bar = new PagerBar(pager);
+        if (!overview) _assertionBar = bar;
+        return bar;
     }
+
+    private void OverviewPageChanged() => RefreshDashboardDetails(true);
+    private void AssertionPageChanged() => RefreshAssertionList();
 
     private static string FormatRunDuration(InstanceInfo item)
     {
@@ -1049,9 +1035,10 @@ public sealed partial class MainWindow
         if (lines.Count == 0)
         {
             _eventPanel.Children.Add(DashboardStyle.Text("No log entries yet. Events and validation output will appear here.", 12, false, DashboardStyle.Muted));
+            _logPager.Slice(lines); _logBar?.Update();
             return;
         }
-        foreach (var (text, severity) in lines)
+        foreach (var (text, severity) in _logPager.Slice(lines))
         {
             var box = new TextBox
             {
@@ -1074,6 +1061,7 @@ public sealed partial class MainWindow
             };
             _eventPanel.Children.Add(box);
         }
+        _logBar?.Update();
     }
     private void OpenDataEditor()
     {
@@ -1660,15 +1648,15 @@ public sealed partial class MainWindow
             .GroupBy(request => $"{request.Testcase}\u001F{request.DataId}\u001F{request.Environment}", StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
         var filteredRequests = DashboardRequest.InWorkbookOrder(requests.Where(r => MatchesOverviewStep(r)));
-        var overviewTotalPages = Math.Max(1, (int)Math.Ceiling(filteredRequests.Count / (double)DashboardPageSize));
-        _overviewPage = Math.Clamp(_overviewPage, 1, overviewTotalPages);
-        var pageRequests = filteredRequests.Skip((_overviewPage - 1) * DashboardPageSize).Take(DashboardPageSize);
+        var overviewSignature = $"{_overviewStepFilter.Text}|{_overviewStepExclude.Text}";
+        if (overviewSignature != _overviewFilterSignature) { _overviewFilterSignature = overviewSignature; _overviewPager.Reset(); }
+        var pageRequests = _overviewPager.Slice(filteredRequests);
         foreach (var request in requests)
         {
             var rowKey = $"{request.Testcase}\u001F{request.DataId}\u001F{request.Environment}";
             stepPositions[rowKey] = stepPositions.GetValueOrDefault(rowKey) + 1;
         }
-        var overviewPaging = CreatePaginationBar(true, filteredRequests.Count);
+        var overviewPaging = CreatePaginationBar(true);
         foreach (var request in pageRequests)
         {
             var rowKey = $"{request.Testcase}\u001F{request.DataId}\u001F{request.Environment}";
@@ -1765,11 +1753,14 @@ public sealed partial class MainWindow
             {
                 if (!string.IsNullOrWhiteSpace(item.CurrentRunFolder) && Directory.Exists(item.CurrentRunFolder))
                     files = Directory.EnumerateFiles(item.CurrentRunFolder, "*", SearchOption.AllDirectories)
-                        .Where(f => f.Contains(scope.Testcase, StringComparison.OrdinalIgnoreCase)).OrderByDescending(File.GetLastWriteTimeUtc).Take(30).ToList();
+                        .Where(f => f.Contains(scope.Testcase, StringComparison.OrdinalIgnoreCase)).OrderByDescending(File.GetLastWriteTimeUtc).ToList();
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
             if (files.Count == 0) _artifactPanel.Children.Add(DashboardStyle.Text("No result files for this yet.", 12, false, DashboardStyle.Muted));
-            foreach (var file in files)
+            _artifactPager.Changed -= RefreshArtifacts; _artifactPager.Changed += RefreshArtifacts;
+            var artifactPage = _artifactPager.Slice(files);
+            if (files.Count > _artifactPager.PageSize || _artifactPager.Page > 1) _artifactPanel.Children.Add(new PagerBar(_artifactPager));
+            foreach (var file in artifactPage)
             {
                 _artifactPanel.Children.Add(KeyValue(Path.GetFileName(file), file));
                 _artifactPanel.Children.Add(DashboardStyle.Action("Open folder", () => OpenFolder(Path.GetDirectoryName(file) ?? file, "result folder")));
@@ -1919,9 +1910,21 @@ public sealed partial class MainWindow
         void AddTab(string header, IEnumerable<string> values)
         {
             var source = values.ToList(); var host = new StackPanel { Spacing = 6, Margin = new Thickness(8) };
-            void Render() { host.Children.Clear(); var filtered = source.Where(x => x.Contains(search.Text ?? "", StringComparison.OrdinalIgnoreCase)).ToList(); foreach (var line in filtered) host.Children.Add(DiffVisual(line)); if (filtered.Count == 0) host.Children.Add(DashboardStyle.Text("No differences in this tab.", color: DashboardStyle.Muted)); }
-            search.TextChanged += (_, _) => Render(); Render();
-            tabs.Items.Add(new TabItem { Header = header, Content = new ScrollViewer { Content = host, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto } });
+            var pager = new Pager(); var bar = new PagerBar(pager);
+            void Render()
+            {
+                host.Children.Clear();
+                var filtered = source.Where(x => x.Contains(search.Text ?? "", StringComparison.OrdinalIgnoreCase)).ToList();
+                foreach (var line in pager.Slice(filtered)) host.Children.Add(DiffVisual(line));
+                if (filtered.Count == 0) host.Children.Add(DashboardStyle.Text("No differences match the filter.", 12, false, DashboardStyle.Muted));
+                bar.Update();
+            }
+            pager.Changed += Render;
+            search.TextChanged += (_, _) => { pager.Reset(); Render(); }; Render();
+            var tab = new DockPanel();
+            DockPanel.SetDock(bar, Dock.Top); tab.Children.Add(bar);
+            tab.Children.Add(new ScrollViewer { Content = host, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto });
+            tabs.Items.Add(new TabItem { Header = header, Content = tab });
         }
         AddTab("Request", requestLines); AddTab("Response", responseLines); AddTab("Assertions", assertionLines); AddTab("Variables", variableLines); AddTab("DataEngine rows", dataRowLines); AddTab("Config", configLines);
         var close = DashboardStyle.Action("Close", dialog.Close);

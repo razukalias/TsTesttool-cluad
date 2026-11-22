@@ -246,15 +246,14 @@ public sealed partial class MainWindow : Window
             .Where(a => string.IsNullOrWhiteSpace(_assertionExclude.Text) || !MatchesTerms(AssertionSearchText(a), _assertionExclude.Text))
             .ToList();
         RefreshAssertionChips();
-        var totalPages = Math.Max(1, (int)Math.Ceiling(values.Count / (double)DashboardPageSize));
-        _assertionPage = Math.Clamp(_assertionPage, 1, totalPages);
-        var pageValues = values.Skip((_assertionPage - 1) * DashboardPageSize).Take(DashboardPageSize);
+        var assertionSignature = string.Join("|", selectedEnvironment, _failedOnly.IsChecked, _assertionSearch.Text, _assertionExclude.Text, string.Join(",", _assertionTestcaseFilter.Selected), string.Join(",", _assertionStepFilter.Selected), string.Join(",", _assertionResultFilter.Selected), string.Join(",", _assertionVerbFilter.Selected), _selectedInstance?.Name);
+        if (assertionSignature != _assertionFilterSignature) { _assertionFilterSignature = assertionSignature; _assertionPager.Reset(); }
+        var pageValues = _assertionPager.Slice(values);
         _assertionItems.Children.Clear();
         foreach (var assertion in pageValues) _assertionItems.Children.Add(CreateAssertionRow(assertion));
-        if (_assertionPreviousButton is not null)
-            UpdatePagination(_assertionPageLabel, _assertionPreviousButton, _assertionNextButton, _assertionPage, values.Count, DashboardPageSize);
+        _assertionBar?.Update();
         RefreshBugList();
-        UiLog($"Assertion list refreshed. instance={_selectedInstance?.Name ?? "<none>"}; environment={selectedEnvironment ?? "<none>"}; failedOnly={_failedOnly.IsChecked == true}; page={_assertionPage}; pageSize={DashboardPageSize}; visible={values.Count}; total={_selectedInstance?.Assertions.Count ?? 0}");
+        UiLog($"Assertion list refreshed. instance={_selectedInstance?.Name ?? "<none>"}; environment={selectedEnvironment ?? "<none>"}; failedOnly={_failedOnly.IsChecked == true}; page={_assertionPager.Page}; pageSize={_assertionPager.PageSize}; visible={values.Count}; total={_selectedInstance?.Assertions.Count ?? 0}");
     }
     private readonly StackPanel _assertionChips = new();
 
