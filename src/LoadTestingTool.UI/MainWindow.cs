@@ -422,6 +422,40 @@ public sealed partial class MainWindow : Window
         return separator > 0 ? value[(value.StartsWith(fallbackStep + ".", StringComparison.OrdinalIgnoreCase) ? fallbackStep.Length + 1 : 0)..] : value;
     }
 
+    /// <summary>Re-reads the testcases, steps and data ids the dashboard knows about an instance from its workbook. A run checks its choice against this list, so it must be current after every save.</summary>
+    internal void ReloadWorkbookCatalog(InstanceInfo item, string? workbookPath = null)
+    {
+        var workbook = workbookPath ?? item.WorkbookPath;
+        {
+            item.DataIdOptions.Clear();
+            item.SelectionReadError = "";
+            try
+            {
+                using var stream = new FileStream(workbook, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var book = new XLWorkbook(stream);
+                item.TestcaseOptions = WorkbookSelectionCatalog.Read(book);
+                var requestSheet = book.Worksheets.FirstOrDefault(x => x.Name.Equals("request", StringComparison.OrdinalIgnoreCase));
+                var requestHeader = requestSheet?.FirstRowUsed()?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(x => x.GetString().Trim(), x => x.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? [];
+                if (requestSheet is not null && requestHeader.TryGetValue("testcaseindex", out var testcaseColumn) && requestHeader.TryGetValue("dataid", out var dataIdColumn))
+                    foreach (var row in requestSheet.RowsUsed().Skip(1))
+                        if (int.TryParse(row.Cell(testcaseColumn).GetString().Trim(), out var testcaseIndex))
+                        {
+                            var dataId = row.Cell(dataIdColumn).GetString().Trim();
+                            if (!string.IsNullOrWhiteSpace(dataId))
+                            {
+                                item.DataIdOptions.TryAdd(testcaseIndex, []);
+                                item.DataIdOptions[testcaseIndex].Add(dataId);
+                            }
+                        }
+            }
+            catch (Exception ex)
+            {
+                if (item.TestcaseOptions.Count == 0) item.SelectionReadError = ex.Message;
+                UiLog($"Instance refresh could not read workbook '{workbook}' (existing catalog preserved): {ex}");
+            }
+        }
+    }
+
     private void RefreshInstances()
     {
         var root = Path.GetFullPath(_config.InstancesRoot);
@@ -509,32 +543,7 @@ public sealed partial class MainWindow : Window
             }
             item.EnvironmentOptions.Clear();
             item.EnvironmentOptions.AddRange(_config.Environments.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase));
-            item.DataIdOptions.Clear();
-            item.SelectionReadError = "";
-            try
-            {
-                using var stream = new FileStream(workbook, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                using var book = new XLWorkbook(stream);
-                item.TestcaseOptions = WorkbookSelectionCatalog.Read(book);
-                var requestSheet = book.Worksheets.FirstOrDefault(x => x.Name.Equals("request", StringComparison.OrdinalIgnoreCase));
-                var requestHeader = requestSheet?.FirstRowUsed()?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(x => x.GetString().Trim(), x => x.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? [];
-                if (requestSheet is not null && requestHeader.TryGetValue("testcaseindex", out var testcaseColumn) && requestHeader.TryGetValue("dataid", out var dataIdColumn))
-                    foreach (var row in requestSheet.RowsUsed().Skip(1))
-                        if (int.TryParse(row.Cell(testcaseColumn).GetString().Trim(), out var testcaseIndex))
-                        {
-                            var dataId = row.Cell(dataIdColumn).GetString().Trim();
-                            if (!string.IsNullOrWhiteSpace(dataId))
-                            {
-                                item.DataIdOptions.TryAdd(testcaseIndex, []);
-                                item.DataIdOptions[testcaseIndex].Add(dataId);
-                            }
-                        }
-            }
-            catch (Exception ex)
-            {
-                if (item.TestcaseOptions.Count == 0) item.SelectionReadError = ex.Message;
-                UiLog($"Instance refresh could not read workbook '{workbook}' (existing catalog preserved): {ex}");
-            }
+            ReloadWorkbookCatalog(item, workbook);
             _instances.Add(item);
             if (_rows.TryGetValue(folder, out var existingRow)) existingRow.SetEnvironmentOptions(item.EnvironmentOptions);
         }
@@ -1016,6 +1025,7 @@ public sealed partial class MainWindow : Window
         try
         {
             if (promptForMissingSelection && !item.HasAppliedSelection && !await ChooseRunSelectionAsync(item)) return;
+            ReloadWorkbookCatalog(item);   // a testcase or step added in the editor since the app started must be known before the choice is checked
             if (item.GenerateResults) Directory.CreateDirectory(item.ResultsFolder);
             var runner = Path.GetFullPath(_config.RunnerDll);
             var selection = string.IsNullOrWhiteSpace(item.TestcaseSelection) ? "0" : item.TestcaseSelection;

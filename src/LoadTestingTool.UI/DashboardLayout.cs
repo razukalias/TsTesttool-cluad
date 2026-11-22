@@ -995,6 +995,7 @@ public sealed partial class MainWindow
         if (instance is null) return;
         try
         {
+            ReloadWorkbookCatalog(instance);   // new testcases / steps / data rows saved in the editor
             var environments = _config.Environments.ToList();
             var result = await Task.Run(() => GlobalValidationService.ValidateInstance(instance, environments));
             ApplyValidationIssues(instance, result);

@@ -940,3 +940,5 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - Legacy Apply actual values / Select failed / Clear are disabled placeholders in the Artifacts tab; delete once nobody misses them.
 - "Compare runs…" opens the History Explorer (tick runs there); it does not pre-tick the last two runs.
 - Flaky under full-suite load: MockServerWindowTests, MockResponseTimeAndUrlTests (pass alone).
+- Dashboard instance header ("2 testcases", ▶ N) may still show old counts until the next instance refresh after a save in the editor; only the run check's catalog is refreshed now.
+- A refused launch (testcase not in the catalog etc.) only shows in the editor status line / Overview run issues; consider a dialog.
