@@ -14,6 +14,7 @@ public sealed class AssertionEngine
         if (definitions.Count == 0) return [];
         var values = Normalize(body, contentType).ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
         AddCounts(body, contentType, definitions, values);
+        var coveredRoots = AddObjectRoots(body, contentType, definitions, values);
         if (httpStatus.HasValue) values["statusCode"] = httpStatus.Value.ToString(CultureInfo.InvariantCulture);
         // HTTP response headers are addressed as responseHeader.<Name> (Step.responseHeader.Content-Type); like statusCode they are metadata, never an "unexpected payload field".
         if (responseHeaders is not null) foreach (var header in responseHeaders) values[ResponseHeaderPrefix + header.Key] = header.Value;
@@ -32,6 +33,7 @@ public sealed class AssertionEngine
             && !path.Equals("statusCode", StringComparison.OrdinalIgnoreCase)
             && !path.StartsWith(ResponseHeaderPrefix, StringComparison.OrdinalIgnoreCase)
             && !expectedPaths.Contains(path)
+            && !coveredRoots.Any(root => path.StartsWith(root + ".", StringComparison.OrdinalIgnoreCase) || path.StartsWith(root + "[", StringComparison.OrdinalIgnoreCase))
             && (!ignoreEmptyUnconfigured || !IsEmptyUnconfiguredField(values, path))))
             results.Add(Mismatch(runId, requestId, definitions[0], unexpected, values[unexpected], $"Unexpected response path '{unexpected}' returned by payload."));
         return results;
@@ -59,6 +61,30 @@ public sealed class AssertionEngine
             }
         }
         catch (JsonException) { /* not JSON: the count paths stay missing */ }
+    }
+
+    /// <summary>
+    /// A header that names an object or an array (<c>Step.metadata</c>, <c>Step.items</c>) has no leaf value of its own. Its value is the JSON text of that part of the response,
+    /// so contains / regex / empty / notempty / exists work on it, and the fields inside it are covered (not reported as unexpected). Returns the paths that were added.
+    /// </summary>
+    private static List<string> AddObjectRoots(string body, string contentType, IReadOnlyList<AssertionDefinition> definitions, Dictionary<string, string> values)
+    {
+        var added = new List<string>();
+        if (string.IsNullOrWhiteSpace(body) || contentType.Equals("xml", StringComparison.OrdinalIgnoreCase) || body.TrimStart().StartsWith('<')) return added;
+        var wanted = definitions.Select(d => d.ResponsePath).Where(p => !values.ContainsKey(p) && !p.EndsWith(CountSegment, StringComparison.OrdinalIgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (wanted.Count == 0) return added;
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            foreach (var path in wanted)
+                if (TryFind(document.RootElement, path, out var element) && element.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
+                {
+                    values[path] = element.GetRawText();
+                    added.Add(path);
+                }
+        }
+        catch (JsonException) { /* not JSON */ }
+        return added;
     }
 
     public const string CountSegment = "#count";

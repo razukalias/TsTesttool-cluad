@@ -93,3 +93,27 @@ public class HeaderOrAndEscapeTests
         Assert.Equal("equals or contains", LoadTestingTool.Editing.ValueParts.WordsOf("eq|contains"));
     }
 }
+
+public class ObjectRootAssertionTests
+{
+    private const string Body = """{"datasetId":"d1","metadata":{"generatedAt":"2026-11-22T15:49:00+01:00","currency":"SEK"},"items":[{"id":1},{"id":2}]}""";
+
+    private static AssertionDefinition Def(string path, string verb, string expected)
+        => new() { TestcaseIndex = 1, Testcase = "t", DataId = "d", StepName = "S", ResponsePath = path, AssertionVerb = verb, ExpectedValue = expected };
+
+    [Fact]
+    public void An_object_or_array_path_is_tested_as_its_json_text_and_covers_its_fields()
+    {
+        var engine = new AssertionEngine();
+        var results = engine.Evaluate(Body, "json", [Def("metadata", "contains", "generatedAt"), Def("items", "contains", "\"id\":2"), Def("datasetId", "eq", "d1")], "r", "q");
+        Assert.All(results, r => Assert.Equal("PASS", r.Result));
+        Assert.Equal(3, results.Count);   // metadata.generatedAt, metadata.currency, items[0].id ... are covered, none reported as unexpected
+    }
+
+    [Fact]
+    public void A_wrong_text_inside_the_object_still_fails()
+    {
+        var results = new AssertionEngine().Evaluate(Body, "json", [Def("metadata", "contains", "nope"), Def("items", "notempty", ""), Def("datasetId", "eq", "d1")], "r", "q");
+        Assert.Single(results, r => r.Result != "PASS");
+    }
+}

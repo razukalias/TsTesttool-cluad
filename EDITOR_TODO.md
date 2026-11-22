@@ -942,3 +942,4 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - Flaky under full-suite load: MockServerWindowTests, MockResponseTimeAndUrlTests (pass alone).
 - Dashboard instance header ("2 testcases", ▶ N) may still show old counts until the next instance refresh after a save in the editor; only the run check's catalog is refreshed now.
 - A refused launch (testcase not in the catalog etc.) only shows in the editor status line / Overview run issues; consider a dialog.
+- Object/array header paths (`Step.metadata`) are tested as their JSON text; "Assign actual" on such a cell would write the whole JSON (no guard yet), and the response-tree header builder does not yet tell the user that eq on an object compares its whole JSON text.
