@@ -20,8 +20,11 @@ public sealed partial class DataEditorWindow
     private void ApplyEditOnly(string workbookPath)
     {
         _editOnly = true;
-        foreach (var name in new[] { "RunTickedButton", "RunShownButton", "HistoryLogsButton", "MockServerButton", "StorageCleanupButton", "GlobalRunSettingsButton", "OpenSeparateButton", "OpenSeparateToolButton", "ViewModeBox" })
+        foreach (var name in new[] { "RunTickedButton", "RunShownButton", "HistoryLogsButton", "MockServerButton", "StorageCleanupButton", "GlobalRunSettingsButton", "OpenSeparateToolButton", "ViewModeBox", "InstanceTreePanel", "TreeSplitter", "BodySplitter", "RightHost" })
             if (this.FindControl<Control>(name) is { } control) control.IsVisible = false;
+        // only the middle panel: no instance tree on the left, no preview / run panel on the right
+        if (this.FindControl<Grid>("RootGrid") is { } root) { root.ColumnDefinitions[0].MinWidth = 0; root.ColumnDefinitions[0].Width = new GridLength(0); }
+        if (this.FindControl<Grid>("BodyGrid") is { } body) { body.ColumnDefinitions[2].MinWidth = 0; body.ColumnDefinitions[2].Width = new GridLength(0); body.ColumnDefinitions[0].Width = GridLength.Star; body.Children.OfType<Control>().First(c => Avalonia.Controls.Grid.GetColumn(c) == 0).Margin = default; }
         if (_shell.Current is { } editor)
         {
             editor.ViewModeIndex = 0;   // Table view only

@@ -909,9 +909,10 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - [ ] Not done: comparing assertions of two different runs from this tab (it compares the expected and actual values of the current run only).
 
 ## Edit-only table editor in its own process
-- [x] "↗ Open in separate window" in the editor's instance toolbar starts `--table-editor <workbook>`: the same editor, table view only (no Record/Config mode), no Run/History/Mock server/Storage buttons, started fresh from the saved file (asks to save first). A warning shows when the workbook is already open in another edit-only window (lock files in the temp folder).
-- [ ] Not done: the warning does not cover the main app having the same workbook open (only other edit-only windows are tracked); a changed file is not detected while a window is open (last save wins).
-- [ ] Not done: the separate window has no instance tree (one workbook per window) and does not offer "open another instance".
+- [x] A bigger **↗** button right after the Import/Export CSV group (tooltip says what it does) starts `--table-editor <workbook>`: the same editor with all its table functions and filters, showing only the middle panel (no instance tree, no preview/problems/run panel), table view only (no Record/Config mode), no Run/History/Mock server buttons, fresh from the saved file (asks to save first). A warning shows when the workbook is already open in another edit-only window (lock files in the temp folder).
+- [ ] Not done: in the edit-only window the "Run" tick column and the "Result" column are still shown in the table (they are inert there); hide them.
+- [ ] Not done: the Problems list (validation) is hidden with the right panel, so a problem is not visible in the edit-only window.
+- [ ] Not done: the warning does not cover the main app having the same workbook open; the window has no instance tree (one workbook per window).
 - [ ] Not done: a real-process smoke test of `--table-editor` (tests cover the window and the lock, not the process start).
 
 ## Prompt to reload when the file changed on disk

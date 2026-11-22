@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using LoadTestingTool.UI.DataEditor;
@@ -18,9 +19,12 @@ public class EditOnlyWindowTests
         Dispatcher.UIThread.RunJobs();
         Assert.StartsWith("Edit only", window.Title);
         Assert.Equal(0, window.ViewModel.ViewModeIndex);
-        foreach (var name in new[] { "RunTickedButton", "RunShownButton", "HistoryLogsButton", "MockServerButton", "ViewModeBox", "OpenSeparateButton", "OpenSeparateToolButton" })
+        foreach (var name in new[] { "RunTickedButton", "RunShownButton", "HistoryLogsButton", "MockServerButton", "ViewModeBox", "OpenSeparateToolButton", "InstanceTreePanel", "TreeSplitter", "BodySplitter", "RightHost" })
             Assert.False(window.FindControl<Control>(name)!.IsVisible, name);
         Assert.NotEmpty(window.FindControl<DataGrid>("Grid")!.Columns);   // the table view with its columns is there
+        var shots = Environment.GetEnvironmentVariable("UI_SCREENSHOT_DIR") ?? Path.Combine(Path.GetTempPath(), "ui-shots");
+        Directory.CreateDirectory(shots);
+        window.CaptureRenderedFrame()!.Save(Path.Combine(shots, "edit-only.png"));
         window.Close();
         Assert.False(TableEditorLock.OtherProcessHas(path));
     }
@@ -32,8 +36,10 @@ public class EditOnlyWindowTests
         var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 3), "Customers");
         window.Width = 1440; window.Height = 800; window.Show();
         Dispatcher.UIThread.RunJobs();
-        Assert.True(window.FindControl<Button>("OpenSeparateButton")!.IsVisible);
         Assert.True(window.FindControl<Button>("OpenSeparateToolButton")!.IsVisible);
+        var shots = Environment.GetEnvironmentVariable("UI_SCREENSHOT_DIR") ?? Path.Combine(Path.GetTempPath(), "ui-shots");
+        Directory.CreateDirectory(shots);
+        window.CaptureRenderedFrame()!.Save(Path.Combine(shots, "normal-with-separate-button.png"));
         var vm = window.ViewModel;
         vm.VisibleRows[0].Cells[1] = "changed";   // unsaved edit
         window.OpenSelectedInSeparateWindow();
