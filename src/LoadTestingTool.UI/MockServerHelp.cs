@@ -13,6 +13,8 @@ THE SERVER (top bar)
 Name – shown in the monitor and in the status line.
 Port – the port the server listens on. Pick one that nothing else uses (8099 by default). If it is busy, Run says so.
 All interfaces – off: only this computer can reach it (127.0.0.1). On: other computers can reach it too (Windows may ask for administrator rights).
+Extra latency – milliseconds added to every answer, on top of the route's own response time (a slow network for the whole server).
+Use in instance – points the step URLs (the targetUrl column) of the instance selected in the editor at this server, for every testcase: only the address changes (http://127.0.0.1:8099 → http://127.0.0.1:9000), the path, query and <From_…> placeholders stay. Only 127.0.0.1 / localhost URLs are changed unless ""also non-local URLs"" is ticked. One undo step (Ctrl+Z in the editor); save the instance to keep it.
 Base path – put in front of every route, for example /api/v1 makes the route /orders answer at /api/v1/orders.
 Run / Stop – Run saves the file and starts the server; the light turns green when it answers. Stop ends it. A server started from a command line is found and can be stopped here too.
 Save – writes the file in the MockServers folder (a running server picks up the change at once; a new port needs a restart).
@@ -25,7 +27,7 @@ Conditions – more rules a request must meet, for the same path with different 
     query    a query-string value        header   a request header (name not case sensitive)
     body     the whole body              json     a value in a JSON body, for example order.lines[0].sku
     equals / contains / regex / exists / notexists
-Response – status code, content type, extra headers, body, and an optional body file (a path inside the MockServers folder; it replaces the body). Delay (ms) makes the answer slow.
+Response – status code, content type, extra headers, body, and an optional body file (a path inside the MockServers folder; it replaces the body). Response time: ""from"" is how long the server waits before answering (ms); with a ""to"" above it, every answer waits a random time between the two, like a real service. 0 and 0 answers at once.
 Failures – ""Fail %"" makes that share of requests fail with 500; with ""drop connection"" they cut the connection in the middle of the answer instead.
 No-match response – the first item in the list: what is sent when no route fits (404 by default).
 

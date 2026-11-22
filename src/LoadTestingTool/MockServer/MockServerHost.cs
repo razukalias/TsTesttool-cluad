@@ -168,7 +168,8 @@ public sealed class MockServerHost : IDisposable
             Remote = http.RemoteEndPoint?.ToString() ?? "",
             RequestHeaders = headers.Select(p => $"{p.Key}: {p.Value}").ToList(), RequestBody = Clip(body)
         };
-        if (response.DelayMs > 0) await Task.Delay(response.DelayMs, token);
+        var wait = (response.DelayMaxMs > response.DelayMs ? Random.Shared.Next(response.DelayMs, response.DelayMaxMs + 1) : response.DelayMs) + Math.Max(0, config.ExtraDelayMs);
+        if (wait > 0) await Task.Delay(wait, token);
         var failure = match is not null && match.Route.FailurePercent > 0 && Random.Shared.Next(100) < match.Route.FailurePercent;
         if (failure && match!.Route.DropConnection)
         {
@@ -224,12 +225,13 @@ public sealed class MockServerHost : IDisposable
             }
         var noBody = status is 204 or 304 || http.HttpMethod.Equals("HEAD", StringComparison.OrdinalIgnoreCase);
         output.ContentLength64 = noBody ? 0 : payload.Length;
-        if (!noBody && payload.Length > 0) await output.OutputStream.WriteAsync(payload, token);
-        output.Close();
         entry.Status = status; entry.Size = noBody ? 0 : payload.Length; entry.DurationMs = started.ElapsedMilliseconds;
         entry.ResponseHeaders = (string.IsNullOrWhiteSpace(contentType) ? sent : sent.Prepend($"Content-Type: {contentType}")).ToList();
         entry.ResponseBody = Clip(noBody ? "" : responseText);
+        // Logged before the answer goes out, so a client that has its answer can always find the request in the log.
         Record(entry);
+        if (!noBody && payload.Length > 0) await output.OutputStream.WriteAsync(payload, token);
+        output.Close();
     }
 
     private static async Task<string> ReadBody(HttpListenerRequest http)

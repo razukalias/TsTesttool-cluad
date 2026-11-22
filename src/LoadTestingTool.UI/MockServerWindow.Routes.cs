@@ -23,6 +23,7 @@ public sealed partial class MockServerWindow
     private readonly NumericUpDown _statusCode = new() { Minimum = 100, Maximum = 599, Increment = 1, FormatString = "0", Width = 110 };
     private readonly TextBox _contentType = new() { Width = 220, Watermark = "application/json" };
     private readonly NumericUpDown _delay = new() { Minimum = 0, Maximum = 600000, Increment = 100, FormatString = "0", Width = 120 };
+    private readonly NumericUpDown _delayMax = new() { Minimum = 0, Maximum = 600000, Increment = 100, FormatString = "0", Width = 150 };
     private readonly StackPanel _headerRows = new() { Spacing = 4 };
     private readonly TextBox _body = new() { AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, FontFamily = new FontFamily("Consolas,Menlo,monospace"), MinHeight = 170 };
     private readonly TextBox _bodyFile = new() { Watermark = "optional: file in the server's folder, replaces the body", MinWidth = 320 };
@@ -72,6 +73,7 @@ public sealed partial class MockServerWindow
         _statusCode.ValueChanged += (_, _) => EditResponse(r => r.Status = (int)(_statusCode.Value ?? 200));
         _contentType.TextChanged += (_, _) => EditResponse(r => r.ContentType = _contentType.Text?.Trim() ?? "");
         _delay.ValueChanged += (_, _) => EditResponse(r => r.DelayMs = (int)(_delay.Value ?? 0));
+        _delayMax.ValueChanged += (_, _) => EditResponse(r => r.DelayMaxMs = (int)(_delayMax.Value ?? 0));
         _body.TextChanged += (_, _) => EditResponse(r => r.Body = _body.Text ?? "");
         _bodyFile.TextChanged += (_, _) => EditResponse(r => r.BodyFile = _bodyFile.Text?.Trim() ?? "");
 
@@ -84,7 +86,7 @@ public sealed partial class MockServerWindow
         var editor = new StackPanel { Spacing = 10, Margin = new Thickness(0, 8, 6, 12) };
         editor.Children.Add(_routeOnly);
         editor.Children.Add(DashboardStyle.Text("Response", 14, true));
-        editor.Children.Add(new WrapPanel { Children = { Labeled("Status", _statusCode), Labeled("Content type", _contentType), Labeled("Delay (ms)", _delay) } });
+        editor.Children.Add(new WrapPanel { Children = { Labeled("Status", _statusCode), Labeled("Content type", _contentType), Labeled("Response time from (ms)", _delay), Labeled("to (ms, random; 0 = fixed)", _delayMax) } });
         editor.Children.Add(Section("Headers", addHeader, _headerRows));
         editor.Children.Add(Labeled("Body  ({{path.id}}, {{query.x}}, {{header.x}}, {{json.a.b}}, {{body}}, {{guid}}, {{now}} …)", _body));
         editor.Children.Add(Labeled("Body file", _bodyFile));
@@ -155,7 +157,7 @@ public sealed partial class MockServerWindow
             _failPercent.Value = route.FailurePercent; _drop.IsChecked = route.DropConnection;
         }
         var response = CurrentResponse;
-        _statusCode.Value = response.Status; _contentType.Text = response.ContentType; _delay.Value = response.DelayMs; _body.Text = response.Body; _bodyFile.Text = response.BodyFile;
+        _statusCode.Value = response.Status; _contentType.Text = response.ContentType; _delay.Value = response.DelayMs; _delayMax.Value = response.DelayMaxMs; _body.Text = response.Body; _bodyFile.Text = response.BodyFile;
         _loading = false;
         BuildConditionRows();
         BuildHeaderRows();

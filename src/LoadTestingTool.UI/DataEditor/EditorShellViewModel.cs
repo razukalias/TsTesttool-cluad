@@ -416,6 +416,16 @@ public sealed partial class EditorShellViewModel : ObservableObject
         _ => Instances.Count == 1 ? Instances[0].Name : null,
     };
 
+    /// <summary>"Use in instance" of the Mock server window: points the selected instance's step URLs at a server. Returns a sentence for the window's status line.</summary>
+    public string PointSelectedInstanceAt(string origin, bool includeRemote)
+    {
+        if (SelectedInstanceName is not { } name) return "Select an instance in the editor first.";
+        var editor = Instances.FirstOrDefault(i => i.Name == name)?.Editor;
+        if (editor is null) return $"Open {name} first (click it in the tree), then try again.";
+        var made = editor.PointUrlsAt(origin, includeRemote);
+        return made == 0 ? $"Nothing changed in {name}: no step has a {(includeRemote ? "" : "local ")}URL that needs changing." : $"{name}: {made} {(made == 1 ? "step" : "steps")} now use {origin}. Save the instance to keep it (Ctrl+Z undoes it).";
+    }
+
     private string InstanceNameOf(TestcaseItem testcase) => Instances.FirstOrDefault(n => n.Testcases.Contains(testcase))?.Name ?? string.Empty;
 
     partial void OnSelectedNodeChanged(object? value)

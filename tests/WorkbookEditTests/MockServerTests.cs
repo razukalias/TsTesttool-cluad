@@ -313,3 +313,59 @@ public class MockServerHostTests : IDisposable
         Assert.Contains("could not be read", error.ToString());
     }
 }
+
+public class MockResponseTimeAndUrlTests
+{
+    [Theory]
+    [InlineData("http://127.0.0.1:8099/orders/<From_request_id_r>", "http://127.0.0.1:9000", false, "http://127.0.0.1:9000/orders/<From_request_id_r>")]
+    [InlineData("HTTP://localhost:1234/x?y=1", "http://127.0.0.1:9000", false, "http://127.0.0.1:9000/x?y=1")]
+    [InlineData("http://[::1]:80", "http://127.0.0.1:9000", false, "http://127.0.0.1:9000")]
+    [InlineData("https://api.example.test/z", "http://127.0.0.1:9000", false, null)]
+    [InlineData("https://api.example.test/z", "http://127.0.0.1:9000", true, "http://127.0.0.1:9000/z")]
+    [InlineData("<From_response_A.url_r>/next", "http://127.0.0.1:9000", true, null)]
+    [InlineData("http://127.0.0.1:9000/same", "http://127.0.0.1:9000", false, null)]
+    [InlineData("", "http://127.0.0.1:9000", true, null)]
+    public void UrlsAreRepointed(string url, string origin, bool remote, string? expected) => Assert.Equal(expected, MockUrls.Repoint(url, origin, remote));
+
+    [Fact]
+    public void OriginsAreFoundAndLocalOnesRecognised()
+    {
+        Assert.Equal("http://127.0.0.1:8099", MockUrls.OriginOf("http://127.0.0.1:8099/a/b"));
+        Assert.Null(MockUrls.OriginOf("<From_x_r>/a"));
+        Assert.True(MockUrls.IsLocal("http://localhost:5"));
+        Assert.False(MockUrls.IsLocal("https://example.com"));
+    }
+
+    [Fact]
+    public void ValidationChecksTheResponseTimes()
+    {
+        var config = new MockServerConfig { ExtraDelayMs = -1, Routes = [new MockRoute { Path = "/a", Response = new MockResponse { DelayMs = 500, DelayMaxMs = 100 } }] };
+        var text = string.Join("\n", config.Validate());
+        Assert.Contains("extra latency", text);
+        Assert.Contains("longest delay (100 ms) is shorter", text);
+        config.ExtraDelayMs = 0; config.Routes[0].Response.DelayMaxMs = 800;
+        Assert.Empty(config.Validate());
+    }
+
+    [Fact]
+    public async Task ResponseTimeIsARandomRangeAndExtraLatencyIsAdded()
+    {
+        var config = new MockServerConfig { Port = MockServerHost.FreePort(), ExtraDelayMs = 150, Routes =
+        [
+            new MockRoute { Name = "range", Path = "/range", Response = new MockResponse { DelayMs = 100, DelayMaxMs = 300 } },
+            new MockRoute { Name = "fixed", Path = "/fixed", Response = new MockResponse { DelayMs = 200 } },
+            new MockRoute { Name = "plain", Path = "/plain" }
+        ]};
+        using var host = new MockServerHost(config); host.Start();
+        using var http = new HttpClient();
+        var url = $"http://127.0.0.1:{config.Port}";
+        for (var i = 0; i < 6; i++) await http.GetAsync(url + "/range");
+        await http.GetAsync(url + "/fixed"); await http.GetAsync(url + "/plain");
+        var log = host.Snapshot();
+        var ranges = log.Where(e => e.Route == "range").Select(e => e.DurationMs).ToList();
+        Assert.All(ranges, d => Assert.True(d >= 240 && d <= 1500, $"range answer took {d} ms (expected 250..450 plus slack): {string.Join(",", ranges)}"));
+        Assert.True(ranges.Distinct().Count() > 1, "a random range gives different times");
+        Assert.InRange(log.Single(e => e.Route == "fixed").DurationMs, 340, 700);
+        Assert.InRange(log.Single(e => e.Route == "plain").DurationMs, 140, 600);
+    }
+}
