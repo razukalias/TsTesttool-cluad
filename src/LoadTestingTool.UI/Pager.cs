@@ -47,22 +47,23 @@ public sealed class Pager
 }
 
 /// <summary>First / previous / next / last, "page 3 of 17", jump to a page, the total, and the page size (50 / 100 / 250, remembered).</summary>
-public sealed class PagerBar : StackPanel
+/// <summary>The page controls; they wrap onto a second line in a narrow panel instead of being cut off.</summary>
+public sealed class PagerBar : WrapPanel
 {
     private readonly Pager _pager;
     private readonly Button _first = new() { Content = "⏮", Tag = "page-first", MinWidth = 32 };
     private readonly Button _previous = new() { Content = "◀", Tag = "page-previous", MinWidth = 32 };
     private readonly Button _next = new() { Content = "▶", Tag = "page-next", MinWidth = 32 };
     private readonly Button _last = new() { Content = "⏭", Tag = "page-last", MinWidth = 32 };
-    private readonly TextBox _jump = new() { Width = 56, Tag = "page-jump", TextAlignment = Avalonia.Media.TextAlignment.Center };
+    private readonly TextBox _jump = new() { Width = 56, Tag = "page-jump", TextAlignment = Avalonia.Media.TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _label = new() { VerticalAlignment = VerticalAlignment.Center, Tag = "page-label" };
-    private readonly ComboBox _size = new() { ItemsSource = Pager.PageSizes, Width = 80, Tag = "page-size" };
+    private readonly ComboBox _size = new() { ItemsSource = Pager.PageSizes, Width = 80, Tag = "page-size", VerticalAlignment = VerticalAlignment.Center };
     private bool _updating;
 
     public PagerBar(Pager pager, bool rememberSize = true)
     {
         _pager = pager;
-        Orientation = Orientation.Horizontal; Spacing = 6; Margin = new Thickness(0, 4);
+        Orientation = Orientation.Horizontal; Margin = new Thickness(0, 4);
         if (rememberSize) pager.SetPageSizeSilently(EditorSettings.Load().HistoryPageSize);
         _first.Click += (_, _) => pager.GoTo(1);
         _previous.Click += (_, _) => pager.GoTo(pager.Page - 1);
@@ -81,7 +82,10 @@ public sealed class PagerBar : StackPanel
         AttachedToVisualTree += (_, _) => { pager.Changed -= Update; pager.Changed += Update; Update(); };
         foreach (var control in new Control[] { _first, _previous, new TextBlock { Text = "Page", VerticalAlignment = VerticalAlignment.Center }, _jump, _label, _next, _last,
                      new TextBlock { Text = "per page", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) }, _size })
+        {
+            control.Margin = new Thickness(control.Margin.Left, 0, control.Margin.Right + 6, 4);   // a WrapPanel has no spacing
             Children.Add(control);
+        }
         Update();
     }
 

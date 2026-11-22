@@ -10,21 +10,6 @@ public class AssertionFixTests
     private static readonly BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
 
     [AvaloniaFact]
-    public void Opening_the_assertion_editor_from_the_data_editor_does_not_throw_and_uses_a_visible_owner()
-    {
-        var dashboard = new LoadTestingTool.UI.MainWindow();
-        var editor = (DataEditorWindow)typeof(LoadTestingTool.UI.MainWindow).GetMethod("CreateStandaloneEditor", Flags)!.Invoke(dashboard, null)!;
-        editor.Show();
-        var assertion = new LoadTestingTool.UI.AssertionInfo { TestcaseIndex = 1, Testcase = "T", DataId = "D", StepName = "S", ResponsePath = "id", ResponseHeader = "S.id", Result = "FAIL", ActualValue = "5", ExpectedValue = "6" };
-        var item = ((System.Collections.IEnumerable)typeof(LoadTestingTool.UI.MainWindow).GetField("_instances", Flags)!.GetValue(dashboard)!).Cast<object>().First();
-        typeof(LoadTestingTool.UI.MainWindow).GetField("_selectedInstance", Flags)!.SetValue(dashboard, item);
-        var open = typeof(LoadTestingTool.UI.MainWindow).GetMethod("OpenAssertionEditor", Flags)!;
-        var exception = Record.Exception(() => open.Invoke(dashboard, [assertion]));
-        Assert.Null(exception);
-        editor.Close();
-    }
-
-    [AvaloniaFact]
     public void Run_views_keep_only_the_selected_testcase_or_step()
     {
         var dashboard = new LoadTestingTool.UI.MainWindow();

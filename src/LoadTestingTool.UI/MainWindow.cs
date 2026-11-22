@@ -231,7 +231,6 @@ public sealed partial class MainWindow : Window
         var content = new StackPanel { Spacing = 6, Children = { DashboardStyle.Badge(assertion.Result == "PASS" ? "Passed" : assertion.Result == "KNOWN_BUG" ? "Known bug" : "Failed"), text } };
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("30,*") };
         row.Children.Add(check); Grid.SetColumn(content, 1); row.Children.Add(content);
-        text.PointerPressed += (_, _) => OpenAssertionEditor(assertion);
         var card = DashboardStyle.Card(row, new Thickness(10)); card.Margin = new Thickness(0, 0, 0, 8); return card;
     }
 
@@ -301,41 +300,6 @@ public sealed partial class MainWindow : Window
         _assertionStepFilter.SetOptions(assertions.Select(a => a.StepName));
         _assertionResultFilter.SetOptions(assertions.Select(a => a.Result));
         _assertionVerbFilter.SetOptions(assertions.Select(a => a.AssertionVerb));
-    }
-
-    private void OpenAssertionEditor(AssertionInfo assertion)
-    {
-        if (_selectedInstance is null) return;
-        var editor = new AssertionEditorWindow(assertion);
-        editor.Closed += (_, _) => { if (editor.Result is not null) ApplyAssertionEdit(assertion, editor.Result); };
-        editor.Show(Host);
-    }
-
-    private void OpenAssertionWorkbench()
-    {
-        if (_selectedInstance is null)
-        {
-            _details.Text = "Select an instance first.";
-            UiLog("Assertion Workbench ignored. reason=no-selected-instance");
-            return;
-        }
-        if (_selectedInstance.Assertions.Count == 0)
-        {
-            _details.Text = "No assertion fields are available yet. Run the instance first or load a run with assertion results.";
-            UiLog($"Assertion Workbench ignored. instance={_selectedInstance.Name}; reason=no-assertions");
-            return;
-        }
-        try
-        {
-            var workbench = new AssertionWorkbenchWindow(_selectedInstance.WorkbookPath, _selectedInstance.Assertions, message => _details.Text = message, () => { RefreshAssertionList(); RefreshDashboardDetails(true); }, UiLog);
-            workbench.Show(Host);
-            UiLog($"Assertion Workbench opened. instance={_selectedInstance.Name}; assertions={_selectedInstance.Assertions.Count}");
-        }
-        catch (Exception ex)
-        {
-            _details.Text = $"Could not open Assertion Workbench: {ex.Message}";
-            UiLog($"Assertion Workbench failed to open safely. instance={_selectedInstance.Name}; error={ex}");
-        }
     }
 
     private void ApplyAssertionEdit(AssertionInfo assertion, AssertionEditResult result)

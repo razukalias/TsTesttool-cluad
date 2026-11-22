@@ -24,7 +24,8 @@ internal static class DashboardStyle
     public static IBrush Blue => Brush("#3291FF");
     public static IBrush Green => Brush("#39D39B");
     public static IBrush Red => Brush("#FF7588");
-    public static TextBlock Text(string text, double size = 13, bool bold = false, IBrush? color = null) => new()
+    /// <summary>A text the user can select with the mouse and copy (a SelectableTextBlock is a TextBlock, so callers do not change).</summary>
+    public static TextBlock Text(string text, double size = 13, bool bold = false, IBrush? color = null) => new SelectableTextBlock()
     {
         Text = text, FontSize = size, FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal,
         Foreground = color ?? Brush("#E3EDF9"), VerticalAlignment = VerticalAlignment.Center,
@@ -481,7 +482,7 @@ public sealed partial class MainWindow
         foreach (var filter in new[] { _overviewStepStatus, _overviewStepEnvironment, _overviewStepTestcase, _overviewStepName })
             filter.Changed += (_, _) => { if (!_overviewStepFilterRefreshing) RefreshDashboardDetails(true); };
         _assertionSearch.TextChanged += (_, _) => RefreshAssertionList();
-        var assertionActions = new WrapPanel { Children = { DashboardStyle.Action("Open Assertion Workbench", OpenAssertionWorkbench, "primary"), DashboardStyle.Action("Copy assertions", () => _ = CopyAssertionsAsync()), DashboardStyle.Action("Select failed", () => { if (_selectedInstance is not null) foreach (var a in _selectedInstance.Assertions.Where(a => a.Result == "FAIL")) a.Selected = true; RefreshAssertionList(); }),
+        var assertionActions = new WrapPanel { Children = { DashboardStyle.Action("Copy assertions", () => _ = CopyAssertionsAsync()), DashboardStyle.Action("Select failed", () => { if (_selectedInstance is not null) foreach (var a in _selectedInstance.Assertions.Where(a => a.Result == "FAIL")) a.Selected = true; RefreshAssertionList(); }),
             DashboardStyle.Action("Clear", () => { if (_selectedInstance is not null) foreach (var a in _selectedInstance.Assertions) a.Selected = false; RefreshAssertionList(); }),
             DashboardStyle.Action("Apply actual values", ApplySelectedFixes), DashboardStyle.Action("Compare", () => _ = GenerateAssertionComparisonAsync(openInEditor: true)) } };
         var assertionPanel = new DockPanel { Margin = new Thickness(12) };
@@ -490,9 +491,10 @@ public sealed partial class MainWindow
         _assertionSearch.Watermark = "Show: assertion text, term1 & term2…"; _assertionSearch.Width = 230; _assertionSearch.Tag = "assertion-include";
         var filters = new StackPanel { Spacing = 6, Children = { _failedOnly, assertionFilterBar, _assertionChips, assertionActions } };
         DockPanel.SetDock(filters, Dock.Top); assertionPanel.Children.Add(filters);
-        assertionPanel.Children.Add(new ScrollViewer { Content = _assertionItems, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+        // the bar is added before the list: the last child of a DockPanel fills the rest, so the list must be last (the bar docks to the bottom)
         var assertionPaging = CreatePaginationBar(false);
         DockPanel.SetDock(assertionPaging, Dock.Bottom); assertionPanel.Children.Add(assertionPaging);
+        assertionPanel.Children.Add(new ScrollViewer { Content = _assertionItems, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         _manualTab = new TabItem { Header = BuildActionManualTabHeader(0), Content = BuildActionManualPanel() };
         _bugsTab = new TabItem { Header = "Bugs (0)", Content = Scroll(_bugItems) };
         _detailTabs.ItemsSource = new[]

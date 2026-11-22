@@ -919,3 +919,11 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - [x] Only at save (no background check): the editor remembers the workbook file's modified time when it was opened, reloaded or saved. Saving when the file has another modified time saves nothing and shows a banner: Reload (lose my edits), Overwrite with my edits, or Cancel. Own saves do not trigger it. The older content-hash check at save stays as the second safety net.
 - [ ] Not done: only the workbook is checked, not its Templates/Queries/Files that the step forms write.
 - [ ] Not done: the banner does not show what changed (no diff of the two versions).
+
+## Assertions tab and panel texts (from the screenshot)
+- [x] The pager of the Assertions tab was added after the list in a DockPanel, so it filled the area right of the list (a tall "1" box); it is now docked under the list and wraps in a narrow panel (all page bars wrap).
+- [x] Removed the "Open Assertion Workbench" button and the click on an assertion that opened the edit form. Texts built with the dashboard's text helper are selectable with the mouse (copy with Ctrl+C) in the overview, assertion, bug, run summary, environment and artifact panels.
+- [ ] Not done: delete the now unused `AssertionWorkbenchWindow`, `AssertionEditorWindow` and `ApplyAssertionEdit`.
+- [ ] Not done: texts that are not built with the dashboard helper (some labels inside buttons and the editor's own panels) are not selectable.
+- [ ] Not done: "Mock server…" needing several clicks right after the app starts: not reproduced (the window opens in about 0.2 s in tests); needs the real startup timing on the user's machine.
+
