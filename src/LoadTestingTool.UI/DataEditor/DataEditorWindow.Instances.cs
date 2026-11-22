@@ -14,7 +14,8 @@ public partial class DataEditorWindow
         if (this.FindControl<Button>("RefreshInstancesButton") is { } refresh) refresh.Click += (_, _) => RefreshInstancesNow();
         if (this.FindControl<Button>("DuplicateInstanceButton") is { } copy)
             copy.Click += async (_, _) => await DuplicateInstanceAsync(_shell.InstanceFor(_shell.SelectedNode));
-        if (this.FindControl<Button>("OpenSeparateButton") is { } separate) separate.Click += (_, _) => OpenSelectedInSeparateWindow();
+        foreach (var name in new[] { "OpenSeparateButton", "OpenSeparateToolButton" })
+            if (this.FindControl<Button>(name) is { } separate) separate.Click += (_, _) => OpenSelectedInSeparateWindow();
     }
 
     internal void RefreshInstancesNow()

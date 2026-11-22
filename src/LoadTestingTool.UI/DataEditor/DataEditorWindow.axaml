@@ -406,6 +406,7 @@
             <Button Content="↷  Redo" Classes="tool" Command="{Binding RedoCommand}" IsEnabled="{Binding CanRedo}" ToolTip.Tip="{Binding RedoTip}" />
             <Border Width="1" Background="#22364D" Margin="4,4" />
             <Button Content="Reload" Classes="tool" Command="{Binding ReloadCommand}" ToolTip.Tip="Read the workbook from disk again" />
+            <Button x:Name="OpenSeparateToolButton" Content="↗  Separate window" Classes="tool" ToolTip.Tip="Open this workbook in a separate window: the same table view and filters, for editing only (no running, no results). Save here first" />
             <Button Content="Backups…" Classes="tool" Click="OnBackupsClick" ToolTip.Tip="Restore this workbook from an earlier backup (filter by date and time)" />
             <Button Content="Save" Classes="primary" Click="OnSaveClick" MinHeight="32" MinWidth="84" ToolTip.Tip="Write the changes to the workbook (Ctrl+S)" />
           </StackPanel>

@@ -20,7 +20,7 @@ public sealed partial class DataEditorWindow
     private void ApplyEditOnly(string workbookPath)
     {
         _editOnly = true;
-        foreach (var name in new[] { "RunTickedButton", "RunShownButton", "HistoryLogsButton", "MockServerButton", "StorageCleanupButton", "GlobalRunSettingsButton", "OpenSeparateButton", "ViewModeBox" })
+        foreach (var name in new[] { "RunTickedButton", "RunShownButton", "HistoryLogsButton", "MockServerButton", "StorageCleanupButton", "GlobalRunSettingsButton", "OpenSeparateButton", "OpenSeparateToolButton", "ViewModeBox" })
             if (this.FindControl<Control>(name) is { } control) control.IsVisible = false;
         if (_shell.Current is { } editor)
         {

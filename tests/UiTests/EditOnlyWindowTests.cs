@@ -18,7 +18,7 @@ public class EditOnlyWindowTests
         Dispatcher.UIThread.RunJobs();
         Assert.StartsWith("Edit only", window.Title);
         Assert.Equal(0, window.ViewModel.ViewModeIndex);
-        foreach (var name in new[] { "RunTickedButton", "RunShownButton", "HistoryLogsButton", "MockServerButton", "ViewModeBox", "OpenSeparateButton" })
+        foreach (var name in new[] { "RunTickedButton", "RunShownButton", "HistoryLogsButton", "MockServerButton", "ViewModeBox", "OpenSeparateButton", "OpenSeparateToolButton" })
             Assert.False(window.FindControl<Control>(name)!.IsVisible, name);
         Assert.NotEmpty(window.FindControl<DataGrid>("Grid")!.Columns);   // the table view with its columns is there
         window.Close();
@@ -33,6 +33,7 @@ public class EditOnlyWindowTests
         window.Width = 1440; window.Height = 800; window.Show();
         Dispatcher.UIThread.RunJobs();
         Assert.True(window.FindControl<Button>("OpenSeparateButton")!.IsVisible);
+        Assert.True(window.FindControl<Button>("OpenSeparateToolButton")!.IsVisible);
         var vm = window.ViewModel;
         vm.VisibleRows[0].Cells[1] = "changed";   // unsaved edit
         window.OpenSelectedInSeparateWindow();
