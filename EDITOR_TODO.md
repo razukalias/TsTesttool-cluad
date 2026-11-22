@@ -955,5 +955,6 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 
 ## Old dashboard cleanup (stage 1+2 done, rest pending)
 - Removed: AssertionEditorWindow, AssertionWorkbenchWindow, DataIdSelectionWindow, HistorySettingsWindow, WorkbookEditorWindow, TestStepWizardWindow, StepPickerWindow, GlobalValidationWindow (service kept as GlobalValidationService), 34 unused private members.
-- Still pending (old instance-list shell is also the engine host; needs a split before deleting): InstanceRow list UI, InstanceConfigurationWindow, TestStepConfigurationEditor, RunSelectionWindow/Editor, EnvironmentManagerWindow, `--dashboard` startup path. Check LaunchAsync (uses ChooseRunSelectionAsync) before removing.
+- Stage 3 done: removed InstanceConfigurationWindow, TestStepConfigurationEditor, RunSelectionEditor/Window, EnvironmentManagerWindow, the `--dashboard` flag, the old wizard tests and the dashboard buttons that opened them.
+- Still pending: the hidden MainWindow still builds the old instance-list/panel widgets (DashboardLayout.cs, ~1900 lines) only to hold state for the run engine; move run/launch/history logic into a plain service class, then delete the window UI.
 - Kept because the data editor uses them: TestcaseWizardWindow, InstanceBuilderWindow, HistoryComparisonWindow, SpreadsheetPreviewWindow.

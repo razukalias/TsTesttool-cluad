@@ -96,11 +96,10 @@ public sealed class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    /// <summary>The new data editor is the application; the original dashboard only opens with --dashboard.</summary>
+    /// <summary>The new data editor is the application; the old dashboard window is only a hidden host for the run engine.</summary>
     private static Avalonia.Controls.Window StartupWindow(string[] args)
     {
         var dashboard = new MainWindow();
-        if (args.Any(x => x.Equals("--dashboard", StringComparison.OrdinalIgnoreCase))) return dashboard;
         return (Avalonia.Controls.Window?)dashboard.CreateStandaloneEditor() ?? dashboard;
     }
 

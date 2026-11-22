@@ -214,7 +214,7 @@ public sealed partial class MainWindow : Window
     private InstanceRow GetOrCreateRow(InstanceInfo item)
     {
         if (_rows.TryGetValue(item.FolderPath, out var existing)) return existing;
-        var row = new InstanceRow(item, selected => { UiLog($"UI action: instance row clicked. instance={selected.Name}"); _instanceList.SelectedItem = selected; ShowDetails(selected); }, selected => OpenInstanceConfiguration(selected), selected => OpenSpreadsheetForInstance(selected), selected => OpenWorkbookForInstance(selected), RunSingleInstance, StopSingleInstance, OpenSelectedInternalLogForInstance, OpenLatestInternalLogForInstance, OpenAllInternalLogsForInstance, OpenSelectedHistoryForInstance, OpenLatestHistoryForInstance, UiLog);
+        var row = new InstanceRow(item, selected => { UiLog($"UI action: instance row clicked. instance={selected.Name}"); _instanceList.SelectedItem = selected; ShowDetails(selected); }, selected => { }, selected => OpenSpreadsheetForInstance(selected), selected => OpenWorkbookForInstance(selected), RunSingleInstance, StopSingleInstance, OpenSelectedInternalLogForInstance, OpenLatestInternalLogForInstance, OpenAllInternalLogsForInstance, OpenSelectedHistoryForInstance, OpenLatestHistoryForInstance, UiLog);
         row.SetEnvironmentOptions(item.EnvironmentOptions);
         _rows[item.FolderPath] = row;
         return row;
@@ -633,7 +633,7 @@ public sealed partial class MainWindow : Window
     private void RunSingleInstance(InstanceInfo item)
     {
         foreach (var other in _instances) other.Selected = false;
-        item.Selected = true; _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item); RunSelected(promptForMissingSelection: false);
+        item.Selected = true; _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item); RunSelected();
     }
     private void StopSingleInstance(InstanceInfo item)
     {
@@ -751,7 +751,6 @@ public sealed partial class MainWindow : Window
             var refreshed = _instances.FirstOrDefault(x => x.FolderPath.Equals(item.FolderPath, StringComparison.OrdinalIgnoreCase));
             if (refreshed is not null) { refreshed.Selected = true; _selectedInstance = refreshed; _instanceList.SelectedItem = refreshed; ShowDetails(refreshed); RefreshRows(); }
             SetStatusForInstance($"Created testcase '{draft.TestcaseName}' with initial step '{draft.StepName}'. Backup created: {Path.GetFileName(backup)}");
-            if (refreshed is not null) OpenInstanceConfiguration(refreshed);
         }
         catch (Exception ex) { SetStatusForInstance($"Could not create testcase: {ex.Message}", true); }
     }
@@ -788,7 +787,6 @@ public sealed partial class MainWindow : Window
         _footer.Text = $"{_instances.Count} instances  /  {_instances.Count(x => x.Selected)} selected  /  {DashboardStyle.Build}";
         var selected = _instances.Where(x => x.Selected).ToList();
         var selectedRunning = selected.Any(x => x.Process is { HasExited: false });
-        _chooseButton.IsEnabled = !selectedRunning && (_selectedInstance is not null || selected.Count > 0);
         _runButton.IsEnabled = selected.Count > 0 && !selectedRunning && selected.Any(x => x.Process is null || x.Process.HasExited);
         _stopButton.IsEnabled = _forceButton.IsEnabled = _instances.Any(x => x.Selected && x.Process is { HasExited: false });
         if (_page == "Active runs")
@@ -798,22 +796,21 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void RunSelected(bool promptForMissingSelection = true)
+    private async void RunSelected()
     {
         var selected = _instances.Where(x => x.Selected).ToList();
         UiLog($"Run selected started. selected={selected.Count}; runnable={selected.Count(x => x.Process is null || x.Process.HasExited)}");
         foreach (var item in selected.Where(x => x.Process is null || x.Process.HasExited))
-            await LaunchAsync(item, promptForMissingSelection);
+            await LaunchAsync(item);
 
         RefreshRows();
         UiLog("Run selected completed.");
     }
 
-    private async Task LaunchAsync(InstanceInfo item, bool promptForMissingSelection, IReadOnlyList<(string Name, string Value)>? overrides = null)
+    private async Task LaunchAsync(InstanceInfo item, IReadOnlyList<(string Name, string Value)>? overrides = null)
     {
         try
         {
-            if (promptForMissingSelection && !item.HasAppliedSelection && !await ChooseRunSelectionAsync(item)) return;
             ReloadWorkbookCatalog(item);   // a testcase or step added in the editor since the app started must be known before the choice is checked
             if (item.GenerateResults) Directory.CreateDirectory(item.ResultsFolder);
             var runner = Path.GetFullPath(_config.RunnerDll);
@@ -901,7 +898,7 @@ public sealed partial class MainWindow : Window
         item.TestcaseSelection = selection;
         item.StepSelectionJson = stepsJson;
         item.DataIdSelection = ids;
-        try { await LaunchAsync(item, promptForMissingSelection: false, overrides); }
+        try { await LaunchAsync(item, overrides); }
         finally { (item.TestcaseSelection, item.StepSelectionJson, item.DataIdSelection) = (testcases, steps, dataIdSelection); }
         RefreshRows();
         return item.Status == "Launch failed" ? item.LastEvent : null;

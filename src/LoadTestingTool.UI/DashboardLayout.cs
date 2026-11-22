@@ -352,7 +352,6 @@ public sealed partial class MainWindow
     private readonly Grid _workspace = new() { RowDefinitions = new RowDefinitions("Auto,*") };
     private readonly TabControl _detailTabs = new();
     private Button _runButton = null!;
-    private Button _chooseButton = null!;
     private Button _validateButton = null!;
     private Button _stopButton = null!;
     private Button _forceButton = null!;
@@ -394,13 +393,11 @@ public sealed partial class MainWindow
         sidebar.Children.Add(links);
 
         var heading = new StackPanel { Spacing = 5, Children = { _pageTitle, DashboardStyle.Text("Manage test instances and inspect execution results", 12, false, DashboardStyle.Muted) } };
-        _chooseButton = DashboardStyle.Action("Choose what to run", () => _ = ChooseRunSelectionAsync(_selectedInstance ?? _instances.FirstOrDefault(x => x.Selected)));
-        _runButton = DashboardStyle.Action("▶  Run selected instances", () => RunSelected(promptForMissingSelection: false), "primary");
+        _runButton = DashboardStyle.Action("▶  Run selected instances", () => RunSelected(), "primary");
         _stopButton = DashboardStyle.Action("Stop selected", () => StopSelected(false));
         _forceButton = DashboardStyle.Action("Force stop", () => StopSelected(true), "danger");
         _validateButton = DashboardStyle.Action("✓ Validate all", OpenGlobalValidation, "primary");
-        var environmentButton = DashboardStyle.Action("🌐 Manage environments", OpenEnvironmentManager, "primary");
-        var commands = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { environmentButton, DashboardStyle.Action("History & logs…", () => ShowHistoryLogs()), _validateButton, _chooseButton, _runButton, _stopButton, _forceButton } };
+        var commands = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { DashboardStyle.Action("History & logs…", () => ShowHistoryLogs()), _validateButton, _runButton, _stopButton, _forceButton } };
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(18, 16) };
         header.Children.Add(heading); Grid.SetColumn(commands, 1); header.Children.Add(commands);
 
@@ -776,67 +773,6 @@ public sealed partial class MainWindow
         };
         window.Show(Host);
     }
-
-    private void OpenEnvironmentManager()
-    {
-        var manager = new EnvironmentManagerWindow(_config.Environments, _config.RunEnvironmentsParallel, SaveGlobalEnvironmentSettings, ApplyEnvironmentsToAllInstances);
-        manager.Closed += (_, _) => RefreshInstances();
-        manager.Show(Host);
-    }
-
-    private void SaveGlobalEnvironmentSettings(IReadOnlyList<string> environments, bool runEnvironmentsParallel)
-    {
-        var root = File.Exists(_config.SettingsFile) ? JsonNode.Parse(File.ReadAllText(_config.SettingsFile)) as JsonObject : new JsonObject();
-        root ??= new JsonObject();
-        var environmentArray = new JsonArray();
-        foreach (var environment in environments) environmentArray.Add(environment);
-        root["Environments"] = environmentArray;
-        root["RunEnvironmentsParallel"] = runEnvironmentsParallel;
-        if (root["Instances"] is JsonObject instances)
-            foreach (var pair in instances)
-                if (pair.Value is JsonObject instance)
-                {
-                    instance.Remove("RunEnvironmentsParallel");
-                    if (instance["EnvironmentSelection"] is JsonValue selectedValue)
-                    {
-                        var selected = selectedValue.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                            .Where(value => environments.Contains(value, StringComparer.OrdinalIgnoreCase));
-                        instance["EnvironmentSelection"] = string.Join(',', selected);
-                    }
-                }
-        File.WriteAllText(_config.SettingsFile, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine);
-        _config.Environments = environments.ToList();
-        _config.RunEnvironmentsParallel = runEnvironmentsParallel;
-        foreach (var item in _instances) item.RunEnvironmentsParallel = runEnvironmentsParallel;
-        RefreshRows();
-    }
-
-    private void ApplyEnvironmentsToAllInstances(IReadOnlyList<string> environments)
-    {
-        var root = File.Exists(_config.SettingsFile) ? JsonNode.Parse(File.ReadAllText(_config.SettingsFile)) as JsonObject : new JsonObject();
-        root ??= new JsonObject();
-        var instances = root["Instances"] as JsonObject ?? new JsonObject();
-        var selection = string.Join(',', environments);
-        foreach (var pair in instances)
-        {
-            if (pair.Value is not JsonObject instance) continue;
-            instance["EnvironmentSelection"] = selection;
-            instance["EnvironmentSelectionJson"] = JsonSerializer.Serialize(environments);
-        }
-        root["Instances"] = instances;
-        File.WriteAllText(_config.SettingsFile, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine);
-        foreach (var item in _instances)
-        {
-            item.EnvironmentSelection = selection;
-            item.EnvironmentSelectionJson = JsonSerializer.Serialize(environments);
-            item.HasAppliedSelection = true;
-            if (_config.Instances.TryGetValue(item.Name, out var central)) central.EnvironmentSelection = selection;
-        }
-        _details.Text = $"Applied environments to {_instances.Count} instance(s): {selection}.";
-        UiLog($"Applied global environment selection to all instances. environments={selection}; instances={_instances.Count}");
-        RefreshRows();
-        RefreshDashboardDetails(force: true);
-    }
     private static Control KeyValue(string label, string value)
     {
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("105,*") };
@@ -880,8 +816,6 @@ public sealed partial class MainWindow
             var error = DashboardStyle.Text("Cannot read run choices: " + item.SelectionReadError, 12, false, DashboardStyle.Red);
             error.TextWrapping = TextWrapping.Wrap; _configurationPanel.Children.Add(error); return;
         }
-        _configurationPanel.Children.Add(DashboardStyle.Text("Choose named testcases, steps and centrally defined environments using the picker below.", 12, false, DashboardStyle.Muted));
-        _configurationPanel.Children.Add(DashboardStyle.Action("Choose tests, steps, environments…", () => _ = ChooseRunSelectionAsync(), "primary"));
         var draft = new RunSelectionDraft(item.TestcaseOptions, item.EnvironmentOptions, item.TestcaseSelection, item.StepSelectionJson, item.EnvironmentSelection, item.EnvironmentSelectionJson);
         _configurationPanel.Children.Add(KeyValue("Testcases", string.Join(", ", item.TestcaseOptions.Where(c => draft.Cases.Contains(c.Index)).Select(c => $"{c.Index}: {c.Name}"))));
         _configurationPanel.Children.Add(KeyValue("Test steps", string.IsNullOrWhiteSpace(item.StepSelectionJson) ? "All enabled steps" : string.Join(", ", item.TestcaseOptions.Where(c => draft.Cases.Contains(c.Index)).SelectMany(c => c.Steps.Where(s => draft.Steps[c.Index].Contains(s.Name)).Select(s => $"{c.Index}: {s.Name}")))));
@@ -1120,73 +1054,6 @@ public sealed partial class MainWindow
             _details.Text = $"Cannot open the data editor: {ex.Message}";
             return null;
         }
-    }
-
-    private void OpenInstanceConfiguration(InstanceInfo item)
-    {
-        if (!string.IsNullOrWhiteSpace(item.SelectionReadError)) { _details.Text = $"Cannot read run choices: {item.SelectionReadError}"; return; }
-        var form = new InstanceConfigurationWindow(item, ApplyRunSelection, SaveInstanceExecutionSettings, SaveInstanceReportingSettings, CreateTestcaseForInstance);
-        form.Show(Host);
-    }
-
-    private void ApplyRunSelection(InstanceInfo item, RunSelectionResult result)
-    {
-        item.TestcaseSelection = result.Testcases; item.StepSelectionJson = result.StepsJson; item.EnvironmentSelection = result.Environments;
-        item.EnvironmentSelectionJson = result.EnvironmentsJson; item.DataIdSelection = result.DataIds; item.RowsExecutionMode = result.RowsExecutionMode; item.RunEnvironmentsParallel = result.ScenariosParallel; item.MaxParallelRows = result.MaxParallelRows; item.Iterations = result.Iterations; item.ParallelRowStartIntervalMs = result.ParallelRowStartIntervalMs; item.IterationIntervalMs = result.IterationIntervalMs; item.HasAppliedSelection = true; item.Selected = true;
-        _config.RunEnvironmentsParallel = result.ScenariosParallel;
-        foreach (var other in _instances) other.RunEnvironmentsParallel = result.ScenariosParallel;
-        SaveInstanceExecutionSettings(item, result.MaxParallelRows.ToString(), result.Iterations.ToString(), result.ParallelRowStartIntervalMs.ToString(), result.IterationIntervalMs.ToString());
-        try
-        {
-            var root = File.Exists(_config.SettingsFile) ? JsonNode.Parse(File.ReadAllText(_config.SettingsFile)) as JsonObject : new JsonObject();
-            root ??= new JsonObject();
-            var instances = root["Instances"] as JsonObject ?? new JsonObject();
-            var instance = instances[item.Name] as JsonObject ?? new JsonObject();
-            instance["TestcaseSelection"] = result.Testcases;
-            instance["StepSelection"] = result.StepsJson;
-            instance["EnvironmentSelection"] = result.Environments;
-            instance["DataIdSelection"] = result.DataIds;
-            instance["RowsExecutionMode"] = result.RowsExecutionMode;
-            instance["MaxParallelRows"] = result.MaxParallelRows;
-            instance["Iterations"] = result.Iterations;
-            instance["ParallelRowStartIntervalMs"] = result.ParallelRowStartIntervalMs;
-            instance["IterationIntervalMs"] = result.IterationIntervalMs;
-            instances[item.Name] = instance; root["Instances"] = instances;
-            root["RunEnvironmentsParallel"] = result.ScenariosParallel;
-            foreach (var pair in instances)
-                if (pair.Value is JsonObject configuredInstance) configuredInstance.Remove("RunEnvironmentsParallel");
-            File.WriteAllText(_config.SettingsFile, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine);
-            if (_config.Instances.TryGetValue(item.Name, out var central))
-            {
-                central.TestcaseSelection = result.Testcases;
-                central.StepSelection = result.StepsJson;
-                central.EnvironmentSelection = result.Environments;
-                central.DataIdSelection = result.DataIds;
-                central.RowsExecutionMode = result.RowsExecutionMode;
-                central.MaxParallelRows = result.MaxParallelRows;
-                central.Iterations = result.Iterations;
-                central.ParallelRowStartIntervalMs = result.ParallelRowStartIntervalMs;
-                central.IterationIntervalMs = result.IterationIntervalMs;
-            }
-            _details.Text = $"Selection saved for {item.Name}. Testcases: {result.Testcases}; Data IDs: {(string.IsNullOrWhiteSpace(result.DataIds) ? "all rows" : result.DataIds)}";
-        }
-        catch (Exception ex) { _details.Text = $"Selection applied, but could not save it: {ex.Message}"; UiLog($"Could not save selection profile for {item.Name}: {ex}"); }
-        UiLog($"Run selection applied. instance={item.Name}; testcases={result.Testcases}; steps={result.StepsJson}; environments={result.Environments}; dataIds={result.DataIds}");
-        BuildConfiguration(); RefreshRows(); RefreshDashboardDetails(true);
-    }
-
-    private async Task<bool> ChooseRunSelectionAsync(InstanceInfo? target = null)
-    {
-        var item = target ?? _selectedInstance;
-        if (item is null) { _details.Text = "Select an instance row first."; return false; }
-        if (!string.IsNullOrWhiteSpace(item.SelectionReadError)) { _details.Text = $"Cannot read run choices: {item.SelectionReadError}. Fix the workbook and click Refresh."; return false; }
-        try
-        {
-            var result = await new RunSelectionWindow(item).ShowDialog<RunSelectionResult?>(Host);
-            if (result is null) return false;
-            ApplyRunSelection(item, result); _details.Text = "Selection applied. Click Run selected to execute the checked choices."; return true;
-        }
-        catch (Exception ex) { _details.Text = $"Could not show run choices: {ex.Message}"; UiLog($"Run selection dialog failed: {ex}"); return false; }
     }
 
     private static Control Field(string label, Control control) => new StackPanel { Spacing = 6, Children = { DashboardStyle.Text(label, 12, false, DashboardStyle.Muted), control } };
