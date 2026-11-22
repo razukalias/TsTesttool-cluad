@@ -152,169 +152,6 @@ internal static class ArtifactCatalog
 }
 
 // The table only selects and summarizes an instance. Editable settings live in Configuration.
-internal sealed class InstanceRow : Border
-{
-    private readonly InstanceInfo _item;
-    private readonly CheckBox _check;
-    private readonly TextBlock _testcases = DashboardStyle.Text("");
-    private readonly TextBlock _mode = DashboardStyle.Text("");
-    private readonly TextBlock _order = DashboardStyle.Text("");
-    private readonly TextBlock _environment = DashboardStyle.Text("");
-    private readonly Border _badgeHost = new();
-    private Button _runButton = null!;
-    public InstanceRow(InstanceInfo item, Action<InstanceInfo> select, Action<InstanceInfo> configure, Action<InstanceInfo> trySpreadsheet, Action<InstanceInfo> openWorkbook, Action<InstanceInfo> run, Action<InstanceInfo> stop, Action<InstanceInfo, string, string, string, string> openSelectedLog, Action<InstanceInfo> openLatestLog, Action<InstanceInfo> openAllLogs, Action<InstanceInfo, string, string, string, string, bool> openSelectedHistory, Action<InstanceInfo, bool> openLatestHistory, Action<string> log)
-    {
-        _item = item;
-        Padding = new Thickness(8, 12);
-        HorizontalAlignment = HorizontalAlignment.Stretch;
-        BorderBrush = DashboardStyle.Line;
-        BorderThickness = new Thickness(0, 0, 0, 1);
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("30,*,62,80,82,90,92,560"), MinWidth = 1290 };
-        _check = new CheckBox { IsChecked = item.Selected, VerticalAlignment = VerticalAlignment.Center, MinWidth = 24 };
-        _check.IsCheckedChanged += (_, _) => { item.Selected = _check.IsChecked == true; log($"Instance selection changed. instance={item.Name}; selected={item.Selected}"); select(item); Refresh(); };
-        var name = DashboardStyle.Text(item.Name, 12, true);
-        ToolTip.SetTip(name, item.WorkbookPath);
-        var actions = new WrapPanel { Orientation = Orientation.Horizontal, ItemWidth = double.NaN, ItemHeight = double.NaN };
-        _runButton = DashboardStyle.Action("Run", () => run(item), "primary");
-        var runButton = _runButton;
-        ToolTip.SetTip(runButton, "Run all enabled workbook steps using workbook defaults. Use Configure first for a custom selection.");
-        var logButton = BuildInternalLogButton(item, openSelectedLog, openLatestLog, openAllLogs);
-        var historyButton = BuildHistoryButton(item, openSelectedHistory, openLatestHistory);
-        foreach (var button in new[] { runButton, DashboardStyle.Action("Stop", () => stop(item)), DashboardStyle.Action("Configure", () => configure(item)), DashboardStyle.Action("✎  Edit dataset", () => trySpreadsheet(item)), DashboardStyle.Action("Open workbook", () => openWorkbook(item)), logButton, historyButton }) { button.Margin = new Thickness(0, 0, 4, 4); button.Padding = new Thickness(7, 5); actions.Children.Add(button); }
-        var cells = new Control[] { _check, name, _testcases, _mode, _order, _environment, _badgeHost, actions };
-        for (var i = 0; i < cells.Length; i++) { Grid.SetColumn(cells[i], i); cells[i].Margin = new Thickness(0, 0, 6, 0); grid.Children.Add(cells[i]); }
-        Child = grid;
-        PointerPressed += (_, _) => select(item);
-        Refresh();
-    }
-    public void Refresh()
-    {
-        _check.IsChecked = _item.Selected;
-        _testcases.Text = _item.TestcaseSelection == "0" ? "All" : _item.TestcaseSelection;
-        _mode.Text = _item.RowsExecutionMode == "sequential" ? "Sequential" : "Parallel";
-        _order.Text = _item.RunEnvironmentsParallel ? "Parallel" : "Sequential";
-        _environment.Text = string.IsNullOrWhiteSpace(_item.EnvironmentSelection) ? "All" : _item.EnvironmentSelection;
-        ToolTip.SetTip(_environment, string.Join(", ", _item.EnvironmentOptions));
-        _badgeHost.Child = DashboardStyle.Badge(_item.Status);
-        _runButton.IsEnabled = _item.Process is null || _item.Process.HasExited;
-        Background = _item.Selected ? DashboardStyle.Brush("#173559") : Brushes.Transparent;
-    }
-    public void SetEnvironmentOptions(IEnumerable<string> options) => Refresh();
-
-    private static Button BuildInternalLogButton(InstanceInfo item, Action<InstanceInfo, string, string, string, string> openSelected, Action<InstanceInfo> openLatest, Action<InstanceInfo> openAll)
-    {
-        var testcase = new ComboBox { Width = 220 };
-        var environment = new ComboBox { Width = 180 };
-        var result = new ComboBox { Width = 140 };
-        var run = new ComboBox { ItemsSource = new[] { "Latest run" }, SelectedIndex = 0, Width = 140 };
-        var content = new StackPanel { Spacing = 8, Width = 430, Children =
-        {
-            DashboardStyle.Text("Internal logs", 15, true),
-            Field("Testcase", testcase), Field("Environment", environment), Field("Result", result), Field("Run", run),
-            new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children =
-            {
-                DashboardStyle.Action("Open selected log", () => openSelected(item, testcase.SelectedItem?.ToString() ?? "", environment.SelectedItem?.ToString() ?? "default", result.SelectedItem?.ToString() ?? "All", run.SelectedItem?.ToString() ?? "Latest run"), "primary"),
-                DashboardStyle.Action("Open latest log", () => openLatest(item)),
-                DashboardStyle.Action("Open all logs", () => openAll(item))
-            }}
-        }};
-        var flyout = new Flyout { Content = content, Placement = PlacementMode.Bottom };
-        var refreshing = false;
-        void RefreshOptions()
-        {
-            if (refreshing) return;
-            refreshing = true;
-            try
-            {
-            static void SetOptions(ComboBox combo, IEnumerable<string> values)
-            {
-                var previous = combo.SelectedItem?.ToString();
-                var options = values.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                combo.ItemsSource = options;
-                combo.SelectedItem = options.FirstOrDefault(option => option.Equals(previous, StringComparison.OrdinalIgnoreCase)) ?? options.FirstOrDefault();
-            }
-            var artifacts = ArtifactCatalog.Logs(item);
-            var testcases = artifacts.Select(x => x.Testcase).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-            SetOptions(testcase, testcases);
-            var selectedTestcase = testcase.SelectedItem?.ToString();
-            var scoped = artifacts.Where(x => string.Equals(x.Testcase, selectedTestcase, StringComparison.OrdinalIgnoreCase)).ToList();
-            var environments = scoped.Select(x => x.Environment).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-            SetOptions(environment, environments);
-            var selectedEnvironment = environment.SelectedItem?.ToString();
-            var results = scoped.Where(x => string.Equals(x.Environment, selectedEnvironment, StringComparison.OrdinalIgnoreCase)).Select(x => x.Result).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-            SetOptions(result, new[] { "All" }.Concat(results));
-            }
-            finally { refreshing = false; }
-        }
-        flyout.Opened += (_, _) => RefreshOptions();
-        testcase.SelectionChanged += (_, _) => RefreshOptions();
-        environment.SelectionChanged += (_, _) => RefreshOptions();
-        var button = new Button { Content = "Internal logs ▾", Padding = new Thickness(7, 5), Flyout = flyout };
-        ToolTip.SetTip(button, "Select testcase, environment, result, and run, then open internal logs.");
-        return button;
-    }
-
-    private static Control Field(string label, Control control) => new StackPanel { Spacing = 3, Children = { DashboardStyle.Text(label, 11, false, DashboardStyle.Muted), control } };
-
-    private static Button BuildHistoryButton(InstanceInfo item, Action<InstanceInfo, string, string, string, string, bool> openSelected, Action<InstanceInfo, bool> openLatest)
-    {
-        var testcase = new ComboBox { Width = 220 };
-        var environment = new ComboBox { Width = 180 };
-        var result = new ComboBox { Width = 140 };
-        var row = new ComboBox { Width = 140 };
-        var run = new ComboBox { ItemsSource = new[] { "Latest run" }, SelectedIndex = 0, Width = 140 };
-        var openWith = new ComboBox { ItemsSource = new[] { "Spreadsheet viewer", "Default Excel app" }, SelectedIndex = 0, Width = 170 };
-        var content = new StackPanel { Spacing = 8, Width = 450, Children =
-        {
-            DashboardStyle.Text("History", 15, true),
-            Field("Testcase", testcase), Field("Environment", environment), Field("Result", result), Field("Row", row), Field("Run", run), Field("Open with", openWith),
-            new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children =
-            {
-                DashboardStyle.Action("Open selected history", () => openSelected(item, testcase.SelectedItem?.ToString() ?? "", environment.SelectedItem?.ToString() ?? "default", result.SelectedItem?.ToString() ?? "All", row.SelectedItem?.ToString() ?? "All rows", openWith.SelectedIndex == 0), "primary"),
-                DashboardStyle.Action("Open latest history", () => openLatest(item, openWith.SelectedIndex == 0))
-            }}
-        }};
-        var flyout = new Flyout { Content = content, Placement = PlacementMode.Bottom };
-        var refreshing = false;
-        void RefreshOptions()
-        {
-            if (refreshing) return;
-            refreshing = true;
-            try
-            {
-            var artifacts = ArtifactCatalog.History(item);
-            static void SetOptions(ComboBox combo, IEnumerable<string> values)
-            {
-                var previous = combo.SelectedItem?.ToString();
-                var options = values.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                combo.ItemsSource = options;
-                combo.SelectedItem = options.FirstOrDefault(value => value.Equals(previous, StringComparison.OrdinalIgnoreCase))
-                    ?? options.FirstOrDefault();
-            }
-            var testcases = artifacts.Select(x => x.Testcase).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-            SetOptions(testcase, testcases);
-            var selectedTestcase = testcase.SelectedItem?.ToString();
-            var scoped = artifacts.Where(x => string.Equals(x.Testcase, selectedTestcase, StringComparison.OrdinalIgnoreCase)).ToList();
-            var environments = scoped.Select(x => x.Environment).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-            SetOptions(environment, environments);
-            var selectedEnvironment = environment.SelectedItem?.ToString();
-            scoped = scoped.Where(x => string.Equals(x.Environment, selectedEnvironment, StringComparison.OrdinalIgnoreCase)).ToList();
-            var results = scoped.Select(x => x.Result).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-            SetOptions(result, new[] { "All" }.Concat(results));
-            var rows = scoped.Select(x => x.Row).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-            var aggregateRows = ArtifactCatalog.AggregateHistory(item) is null ? Array.Empty<string>() : new[] { "All rows" };
-            SetOptions(row, aggregateRows.Concat(rows));
-            }
-            finally { refreshing = false; }
-        }
-        flyout.Opened += (_, _) => RefreshOptions();
-        testcase.SelectionChanged += (_, _) => RefreshOptions();
-        environment.SelectionChanged += (_, _) => RefreshOptions();
-        var button = new Button { Content = "History ▾", Padding = new Thickness(7, 5), Flyout = flyout };
-        ToolTip.SetTip(button, "Select testcase, environment, result, row, run, and opening method for history.");
-        return button;
-    }
-}
 
 public sealed partial class MainWindow
 {
@@ -343,22 +180,12 @@ public sealed partial class MainWindow
     private readonly TextBox _overviewFilter = new() { Watermark = "Filter overview: term1 & term2…", Width = 260 };
     private readonly TextBox _assertionSearch = new() { Watermark = "Filter assertions: term1 & term2…", Width = 260 };
     private readonly TextBlock _selectedTitle = DashboardStyle.Text("Selected instance", 16, true);
-    private readonly TextBlock _pageTitle = DashboardStyle.Text("Instances", 18, true);
     private readonly TextBlock _listTitle = DashboardStyle.Text("Test instances", 15, true);
     private readonly TextBlock _footer = DashboardStyle.Text("", 11, false, DashboardStyle.Muted);
     private readonly TextBox _search = new() { Watermark = "Search instances…", Width = 200, FontSize = 12 };
-    private readonly Dictionary<string, Button> _navigation = [];
     private readonly List<(string Text, string Severity)> _validationLog = [];
-    private readonly Grid _workspace = new() { RowDefinitions = new RowDefinitions("Auto,*") };
     private readonly TabControl _detailTabs = new();
-    private Button _runButton = null!;
-    private Button _validateButton = null!;
-    private Button _stopButton = null!;
-    private Button _forceButton = null!;
     private string _page = "Instances";
-    private Grid _body = null!;
-    private Control _settingsPage = null!;
-    private Control _historyPage = null!;
     private string _detailSignature = "";
     private double _logFontSize = 11;
     private readonly Pager _overviewPager = new();
@@ -375,78 +202,6 @@ public sealed partial class MainWindow
         Foreground = DashboardStyle.Brush("#E3EDF9");
         Width = 1440; Height = 900; MinWidth = 1280; MinHeight = 700;
         Title = $"Load Testing Tool • {DashboardStyle.Build}";
-        var sidebar = new DockPanel { Background = DashboardStyle.Brush("#0D1B2C"), LastChildFill = true };
-        var brand = new StackPanel { Margin = new Thickness(18, 24, 12, 24), Spacing = 7,
-            Children = { DashboardStyle.Text("Load Testing Tool", 14, true), DashboardStyle.Text(DashboardStyle.Build, 10, false, DashboardStyle.Muted) } };
-        DockPanel.SetDock(brand, Dock.Top); sidebar.Children.Add(brand);
-        var sideFooter = new StackPanel { Margin = new Thickness(18, 16), Spacing = 6,
-            Children = { DashboardStyle.Text("Local runner", 12, true, DashboardStyle.Green), DashboardStyle.Text("Windows / Avalonia", 11, false, DashboardStyle.Muted) } };
-        DockPanel.SetDock(sideFooter, Dock.Bottom); sidebar.Children.Add(sideFooter);
-        var links = new StackPanel { Spacing = 6, Margin = new Thickness(8, 0) };
-        foreach (var page in new[] { "Instances", "Active runs", "History", "Settings" })
-        {
-            var button = DashboardStyle.Action(page, () => Navigate(page));
-            button.HorizontalAlignment = HorizontalAlignment.Stretch; button.HorizontalContentAlignment = HorizontalAlignment.Left;
-            button.Margin = new Thickness(0); button.Padding = new Thickness(14, 12); button.Classes.Add("nav");
-            _navigation[page] = button; links.Children.Add(button);
-        }
-        sidebar.Children.Add(links);
-
-        var heading = new StackPanel { Spacing = 5, Children = { _pageTitle, DashboardStyle.Text("Manage test instances and inspect execution results", 12, false, DashboardStyle.Muted) } };
-        _runButton = DashboardStyle.Action("▶  Run selected instances", () => RunSelected(), "primary");
-        _stopButton = DashboardStyle.Action("Stop selected", () => StopSelected(false));
-        _forceButton = DashboardStyle.Action("Force stop", () => StopSelected(true), "danger");
-        _validateButton = DashboardStyle.Action("✓ Validate all", OpenGlobalValidation, "primary");
-        var commands = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Children = { DashboardStyle.Action("History & logs…", () => ShowHistoryLogs()), _validateButton, _runButton, _stopButton, _forceButton } };
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(18, 16) };
-        header.Children.Add(heading); Grid.SetColumn(commands, 1); header.Children.Add(commands);
-
-        var stats = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*,*"), Margin = new Thickness(0, 0, 0, 14) };
-        var labels = new[] { "Ready", "Running", "Passed", "Failed", "Requests / sec" };
-        var values = new[] { _readyValue, _runningValue, _passedValue, _failedValue, _rpsValue };
-        var colors = new[] { "#A6B9CE", "#3291FF", "#39D39B", "#FF7588", "#7295FF" };
-        for (var i = 0; i < values.Length; i++)
-        {
-            values[i].FontSize = 25; values[i].FontWeight = FontWeight.SemiBold; values[i].Foreground = DashboardStyle.Brush(colors[i]);
-            var card = DashboardStyle.Card(new StackPanel { Spacing = 6, Children = { DashboardStyle.Text(labels[i], 12, false, DashboardStyle.Muted), values[i] } });
-            card.Margin = new Thickness(0, 0, i == 4 ? 0 : 10, 0); Grid.SetColumn(card, i); stats.Children.Add(card);
-        }
-        _workspace.Children.Add(stats);
-        var toolbar = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(12) };
-        toolbar.Children.Add(_listTitle);
-        var tools = new StackPanel { Orientation = Orientation.Horizontal, Children = { _search,
-            DashboardStyle.Action("New instance", () => _ = CreateInstanceAsync(), "primary"), DashboardStyle.Action("Refresh", RefreshInstances), DashboardStyle.Action("All", () => { foreach (var item in _instances) item.Selected = true; RefreshRows(); }),
-            DashboardStyle.Action("Clear", () => { foreach (var item in _instances) item.Selected = false; RefreshRows(); }) } };
-        _search.Margin = new Thickness(0, 0, 8, 6); _search.TextChanged += (_, _) => FilterInstances();
-        Grid.SetColumn(tools, 1); toolbar.Children.Add(tools);
-        var columnHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("30,*,62,80,82,90,92,430"), Margin = new Thickness(8, 8), MinWidth = 1160 };
-        var columns = new[] { "", "Instance", "Cases", "Mode", "Order", "Env.", "Status", "Actions" };
-        for (var i = 0; i < columns.Length; i++) { var text = DashboardStyle.Text(columns[i], 11, false, DashboardStyle.Muted); Grid.SetColumn(text, i); columnHeader.Children.Add(text); }
-        _instanceList.Background = Brushes.Transparent; _instanceList.BorderThickness = new Thickness(0);
-        _instanceList.ItemTemplate = new FuncDataTemplate<InstanceInfo>((item, _) => item is null ? new Border() : GetOrCreateRow(item));
-        _instanceList.SelectionChanged += (_, _) => ShowDetails(_instanceList.SelectedItem as InstanceInfo);
-        _instanceList.Styles.Add(new Avalonia.Styling.Style(x => x.OfType<ListBoxItem>())
-        {
-            Setters = { new Avalonia.Styling.Setter(TemplatedControl.PaddingProperty, new Thickness(0)),
-                new Avalonia.Styling.Setter(ContentControl.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch) }
-        });
-        var table = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*") };
-        table.Children.Add(toolbar); Grid.SetRow(columnHeader, 1); table.Children.Add(columnHeader); Grid.SetRow(_instanceList, 2); table.Children.Add(_instanceList);
-        var tableCard = DashboardStyle.Card(table, new Thickness(0));
-        var eventHeader = DashboardStyle.Text("Log", 13, true);
-        var events = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
-        _logBar = new PagerBar(_logPager);
-        _logPager.Changed += RenderUnifiedLog;
-        Grid.SetRow(_logBar, 2); events.Children.Add(_logBar);
-        var logTools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { eventHeader,
-            DashboardStyle.Action("−", () => ChangeLogFont(-1)), DashboardStyle.Action("+", () => ChangeLogFont(1)), DashboardStyle.Action("Clear", ClearUnifiedLog) } };
-        events.Children.Add(logTools);
-        var eventScroll = new ScrollViewer { Content = _eventPanel, Margin = new Thickness(0, 10, 0, 0) };
-        Grid.SetRow(eventScroll, 1); events.Children.Add(eventScroll);
-        var eventCard = DashboardStyle.Card(events); eventCard.Margin = new Thickness(0, 12, 0, 0);
-        var left = new Grid { RowDefinitions = new RowDefinitions("3*,2*") };
-        left.Children.Add(tableCard); Grid.SetRow(eventCard, 1); left.Children.Add(eventCard);
-
         _failedOnly.IsCheckedChanged += (_, _) => RefreshAssertionList();
         foreach (var filter in new[] { _environmentFilter, _assertionTestcaseFilter, _assertionStepFilter, _assertionResultFilter, _assertionVerbFilter })
             filter.Changed += (_, _) => RefreshAssertionList();
@@ -503,43 +258,11 @@ public sealed partial class MainWindow
             new TabItem { Header = "Artifacts", Content = Scroll(_artifactPanel) }
         };
         _overviewPanel.Children.Insert(0, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _overviewFilter, DashboardStyle.Action("Copy overview", () => _ = CopyOverviewAsync()) } });
-        var selectedHeader = new StackPanel { Spacing = 6, Margin = new Thickness(14), Children = { _selectedTitle,
-            DashboardStyle.Text("Select a row to inspect. Tick a box to run.", 11, false, DashboardStyle.Muted), DetailTextSize.CreateBar() } };
-        var right = new DockPanel(); DockPanel.SetDock(selectedHeader, Dock.Top); right.Children.Add(selectedHeader); right.Children.Add(_detailTabs);
-        var rightCard = DashboardStyle.Card(right, new Thickness(0)); rightCard.Margin = new Thickness(14, 0, 0, 0);
-        var splitter = new GridSplitter { Width = 5, Background = DashboardStyle.Line, ResizeDirection = GridResizeDirection.Columns, ResizeBehavior = GridResizeBehavior.PreviousAndNext, HorizontalAlignment = HorizontalAlignment.Stretch };
-        _body = new Grid { ColumnDefinitions = new ColumnDefinitions("*,5,375") };
-        _body.Children.Add(left); Grid.SetColumn(splitter, 1); _body.Children.Add(splitter); Grid.SetColumn(rightCard, 2); _body.Children.Add(rightCard);
-        Grid.SetRow(_body, 1); _workspace.Children.Add(_body);
-        _workspace.Margin = new Thickness(18, 0, 18, 0);
-        _settingsPage = CreateSettingsPage(); _historyPage = Scroll(_historyPanel);
+        Content = _detailTabs;
         _details.TextWrapping = TextWrapping.Wrap; _details.Foreground = DashboardStyle.Muted; _details.FontSize = 11;
-        var diagnostics = new ScrollViewer { Content = _details, MaxHeight = 110, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-        var bottom = new StackPanel { Margin = new Thickness(18, 10), Spacing = 4, Children = { _footer, diagnostics } };
-        var content = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
-        content.Children.Add(header); Grid.SetRow(_workspace, 1); content.Children.Add(_workspace); Grid.SetRow(bottom, 2); content.Children.Add(bottom);
-        var root = new Grid { ColumnDefinitions = new ColumnDefinitions("180,*") };
-        root.Children.Add(sidebar); Grid.SetColumn(content, 1); root.Children.Add(content);
-        Content = root;
-        Navigate("Instances");
     }
 
     private static ScrollViewer Scroll(Control control) => new() { Content = DetailTextSize.Wrap(control), Padding = new Thickness(14), HorizontalScrollBarVisibility = ScrollBarVisibility.Auto };
-    private void Navigate(string page)
-    {
-        if (page.Equals("History", StringComparison.OrdinalIgnoreCase))
-        {
-            LaunchHistoryWorkspace();
-            return;
-        }
-        _page = page; _pageTitle.Text = page;
-        foreach (var (name, button) in _navigation) { if (name == page) button.Classes.Add("active"); else button.Classes.Remove("active"); }
-        _workspace.Children.Remove(_body); _workspace.Children.Remove(_settingsPage); _workspace.Children.Remove(_historyPage);
-        var view = page == "Settings" ? _settingsPage : page == "History" ? _historyPage : _body;
-        Grid.SetRow(view, 1); _workspace.Children.Add(view);
-        if (page == "History") RefreshHistoryPanel();
-        FilterInstances();
-    }
 
     private void LaunchHistoryWorkspace(string? instance = null, string? testcase = null)
     {
@@ -656,66 +379,6 @@ public sealed partial class MainWindow
             RefreshActionManualPanel();
         }
         catch (Exception ex) { _details.Text = $"Could not respond to ActionManual: {ex.Message}"; UiLog($"ActionManual response failed. error={ex}"); }
-    }
-
-    private Control CreateSettingsPage()
-    {
-        var panel = new StackPanel { Spacing = 16 };
-        panel.Children.Add(DashboardStyle.Text("Local runner settings", 20, true));
-        panel.Children.Add(DashboardStyle.Text("Global paths are stored in the central appsettings.json. Instance folders are derived as InstancesRoot/<instance name>.", 12, false, DashboardStyle.Muted));
-        var instancesRoot = new TextBox { Text = _config.InstancesRoot, HorizontalAlignment = HorizontalAlignment.Stretch };
-        var workbookName = new TextBox { Text = _config.WorkbookName, HorizontalAlignment = HorizontalAlignment.Stretch };
-        var backupFolder = new TextBox { Text = _config.DataEngineBackupFolder, HorizontalAlignment = HorizontalAlignment.Stretch };
-        panel.Children.Add(Field("Instances root", instancesRoot));
-        panel.Children.Add(Field("Global workbook filename", workbookName));
-        panel.Children.Add(Field("DataEngine backup folder", backupFolder));
-        panel.Children.Add(DashboardStyle.Action("Save global paths", () => SaveGlobalPathSettings(instancesRoot.Text, workbookName.Text, backupFolder.Text), "primary"));
-        panel.Children.Add(DashboardStyle.Action("Storage & Cleanup", OpenStorageCleanup, "primary"));
-        panel.Children.Add(DashboardStyle.Text("Runner", 12, false, DashboardStyle.Muted));
-        panel.Children.Add(KeyValue("Path", Path.GetFullPath(_config.RunnerDll)));
-        panel.Children.Add(KeyValue("UI log", Path.GetFullPath(_config.UiLogFile)));
-        panel.Children.Add(KeyValue("Documentation", Path.GetFullPath(_config.DocumentationFile)));
-        panel.Children.Add(DashboardStyle.Text("Files and folders open with your system default applications. Set file associations in your OS settings.", 12, false, DashboardStyle.Muted));
-        panel.Children.Add(DashboardStyle.Action("Open UI log", () => OpenFile(Path.GetFullPath(_config.UiLogFile), "UI log")));
-        panel.Children.Add(DashboardStyle.Action("Open user manual", () => OpenFile(Path.GetFullPath(_config.DocumentationFile), "user manual")));
-        panel.Children.Add(DashboardStyle.Text("The dashboard reads and writes the central appsettings.json beside the application installation.", 12, false, DashboardStyle.Muted));
-        return Scroll(panel);
-    }
-    private void SaveGlobalPathSettings(string? instancesRootText, string? workbookNameText, string? backupFolderText)
-    {
-        var workbookName = Path.GetFileName((workbookNameText ?? string.Empty).Trim());
-        if (string.IsNullOrWhiteSpace(workbookName) || workbookName.Equals(".", StringComparison.Ordinal) || workbookName.Equals("..", StringComparison.Ordinal) || !workbookName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
-        {
-            _details.Text = "Global workbook filename must be a valid .xlsx filename, for example DataEngine.xlsx.";
-            return;
-        }
-        try
-        {
-            var settingsDirectory = Path.GetDirectoryName(_config.SettingsFile)!;
-            var fullRoot = Path.GetFullPath(string.IsNullOrWhiteSpace(instancesRootText) ? _config.InstancesRoot : instancesRootText.Trim(), settingsDirectory);
-            var storedRoot = Path.GetRelativePath(settingsDirectory, fullRoot).Replace('\\', '/');
-            var fullBackup = Path.GetFullPath(string.IsNullOrWhiteSpace(backupFolderText) ? _config.DataEngineBackupFolder : backupFolderText.Trim(), settingsDirectory);
-            var storedBackup = Path.GetRelativePath(settingsDirectory, fullBackup).Replace('\\', '/');
-            var root = File.Exists(_config.SettingsFile) ? JsonNode.Parse(File.ReadAllText(_config.SettingsFile)) as JsonObject : new JsonObject();
-            root ??= new JsonObject();
-            root["InstancesRoot"] = storedRoot;
-            root["WorkbookName"] = workbookName;
-            root["DataEngineBackupFolder"] = storedBackup;
-            if (root["Instances"] is JsonObject instances)
-                foreach (var pair in instances)
-                    if (pair.Value is JsonObject instance)
-                    {
-                        instance.Remove("Folder");
-                        instance.Remove("Workbook");
-                    }
-            File.WriteAllText(_config.SettingsFile, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine);
-            _config.InstancesRoot = fullRoot;
-            _config.WorkbookName = workbookName;
-            _config.DataEngineBackupFolder = fullBackup;
-            RefreshInstances();
-            _details.Text = $"Saved global paths. Instances use {fullRoot}/<instance name>/{workbookName}; backups use {fullBackup}.";
-        }
-        catch (Exception ex) { _details.Text = $"Could not save global paths: {ex.Message}"; }
     }
 
     private void OpenStorageCleanup()
@@ -849,54 +512,6 @@ public sealed partial class MainWindow
         _configurationPanel.Children.Add(DashboardStyle.Text("Workbook actions are available directly on the instance row: Add step, Edit step, Edit dataset, and Open workbook. The legacy editor is available in Handcraft.", 12, false, DashboardStyle.Muted));
     }
 
-    private void OpenGlobalValidation()
-    {
-        _ = RunGlobalValidationAsync();
-    }
-
-    private async Task RunGlobalValidationAsync()
-    {
-        _validateButton.IsEnabled = false;
-        _validateButton.Content = "… Validating";
-        _validateButton.Background = DashboardStyle.Brush("#245A8D");
-        _validationLog.Clear();
-        _validationLog.Add(("[validate]", "INFO"));
-        _validationLog.Add(("Validation started for all instances. Requests will not be executed.", "INFO"));
-        RenderUnifiedLog();
-        try
-        {
-            var results = await Task.Run(() => GlobalValidationService.ValidateAll(_instances.ToList(), _config.Environments.ToList()));
-            var errors = results.Sum(x => x.Issues.Count(i => i.Severity == "ERROR"));
-            var warnings = results.Sum(x => x.Issues.Count(i => i.Severity == "WARNING"));
-            var status = errors > 0 ? "ERROR" : warnings > 0 ? "WARNING" : "PASS";
-            _validationLog.Add(($"Validation completed: {errors} error(s), {warnings} warning(s) across {results.Count} instance(s).", status));
-            foreach (var result in results)
-            {
-                var instance = _instances.FirstOrDefault(x => x.Name.Equals(result.Instance, StringComparison.OrdinalIgnoreCase));
-                if (instance is not null) ApplyValidationIssues(instance, result);
-                _validationLog.Add(($"\n{(result.HasErrors ? "FAILED" : result.HasWarnings ? "WARNINGS" : "PASSED")}  {result.Instance}", result.HasErrors ? "ERROR" : result.HasWarnings ? "WARNING" : "PASS"));
-                foreach (var issue in result.Issues)
-                    _validationLog.Add((issue.ToString(), issue.Severity));
-            }
-            _validationLog.Add(("[end validate]", status));
-            SetValidationButton(status, errors, warnings);
-            RefreshDashboardDetails(force: true);
-            UiLog($"Global validation completed. instances={results.Count}; errors={errors}; warnings={warnings}");
-        }
-        catch (Exception ex)
-        {
-            _validationLog.Add(($"[ERROR] Validation could not complete.\n{ex.Message}\nFix: Review central appsettings.json and validate again.", "ERROR"));
-            _validationLog.Add(("[end validate]", "ERROR"));
-            SetValidationButton("ERROR", 1, 0);
-            UiLog($"Global validation failed: {ex}");
-        }
-        finally
-        {
-            _validateButton.IsEnabled = true;
-            RenderUnifiedLog();
-        }
-    }
-
     /// <summary>A new run starts clean: the earlier run's issues go. Validation issues describe the workbook, not a run, so they stay until it is validated again.</summary>
     internal static void ClearRunIssues(InstanceInfo instance)
         => instance.Issues.RemoveAll(x => !x.Category.Equals("Validation", StringComparison.OrdinalIgnoreCase));
@@ -931,37 +546,7 @@ public sealed partial class MainWindow
         catch (Exception ex) { UiLog($"Revalidation after save failed for {instance.Name}: {ex.Message}"); }
     }
 
-    private void SetValidationButton(string status, int errors, int warnings)
-    {
-        _validateButton.Content = status switch
-        {
-            "ERROR" => $"✕ Validate all ({errors} errors)",
-            "WARNING" => $"⚠ Validate all ({warnings} warnings)",
-            "PASS" => "✓ Validate all (passed)",
-            _ => "✓ Validate all"
-        };
-        _validateButton.Background = DashboardStyle.Brush(status switch
-        {
-            "ERROR" => "#8B2635",
-            "WARNING" => "#8A5A18",
-            "PASS" => "#176B50",
-            _ => "#245A8D"
-        });
-    }
-
-    private void ChangeLogFont(double delta)
-    {
-        _logFontSize = Math.Clamp(_logFontSize + delta, 9, 24);
-        RenderUnifiedLog();
-    }
-
-    private void ClearUnifiedLog()
-    {
-        _validationLog.Clear();
-        if (_selectedInstance is not null) _selectedInstance.EventMessages.Clear();
-        SetValidationButton("READY", 0, 0);
-        RenderUnifiedLog();
-    }
+    private void SetValidationButton(string status, int errors, int warnings) { }
 
     private void RenderUnifiedLog()
     {
@@ -1625,26 +1210,6 @@ public sealed partial class MainWindow
                 _artifactPanel.Children.Add(DashboardStyle.Action("Open folder", () => OpenFolder(Path.GetDirectoryName(file) ?? file, "result folder")));
             }
         }
-    }
-
-    private void LaunchSpreadsheetProcess(string workbookPath, string description)
-    {
-        try
-        {
-            var processPath = Environment.ProcessPath ?? throw new InvalidOperationException("The dashboard process path is unavailable.");
-            var entryAssembly = System.Reflection.Assembly.GetEntryAssembly()?.Location;
-            var start = new ProcessStartInfo { FileName = processPath, UseShellExecute = false, CreateNoWindow = true };
-            if (!string.IsNullOrWhiteSpace(entryAssembly) && (Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase) || Path.GetFileNameWithoutExtension(processPath).Equals("dotnet.exe", StringComparison.OrdinalIgnoreCase)))
-            {
-                start.ArgumentList.Add(entryAssembly);
-            }
-            start.ArgumentList.Add("--dataset-editor"); start.ArgumentList.Add(workbookPath);
-            var editor = Process.Start(start) ?? throw new InvalidOperationException("The dataset editor process could not be started.");
-            editor.EnableRaisingEvents = true;
-            editor.Exited += (_, _) => Dispatcher.UIThread.Post(() => { RefreshInstances(); _details.Text = $"{description} closed for {Path.GetFileName(workbookPath)}."; UiLog($"Spreadsheet subprocess exited. description={description}; workbook={workbookPath}; exitCode={editor.ExitCode}"); });
-            UiLog($"Spreadsheet subprocess started. description={description}; workbook={workbookPath}; processId={editor.Id}");
-        }
-        catch (Exception ex) { _details.Text = $"Could not start {description}: {ex.Message}"; UiLog($"Spreadsheet subprocess failed to start. description={description}; workbook={workbookPath}; error={ex}"); }
     }
     private async Task CopyOverviewAsync()
     {

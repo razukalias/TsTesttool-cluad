@@ -55,7 +55,6 @@ public sealed partial class MainWindow
         public void Stop(string instanceName)
         {
             if (window._instances.FirstOrDefault(x => x.Name == instanceName) is { } item && item.Process is { HasExited: false }) window.StopOne(item, false);
-            window.RefreshRows();
         }
 
         public void Show(string instanceName) => Select(instanceName, null);

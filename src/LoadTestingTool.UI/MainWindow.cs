@@ -168,7 +168,6 @@ public sealed partial class MainWindow : Window
 {
     private readonly UiConfig _config;
     private readonly ObservableCollection<InstanceInfo> _instances = [];
-    private readonly Dictionary<string, InstanceRow> _rows = new(StringComparer.OrdinalIgnoreCase);
     private readonly ListBox _instanceList = new();
     private readonly TextBlock _details = new();
     private readonly StackPanel _assertionItems = new() { Orientation = Orientation.Vertical };
@@ -179,8 +178,6 @@ public sealed partial class MainWindow : Window
     private readonly MultiFilter _assertionResultFilter = new("Result");
     private readonly MultiFilter _assertionVerbFilter = new("Verb");
     private readonly TextBox _assertionExclude = new() { Watermark = "Exclude: term1 & term2…", Width = 230, Tag = "assertion-exclude" };
-    private readonly ComboBox _internalLogTestcase = new() { Width = 220 };
-    private readonly ComboBox _internalLogEnvironment = new() { Width = 220 };
     private readonly MultiFilter _overviewStepStatus = new("Status");
     private readonly MultiFilter _overviewStepEnvironment = new("Environment");
     private readonly MultiFilter _overviewStepTestcase = new("Testcase");
@@ -188,11 +185,6 @@ public sealed partial class MainWindow : Window
     private readonly TextBox _overviewStepFilter = new() { Width = 230, Watermark = "Show: assertion text, term1 & term2…", Tag = "overview-include" };
     private readonly TextBox _overviewStepExclude = new() { Width = 230, Watermark = "Exclude: term1 & term2…", Tag = "overview-exclude" };
     private bool _overviewStepFilterRefreshing;
-    private readonly TextBlock _readyValue = new();
-    private readonly TextBlock _runningValue = new();
-    private readonly TextBlock _passedValue = new();
-    private readonly TextBlock _failedValue = new();
-    private readonly TextBlock _rpsValue = new();
     private InstanceInfo? _selectedInstance;
     private readonly DispatcherTimer _timer;
 
@@ -209,15 +201,6 @@ public sealed partial class MainWindow : Window
         _timer.Tick += (_, _) => PollEvents();
         _timer.Start();
         UiLog($"UI initialized. instancesRoot={Path.GetFullPath(_config.InstancesRoot)}; uiLog={Path.GetFullPath(_config.UiLogFile)}; pollIntervalMs=500");
-    }
-
-    private InstanceRow GetOrCreateRow(InstanceInfo item)
-    {
-        if (_rows.TryGetValue(item.FolderPath, out var existing)) return existing;
-        var row = new InstanceRow(item, selected => { UiLog($"UI action: instance row clicked. instance={selected.Name}"); _instanceList.SelectedItem = selected; ShowDetails(selected); }, selected => { }, selected => OpenSpreadsheetForInstance(selected), selected => OpenWorkbookForInstance(selected), RunSingleInstance, StopSingleInstance, OpenSelectedInternalLogForInstance, OpenLatestInternalLogForInstance, OpenAllInternalLogsForInstance, OpenSelectedHistoryForInstance, OpenLatestHistoryForInstance, UiLog);
-        row.SetEnvironmentOptions(item.EnvironmentOptions);
-        _rows[item.FolderPath] = row;
-        return row;
     }
 
     private Control CreateAssertionRow(AssertionInfo assertion)
@@ -429,30 +412,10 @@ public sealed partial class MainWindow : Window
             item.EnvironmentOptions.AddRange(_config.Environments.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase));
             ReloadWorkbookCatalog(item, workbook);
             _instances.Add(item);
-            if (_rows.TryGetValue(folder, out var existingRow)) existingRow.SetEnvironmentOptions(item.EnvironmentOptions);
         }
         FilterInstances();
-        RefreshRows();
         _details.Text = $"Found {_instances.Count} instance(s). Configure in the Config tab; tick the instance and press Run selected.";
         UiLog($"Instance refresh completed. root={root}; instances={_instances.Count}; elapsedNotMeasured=true");
-    }
-
-    private async Task CreateInstanceAsync()
-    {
-        var root = Path.GetFullPath(_config.InstancesRoot);
-        var builder = new InstanceBuilderWindow(root, _config.WorkbookName) { SettingsFile = string.IsNullOrWhiteSpace(_config.SettingsFile) ? null : Path.GetFullPath(_config.SettingsFile) };
-        builder.Closed += (_, _) =>
-        {
-            var createdFolder = builder.CreatedFolder;
-            if (string.IsNullOrWhiteSpace(createdFolder)) return;
-            RegisterCentralInstance(createdFolder);
-            RefreshInstances();
-            var created = _instances.FirstOrDefault(x => x.FolderPath.Equals(Path.GetFullPath(createdFolder), StringComparison.OrdinalIgnoreCase));
-            if (created is not null) { created.Selected = true; _instanceList.SelectedItem = created; ShowDetails(created); RefreshRows(); }
-            _details.Text = $"Created instance: {created?.Name ?? Path.GetFileName(createdFolder)}. Select Configure to edit its testcase and steps.";
-        };
-        builder.Show(Host);
-        await Task.CompletedTask;
     }
 
     private void RegisterCentralInstance(string folder)
@@ -619,72 +582,6 @@ public sealed partial class MainWindow : Window
         catch (Exception ex) { UiLog($"Could not save reporting settings for {item.Name}: {ex}"); _details.Text = $"Could not save reporting settings: {ex.Message}"; }
     }
 
-    private void OpenSpreadsheetForInstance(InstanceInfo item)
-    {
-        _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item);
-        OpenDataEditor();
-    }
-
-    private void OpenWorkbookForInstance(InstanceInfo item)
-    {
-        _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item);
-        OpenExcelFile(item.WorkbookPath, "DataEngine workbook");
-    }
-    private void RunSingleInstance(InstanceInfo item)
-    {
-        foreach (var other in _instances) other.Selected = false;
-        item.Selected = true; _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item); RunSelected();
-    }
-    private void StopSingleInstance(InstanceInfo item)
-    {
-        item.Selected = true; _selectedInstance = item; _instanceList.SelectedItem = item; StopSelected(false);
-    }
-    private void OpenSelectedInternalLogForInstance(InstanceInfo item, string testcase, string environment, string result, string run)
-    {
-        _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item);
-        OpenInternalLogForSelection(item, testcase, environment, result, run);
-    }
-    private void OpenLatestInternalLogForInstance(InstanceInfo item)
-    {
-        _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item); OpenLatestInternalLog();
-    }
-    private void OpenAllInternalLogsForInstance(InstanceInfo item)
-    {
-        _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item); OpenAllInternalLogs();
-    }
-    private void OpenSelectedHistoryForInstance(InstanceInfo item, string testcase, string environment, string result, string row, bool trySpreadsheet)
-    {
-        _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item);
-        if (row.Equals("All rows", StringComparison.OrdinalIgnoreCase))
-        {
-            OpenHistoryPath(ArtifactCatalog.AggregateHistory(item), trySpreadsheet, "aggregate history");
-            return;
-        }
-        var candidates = ArtifactCatalog.History(item).Where(x => x.Testcase.Equals(testcase, StringComparison.OrdinalIgnoreCase))
-            .Where(x => x.Environment.Equals(environment, StringComparison.OrdinalIgnoreCase));
-        if (!result.Equals("All", StringComparison.OrdinalIgnoreCase)) candidates = candidates.Where(x => x.Result.Equals(result, StringComparison.OrdinalIgnoreCase));
-        if (!row.Equals("All rows", StringComparison.OrdinalIgnoreCase)) candidates = candidates.Where(x => x.Row.Equals(row, StringComparison.OrdinalIgnoreCase));
-        OpenHistoryPath(candidates.OrderByDescending(x => File.GetLastWriteTimeUtc(x.Path)).Select(x => x.Path).FirstOrDefault(), trySpreadsheet, $"history for {testcase} / {environment}");
-    }
-    private void OpenLatestHistoryForInstance(InstanceInfo item, bool trySpreadsheet)
-    {
-        _selectedInstance = item; _instanceList.SelectedItem = item; ShowDetails(item);
-        var path = ArtifactCatalog.History(item).OrderByDescending(x => File.GetLastWriteTimeUtc(x.Path)).Select(x => x.Path).FirstOrDefault();
-        OpenHistoryPath(path, trySpreadsheet, "latest history");
-    }
-    private void OpenHistoryPath(string? path, bool trySpreadsheet, string description)
-    {
-        if (path is null)
-        {
-            _details.Text = $"No {description} workbook was found.";
-            UiLog($"Open {description} ignored. reason=file-not-found");
-            return;
-        }
-        UiLog($"Opening {description}. path={path}; method={(trySpreadsheet ? "try-spreadsheet" : "default-excel")}");
-        if (trySpreadsheet) LaunchSpreadsheetProcess(path, description);
-        else OpenExcelFile(path, description);
-    }
-
     private void CreateTestcaseForInstance(InstanceInfo item, TestcaseWizardDraft draft)
     {
         try
@@ -749,7 +646,7 @@ public sealed partial class MainWindow : Window
             workbook.Save();
             RefreshInstances();
             var refreshed = _instances.FirstOrDefault(x => x.FolderPath.Equals(item.FolderPath, StringComparison.OrdinalIgnoreCase));
-            if (refreshed is not null) { refreshed.Selected = true; _selectedInstance = refreshed; _instanceList.SelectedItem = refreshed; ShowDetails(refreshed); RefreshRows(); }
+            if (refreshed is not null) { refreshed.Selected = true; _selectedInstance = refreshed; _instanceList.SelectedItem = refreshed; ShowDetails(refreshed); }
             SetStatusForInstance($"Created testcase '{draft.TestcaseName}' with initial step '{draft.StepName}'. Backup created: {Path.GetFileName(backup)}");
         }
         catch (Exception ex) { SetStatusForInstance($"Could not create testcase: {ex.Message}", true); }
@@ -772,39 +669,6 @@ public sealed partial class MainWindow : Window
     private void SetStatusForInstance(string message, bool error = false)
     {
         _details.Text = message; _footer.Text = message; UiLog(message);
-    }
-
-    private void RefreshRows()
-    {
-        foreach (var item in _instances)
-            if (_rows.TryGetValue(item.FolderPath, out var row)) row.Refresh();
-        _readyValue.Text = _instances.Count(item => item.Status.Equals("Ready", StringComparison.OrdinalIgnoreCase)).ToString();
-        _runningValue.Text = _instances.Count(item => item.Status.Equals("Running", StringComparison.OrdinalIgnoreCase) || item.Status.Equals("Stopping", StringComparison.OrdinalIgnoreCase)).ToString();
-        _passedValue.Text = _instances.Count(item => item.Status.Equals("Passed", StringComparison.OrdinalIgnoreCase)).ToString();
-        _failedValue.Text = _instances.Count(item => item.Status.Equals("Failed", StringComparison.OrdinalIgnoreCase) || item.Status.Equals("Launch failed", StringComparison.OrdinalIgnoreCase)).ToString();
-        var latest = _instances.Where(x => x.RequestsPerSecond.HasValue).OrderByDescending(x => x.CompletedAt).FirstOrDefault();
-        _rpsValue.Text = latest?.RequestsPerSecond?.ToString("F2") ?? "—";
-        _footer.Text = $"{_instances.Count} instances  /  {_instances.Count(x => x.Selected)} selected  /  {DashboardStyle.Build}";
-        var selected = _instances.Where(x => x.Selected).ToList();
-        var selectedRunning = selected.Any(x => x.Process is { HasExited: false });
-        _runButton.IsEnabled = selected.Count > 0 && !selectedRunning && selected.Any(x => x.Process is null || x.Process.HasExited);
-        _stopButton.IsEnabled = _forceButton.IsEnabled = _instances.Any(x => x.Selected && x.Process is { HasExited: false });
-        if (_page == "Active runs")
-        {
-            var visible = (_instanceList.ItemsSource as IEnumerable<InstanceInfo>)?.ToList() ?? [];
-            if (!visible.SequenceEqual(_instances.Where(x => x.Process is { HasExited: false } && x.Name.Contains(_search.Text ?? "", StringComparison.OrdinalIgnoreCase)))) FilterInstances();
-        }
-    }
-
-    private async void RunSelected()
-    {
-        var selected = _instances.Where(x => x.Selected).ToList();
-        UiLog($"Run selected started. selected={selected.Count}; runnable={selected.Count(x => x.Process is null || x.Process.HasExited)}");
-        foreach (var item in selected.Where(x => x.Process is null || x.Process.HasExited))
-            await LaunchAsync(item);
-
-        RefreshRows();
-        UiLog("Run selected completed.");
     }
 
     private async Task LaunchAsync(InstanceInfo item, IReadOnlyList<(string Name, string Value)>? overrides = null)
@@ -900,7 +764,6 @@ public sealed partial class MainWindow : Window
         item.DataIdSelection = ids;
         try { await LaunchAsync(item, overrides); }
         finally { (item.TestcaseSelection, item.StepSelectionJson, item.DataIdSelection) = (testcases, steps, dataIdSelection); }
-        RefreshRows();
         return item.Status == "Launch failed" ? item.LastEvent : null;
     }
 
@@ -913,12 +776,6 @@ public sealed partial class MainWindow : Window
         item.Issues.Add(issue);
         item.LastEvent = $"{severity}: {category} — {issue.Message}";
         UiLog($"Run issue added. instance={item.Name}; severity={severity}; category={category}; message={issue.Message}");
-    }
-
-    private void StopSelected(bool force)
-    {
-        foreach (var item in _instances.Where(x => x.Selected && x.Process is { HasExited: false })) StopOne(item, force);
-        RefreshRows();
     }
 
     private void StopOne(InstanceInfo item, bool force)
@@ -1010,7 +867,6 @@ public sealed partial class MainWindow : Window
         var pollElapsedMs = Stopwatch.GetElapsedTime(pollStarted).TotalMilliseconds;
         if (eventsApplied > 0 || pollElapsedMs >= 100)
             UiLog($"UI poll completed. filesSeen={filesSeen}; eventsApplied={eventsApplied}; elapsedMs={pollElapsedMs:F1}; observedAt={DateTimeOffset.Now:O}");
-        RefreshRows();
         if (_instanceList.SelectedItem is InstanceInfo selected)
         {
             _selectedInstance = selected;
@@ -1131,80 +987,6 @@ public sealed partial class MainWindow : Window
     private void UpdateDetailsText()
     {
         RefreshDashboardDetails();
-    }
-
-    private void OpenLatestInternalLog()
-    {
-        if (_selectedInstance is null) { _details.Text = "Select an instance first."; UiLog("Open internal.log ignored. reason=no-selected-instance"); return; }
-        var path = FindLatestInternalLog(_selectedInstance);
-        if (path is null) { _details.Text = "No internal.log exists for this instance yet. Run it with internal logging enabled."; UiLog($"Open internal.log ignored. instance={_selectedInstance.Name}; reason=file-not-found"); return; }
-        UiLog($"Opening latest internal.log. instance={_selectedInstance.Name}; path={path}");
-        OpenFile(path, "internal.log");
-    }
-
-    private void OpenAllInternalLogs()
-    {
-        if (_selectedInstance is null) { _details.Text = "Select an instance first."; UiLog("Open all internal logs ignored. reason=no-selected-instance"); return; }
-        var item = _selectedInstance;
-        var paths = FindInternalLogs(item);
-        if (paths.Count == 0)
-        {
-            _details.Text = "No internal.log files exist for this instance yet. Run it with internal logging enabled.";
-            UiLog($"Open all internal logs ignored. instance={item.Name}; reason=file-not-found");
-            return;
-        }
-
-        var outputFolder = Directory.Exists(item.CurrentRunFolder) ? item.CurrentRunFolder : item.LogsFolder;
-        Directory.CreateDirectory(outputFolder);
-        var runLabel = string.IsNullOrWhiteSpace(item.CurrentRunId) ? DateTime.Now.ToString("yyyyMMdd_HHmmss") : item.CurrentRunId;
-        var combinedPath = Path.Combine(outputFolder, $"InternalLogs_{runLabel}_all-environments.log");
-        try
-        {
-            using (var writer = new StreamWriter(combinedPath, false, new UTF8Encoding(false)))
-            {
-                writer.WriteLine("Load Testing Tool - combined internal logs");
-                writer.WriteLine($"Instance: {item.Name}");
-                writer.WriteLine($"Run: {runLabel}");
-                writer.WriteLine($"Generated: {DateTimeOffset.Now:O}");
-                writer.WriteLine();
-                foreach (var path in paths)
-                {
-                    writer.WriteLine($"===== ENVIRONMENT: {FindEnvironmentLabel(path, item)} =====");
-                    writer.WriteLine($"Source: {path}");
-                    writer.WriteLine(File.ReadAllText(path));
-                    writer.WriteLine();
-                }
-            }
-            _details.Text = $"Combined internal logs created:\n{combinedPath}\nEnvironments included: {paths.Count}";
-            UiLog($"Opening all internal logs. instance={item.Name}; runId={item.CurrentRunId}; files={paths.Count}; output={combinedPath}");
-            OpenFile(combinedPath, "combined internal logs");
-        }
-        catch (Exception ex)
-        {
-            _details.Text = $"Could not combine internal logs:\n{ex.Message}";
-            UiLog($"Could not combine internal logs. instance={item.Name}; error={ex}");
-        }
-    }
-
-    private void OpenInternalLogForSelection(InstanceInfo item, string testcase, string environment, string result, string run)
-    {
-        var candidates = FindInternalLogs(item)
-            .Where(candidate => FindTestcaseLabel(candidate, item).Equals(testcase, StringComparison.OrdinalIgnoreCase))
-            .Where(candidate => FindEnvironmentLabel(candidate, item).Equals(environment, StringComparison.OrdinalIgnoreCase));
-        if (!string.IsNullOrWhiteSpace(result) && !result.Equals("All", StringComparison.OrdinalIgnoreCase))
-            candidates = candidates.Where(candidate => Path.GetFileName(candidate).Contains($"_{result.ToLowerInvariant()}_", StringComparison.OrdinalIgnoreCase));
-        var path = candidates
-            .OrderByDescending(File.GetLastWriteTimeUtc)
-            .FirstOrDefault();
-        if (path is null)
-        {
-            _details.Text = $"No internal log exists for testcase '{testcase}' and environment '{environment}' for {run.ToLowerInvariant()}.";
-            UiLog($"Open selected internal log ignored. instance={item.Name}; testcase={testcase}; environment={environment}; result={result}; run={run}; reason=file-not-found");
-            return;
-        }
-
-        UiLog($"Opening selected internal log. instance={item.Name}; testcase={testcase}; environment={environment}; result={result}; run={run}; path={path}");
-        OpenFile(path, $"internal log ({testcase}, {environment})");
     }
 
     private void OpenLatestResultWorkbook()
@@ -1475,14 +1257,6 @@ public sealed partial class MainWindow : Window
         => value?.Equals("sequential", StringComparison.OrdinalIgnoreCase) == true || value?.Equals("loop", StringComparison.OrdinalIgnoreCase) == true
             ? "sequential"
             : "parallel";
-
-    private static string? FindLatestInternalLog(InstanceInfo item)
-    {
-        return FindInternalLogs(item)
-            .OrderByDescending(path => !string.IsNullOrWhiteSpace(item.CurrentRunId) && (path.Contains(item.CurrentRunId, StringComparison.OrdinalIgnoreCase) || path.Contains($"_Run_{(item.CurrentRunId.Length <= 8 ? item.CurrentRunId : item.CurrentRunId[^8..])}", StringComparison.OrdinalIgnoreCase)))
-            .ThenByDescending(File.GetLastWriteTimeUtc)
-            .FirstOrDefault();
-    }
 
     private static string? FindRunFolder(InstanceInfo item, string runId)
     {

@@ -32,8 +32,8 @@ public class DetailTextSizeTests
     {
         try
         {
-            var dashboard = new MainWindow();
-            dashboard.Width = 1500; dashboard.Height = 900; dashboard.Show();
+            var dashboard = new Window { Width = 1500, Height = 900, Content = new StackPanel { Children = { DetailTextSize.CreateBar(), DetailTextSize.Wrap(new TextBlock { Text = "x" }) } } };
+            dashboard.Show();
             Dispatcher.UIThread.RunJobs();
             Button Find(string tag) => dashboard.GetVisualDescendants().OfType<Button>().First(b => b.Tag as string == tag);
             Assert.Equal("100%", Find("text-normal").Content);
