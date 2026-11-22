@@ -44,7 +44,7 @@ public class AssertionAlternativesTests
         Assert.Equal([new AssertionAlternatives.Alternative(true, "eq", "201"), new AssertionAlternatives.Alternative(false, "contains", "1")], alternatives);
         Assert.Equal("<or: 201>", AssertionAlternatives.Tag(true, "eq", "201", "eq"));
         Assert.Equal("<and: {gte}500>", AssertionAlternatives.Tag(false, "gte", "500", "eq"));
-        Assert.False(AssertionAlternatives.CanCombine("notempty"));
+        Assert.False(AssertionAlternatives.CanCombine("size"));
         Assert.True(AssertionAlternatives.CanCombine("contains"));
     }
 
@@ -59,7 +59,37 @@ public class AssertionAlternativesTests
         var fail = engine.Evaluate(body, "json", [Make("200 <or: 201>")], "r", "q").Single();
         Assert.Equal("FAIL", fail.Result);
         Assert.Contains("eq '200' or eq '201'", fail.FailureMessage);
-        var bad = Record.Exception(() => engine.Evaluate(body, "json", [Make("<or: 1>", "notempty")], "r", "q"));
+        var bad = Record.Exception(() => engine.Evaluate(body, "json", [Make("<or: 1>", "size")], "r", "q"));
         Assert.Contains("cannot be combined", bad?.Message ?? string.Empty);
+    }
+}
+
+public class HeaderOrAndEscapeTests
+{
+    [Theory]
+    [InlineData("eq|contains", "abc", "xabcx", true)]
+    [InlineData("eq|contains", "abc", "zzz", false)]
+    [InlineData("empty|eq", "5", "", true)]
+    [InlineData("empty|eq", "5", "5", true)]
+    [InlineData("empty|eq", "5", "6", false)]
+    public void A_verb_list_passes_when_any_verb_accepts(string verb, string expected, string actual, bool pass)
+        => Assert.Equal(pass, LoadTestingTool.Execution.AssertionAlternatives.TestAny(verb, v => LoadTestingTool.Execution.AssertionEngine.Test(v, actual, expected, true)));
+
+    [Fact]
+    public void Greater_than_and_ampersand_survive_the_tag_round_trip()
+    {
+        var tag = LoadTestingTool.Execution.AssertionAlternatives.Tag(true, "contains", "a>b & c", "eq");
+        Assert.Equal("<or: {contains}a&gt;b &amp; c>", tag);
+        var (_, alts) = LoadTestingTool.Execution.AssertionAlternatives.Parse("x " + tag, "eq");
+        Assert.Equal("a>b & c", Assert.Single(alts).Value);
+    }
+
+    [Fact]
+    public void Empty_can_be_combined_and_header_lists_are_valid_verbs()
+    {
+        Assert.True(LoadTestingTool.Execution.AssertionAlternatives.CanCombine("empty"));
+        Assert.False(LoadTestingTool.Execution.AssertionAlternatives.CanCombine("size"));
+        Assert.True(LoadTestingTool.Editing.ValueParts.SplitCell("{eq|contains}abc").Verb == "eq|contains");
+        Assert.Equal("equals or contains", LoadTestingTool.Editing.ValueParts.WordsOf("eq|contains"));
     }
 }

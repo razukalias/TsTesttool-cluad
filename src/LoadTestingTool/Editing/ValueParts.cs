@@ -160,7 +160,7 @@ public static class ValueParts
     {
         var text = cell ?? string.Empty;
         var trimmed = text.TrimStart();
-        if (trimmed.StartsWith('{') && trimmed.IndexOf('}') is > 1 and var close && Verbs.Contains(trimmed[1..close].Trim()))
+        if (trimmed.StartsWith('{') && trimmed.IndexOf('}') is > 1 and var close && trimmed[1..close].Split('|').All(v => Verbs.Contains(v.Trim())))
             return (trimmed[1..close].Trim().ToLowerInvariant(), trimmed[(close + 1)..]);
         return (null, text);
     }
@@ -169,5 +169,8 @@ public static class ValueParts
     public static string JoinCell(string verb, string headerVerb, string expected)
         => verb.Equals(headerVerb, StringComparison.OrdinalIgnoreCase) ? expected : $"{{{verb.ToLowerInvariant()}}}{expected}";
 
-    public static bool NeedsValue(string verb) => Conditions.FirstOrDefault(c => c.Verb.Equals(verb, StringComparison.OrdinalIgnoreCase)).NeedsValue;
+    public static bool NeedsValue(string verb) => verb.Split('|').Any(v => Conditions.FirstOrDefault(c => c.Verb.Equals(v.Trim(), StringComparison.OrdinalIgnoreCase)).NeedsValue);
+
+    /// <summary>A verb in plain words; an OR list reads "equals or contains".</summary>
+    public static string WordsOf(string verb) => string.Join(" or ", verb.Split('|').Select(v => Conditions.Where(c => c.Verb.Equals(v.Trim(), StringComparison.OrdinalIgnoreCase)).Select(c => c.Words).FirstOrDefault() ?? v.Trim()));
 }

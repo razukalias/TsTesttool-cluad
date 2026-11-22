@@ -68,6 +68,10 @@ public sealed partial class RecordLineViewModel : ObservableObject
     /// <summary>The request column <c>dontrun</c>: the steps this one row skips.</summary>
     public bool IsDontRun => !IsExpected && Title.Equals("dontrun", StringComparison.OrdinalIgnoreCase);
 
+    public const string ConditionHelp = "+ OR / + AND add another check of the same field: the cell passes when this value OR the new one passes (AND: both must pass; AND binds tighter than OR). "
+        + "Stored after the value as <or: 201> or <and: {gte}500>. A > inside a value is stored as &gt; and & as &amp; (the editor does this for you). "
+        + "OR also fits is empty / exists (\"empty OR equals 5\"); AND with them is rarely useful. To accept several verbs for the whole column use the column's verb button, \"…or also accept\" (stored as {eq|contains}).";
+
     public const string DontRunHelp = "Steps that are skipped for this row only. Write step names separated by commas (or |), for example CreatePost1, Step3. "
         + "Only the listed steps are skipped; the row's other steps still run, and every other row is unaffected. Use \"Choose steps\" to tick them instead of typing.";
 
@@ -89,9 +93,12 @@ public sealed partial class RecordLineViewModel : ObservableObject
     /// <summary>The condition in plain words (for the dropdown).</summary>
     public string ConditionWords
     {
-        get => ValueParts.Conditions.FirstOrDefault(c => c.Verb == Verb).Words ?? Verb;
+        get => ValueParts.Conditions.FirstOrDefault(c => c.Verb == AssertionAlternatives.Split(Verb)[0]).Words ?? Verb;
         set { if (ValueParts.Conditions.FirstOrDefault(c => c.Words == value).Verb is { } verb) SetCondition(verb); }
     }
+
+    /// <summary>The other verbs of an OR list in the column header, e.g. "or contains" (empty for a single verb).</summary>
+    public string ExtraVerbWords { get { var all = AssertionAlternatives.Split(Verb); return all.Length < 2 ? string.Empty : "or " + ValueParts.WordsOf(string.Join("|", all.Skip(1))); } }
 
     public static IReadOnlyList<string> ConditionChoices { get; } = ValueParts.Conditions.Select(c => c.Words).ToList();
 
@@ -121,6 +128,7 @@ public sealed partial class RecordLineViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowsValue));
         OnPropertyChanged(nameof(ConditionWords));
         OnPropertyChanged(nameof(CanCombine));
+        OnPropertyChanged(nameof(ExtraVerbWords));
     }
 
     private void Write()

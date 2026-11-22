@@ -933,11 +933,10 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 
 
 ## Not done: OR / AND assertions, header, button moves (2026-11-22)
-- OR/AND (`<or: …>` / `<and: …>`) only on value verbs (eq, ne, lt, lte, gt, gte, contains, notcontains, startswith, endswith, regex, in); a value cannot contain `>` (the wizard replaces it with `)`).
-- No OR/AND at header level (one verb per column); the header only shows the verb, the "+ OR / + AND" buttons live in the cell wizard.
-- WorkbookValidator does not yet warn about <or:>/<and:> on non-combinable verbs (the engine throws a clear error at run time).
-- "Assign actual" / failed-cell list do not understand cells with <or:>/<and:> tags (they treat the whole text as the value).
-- Header verb button has no hover preview of the alternatives used in the column; no screenshot test of the new header.
+- Header OR is `{eq|contains}` (OR only, same value); AND only per cell via `<and:>`. No header-level AND.
+- WorkbookValidator does not yet warn about <or:>/<and:> with the `size` verb (the engine throws a clear error at run time).
+- No unit test yet for "Assign actual keeps <or:>/<and:> tags" and for the header "…or also accept" menu (only engine/parse/wizard tests).
+- Header verb button has no hover preview of alternatives used in the column; no screenshot test of the new header.
 - Legacy Apply actual values / Select failed / Clear are disabled placeholders in the Artifacts tab; delete once nobody misses them.
 - "Compare runs…" opens the History Explorer (tick runs there); it does not pre-tick the last two runs.
-- Flaky under full-suite load: MockServerWindowTests (passes alone).
+- Flaky under full-suite load: MockServerWindowTests, MockResponseTimeAndUrlTests (pass alone).

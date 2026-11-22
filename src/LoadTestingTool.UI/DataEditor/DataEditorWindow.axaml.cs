@@ -658,7 +658,7 @@ public partial class DataEditorWindow : Window
             panel.Children.Add(holder);
             if (openVerbs is not null)
             {
-                var words = verb.Length == 0 ? "equals" : LoadTestingTool.Editing.ValueParts.Conditions.Where(c => c.Verb.Equals(verb, StringComparison.OrdinalIgnoreCase)).Select(c => c.Words).FirstOrDefault() ?? verb;
+                var words = verb.Length == 0 ? "equals" : LoadTestingTool.Editing.ValueParts.WordsOf(verb);
                 var verbButton = new Button { Content = words + " ▾", Tag = "header-verb", FontSize = 10.5, Padding = new Avalonia.Thickness(4, 1), MinHeight = 0, MinWidth = 0, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch, HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center, Background = new SolidColorBrush(Color.Parse("#1D3B33")), Foreground = new SolidColorBrush(Color.Parse("#39D39B")), Margin = new Avalonia.Thickness(0, 0, 0, 2) };
                 ToolTip.SetTip(verbButton, "Assertion verb of this column: click to change it (equals, contains, greater than …)");
                 verbButton.Click += (_, e) => { e.Handled = true; openVerbs(column, verbButton); };

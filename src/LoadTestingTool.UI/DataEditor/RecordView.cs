@@ -172,7 +172,7 @@ public sealed class RecordLineView : Border
         Grid.SetColumn(right, 1);
         right.Children.Add(_chips);
         right.Children.Add(_alternatives);
-        if (line.IsDontRun) { _help.Text = RecordLineViewModel.DontRunHelp; _help.IsVisible = true; right.Children.Add(_help); }
+        if (line.IsDontRun || line.HasCondition) right.Children.Add(_help);
         right.Children.Add(_raw);
         right.Children.Add(_example);
         right.Children.Add(_warning);
@@ -191,6 +191,7 @@ public sealed class RecordLineView : Border
             var box = new ComboBox { ItemsSource = RecordLineViewModel.ConditionChoices, SelectedItem = _line.ConditionWords, MinWidth = 150, Margin = new Thickness(0, 0, 8, 4), Tag = "condition" };
             box.SelectionChanged += (_, _) => { if (box.SelectedItem is string words && words != _line.ConditionWords) _line.ConditionWords = words; };
             _chips.Children.Add(box);
+            if (_line.ExtraVerbWords.Length > 0) _chips.Children.Add(new TextBlock { Text = _line.ExtraVerbWords + " (set in the column header)", Foreground = Brush.Parse("#8EA4BC"), FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 4), Tag = "header-or-note" });
         }
         if (_line.ShowsValue)
         {
@@ -208,6 +209,8 @@ public sealed class RecordLineView : Border
         var generated = _line.Parts.Any(p => p.Kind != ValuePartKind.Text);
         _raw.Text = _line.Raw.Length == 0 ? "(empty)" : "stored as: " + _line.Raw;
         _raw.IsVisible = generated || _line.Raw.Length == 0 || _line.HasCondition && _line.Raw.StartsWith('{');   // plain text needs no second copy
+        _help.Text = _line.IsDontRun ? RecordLineViewModel.DontRunHelp : RecordLineViewModel.ConditionHelp;
+        _help.IsVisible = _line.IsDontRun || _line.CanCombine && _line.ShowsValue;
         _example.Text = generated ? "e.g. " + _line.Example : string.Empty;
         _example.IsVisible = generated;
         _warning.Text = _line.Warnings.Count == 0 ? string.Empty : "⚠ " + string.Join(" ", _line.Warnings);
@@ -237,7 +240,7 @@ public sealed class RecordLineView : Border
             var verb = new ComboBox { ItemsSource = verbs.Select(v => v.Words).ToList(), SelectedItem = verbs.FirstOrDefault(v => v.Verb == item.Verb).Words ?? verbs.First().Words, MinWidth = 150, Tag = "alt-verb" };
             verb.SelectionChanged += (_, _) => { if (verb.SelectedItem is string words && verbs.First(v => v.Words == words).Verb is var chosen && chosen != item.Verb) _line.ChangeAlternative(index, item with { Verb = chosen }); };
             var value = new TextBox { Text = item.Value, MinWidth = 160, Watermark = "value", Tag = "alt-value", IsVisible = ValueParts.NeedsValue(item.Verb) };
-            void Commit() { var text = (value.Text ?? string.Empty).Replace('>', ')').Trim(); if (text != item.Value) _line.ChangeAlternative(index, item with { Value = text }); }
+            void Commit() { var text = (value.Text ?? string.Empty).Trim(); if (text != item.Value) _line.ChangeAlternative(index, item with { Value = text }); }
             value.LostFocus += (_, _) => Commit();
             value.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Commit(); e.Handled = true; } };
             var remove = new Button { Content = "✕", Tag = "alt-remove", Padding = new Thickness(8, 3) };

@@ -162,8 +162,12 @@ public sealed partial class DataEditorViewModel
     public bool AssignActual(DataRowViewModel row, int cellIndex, FailureDetail failure)
     {
         if (cellIndex < 0 || cellIndex >= row.Cells.Count || !CanAssign(row, cellIndex, failure)) return false;
-        var (verb, _) = ValueParts.SplitCell(row.Cells[cellIndex] ?? string.Empty);
-        row.Cells[cellIndex] = (verb is null ? string.Empty : "{" + verb + "}") + failure.Actual;
+        var (verb, expected) = ValueParts.SplitCell(row.Cells[cellIndex] ?? string.Empty);
+        // OR / AND checks the user wrote stay: only the cell's own value is replaced
+        var tags = LoadTestingTool.Execution.AssertionAlternatives.HasAny(expected)
+            ? string.Concat(System.Text.RegularExpressions.Regex.Matches(expected, @"<\s*(or|and)\s*:[^>]*>", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Select(m => " " + m.Value))
+            : string.Empty;
+        row.Cells[cellIndex] = (verb is null ? string.Empty : "{" + verb + "}") + failure.Actual + tags;
         RefreshFailedCells();
         return true;
     }

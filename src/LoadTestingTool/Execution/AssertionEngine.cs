@@ -122,15 +122,15 @@ public sealed class AssertionEngine
         if (AssertionAlternatives.HasAny(d.ExpectedValue))
         {
             var (primary, alternatives) = AssertionAlternatives.Parse(d.ExpectedValue, op);
-            foreach (var verb in alternatives.Select(a => a.Verb).Prepend(op))
+            foreach (var verb in alternatives.Select(a => a.Verb).Prepend(op).SelectMany(AssertionAlternatives.Split))
                 if (!AssertionAlternatives.CanCombine(verb)) throw new InvalidDataException($"The verb '{verb}' cannot be combined with <or:> / <and:>; use one of: {string.Join(", ", AssertionAlternatives.Combinable)}.");
-            passed = AssertionAlternatives.Evaluate(op, primary, alternatives, (verb, value) => Test(verb.ToLowerInvariant(), actual, value, exists, verb));
+            passed = AssertionAlternatives.Evaluate(op, primary, alternatives, (verb, value) => AssertionAlternatives.TestAny(verb, v => Test(v, actual, value, exists, v)));
             described = AssertionAlternatives.Describe(op, primary, alternatives);
         }
         else
         {
-            passed = Test(op, actual, d.ExpectedValue, exists, d.AssertionVerb);
-            described = $"{op} '{d.ExpectedValue}'";
+            passed = AssertionAlternatives.TestAny(op, v => Test(v, actual, d.ExpectedValue, exists, v));
+            described = $"{op.Replace("|", " or ")} '{d.ExpectedValue}'";
         }
         var actualValue = actual ?? "<missing>";
         var failureMessage = passed ? "" : $"Assertion failed: {d.ResponsePath} {described}, actual '{actualValue}'.";

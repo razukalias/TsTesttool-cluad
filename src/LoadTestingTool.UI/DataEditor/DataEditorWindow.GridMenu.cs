@@ -196,16 +196,37 @@ public partial class DataEditorWindow
         var cell = editor.Columns.ToList().FindIndex(c => c.Group == column.Group && c.SheetColumn == column.SheetColumn) + 1;
         if (cell < 1) return;
         var current = editor.VerbOf(cell);
+        var all = LoadTestingTool.Execution.AssertionAlternatives.Split(current.Length == 0 ? "eq" : current).ToList();
+        var primary = current.Length == 0 ? string.Empty : all[0];
         var menu = new ContextMenu();
-        menu.Items.Add(new MenuItem { Header = $"Assertion verb for {column.Title}", IsEnabled = false });
+        menu.Items.Add(new MenuItem { Header = $"Assertion verb for {DataEditorViewModel.PlainName(column.Title)}", IsEnabled = false });
         menu.Items.Add(new Separator());
         menu.Items.Add(Item((current.Length == 0 ? "✓  " : "    ") + "No verb (plain equals)", () => { CommitPendingEdit(); editor.ChangeColumnVerb(cell, string.Empty); }, current.Length > 0));
         foreach (var verb in DataEditorViewModel.AssertionVerbs)
         {
             var chosen = verb;
-            var item = Item((verb.Equals(current, StringComparison.OrdinalIgnoreCase) ? "✓  " : "    ") + verb, () => { CommitPendingEdit(); editor.ChangeColumnVerb(cell, chosen); });
+            var item = Item((verb.Equals(primary, StringComparison.OrdinalIgnoreCase) ? "✓  " : "    ") + verb, () => { CommitPendingEdit(); editor.ChangeColumnVerb(cell, chosen); });
             menu.Items.Add(item);
         }
+        // OR list: the value also passes when one of these other verbs accepts it, e.g. {eq|contains}
+        var or = new MenuItem { Header = "…or also accept", Tag = "verb-or-menu" };
+        var orItems = new List<object>();
+        foreach (var verb in DataEditorViewModel.AssertionVerbs.Where(v => LoadTestingTool.Execution.AssertionAlternatives.Combinable.Contains(v)))
+        {
+            var chosen = verb;
+            var on = all.Skip(1).Contains(verb, StringComparer.OrdinalIgnoreCase);
+            var enabled = !verb.Equals(primary.Length == 0 ? "eq" : primary, StringComparison.OrdinalIgnoreCase);
+            orItems.Add(Item((on ? "✓  " : "    ") + verb, () =>
+            {
+                CommitPendingEdit();
+                var list = all.Take(1).Concat(all.Skip(1).Where(v => !v.Equals(chosen, StringComparison.OrdinalIgnoreCase))).ToList();
+                if (!on) list.Add(chosen);
+                editor.ChangeColumnVerb(cell, string.Join("|", list));
+            }, enabled));
+        }
+        or.ItemsSource = orItems;
+        menu.Items.Add(new Separator());
+        menu.Items.Add(or);
         menu.Open(anchor);
     }
 

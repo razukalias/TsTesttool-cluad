@@ -35,13 +35,13 @@ public class AssertionAlternativeLineTests
     }
 
     [Fact]
-    public void Verbs_that_compare_no_value_cannot_be_combined_and_changing_to_one_drops_the_checks()
+    public void The_size_verb_cannot_be_combined_and_changing_to_one_drops_the_checks()
     {
         var row = new Row();
         var line = new RecordLineViewModel(row, 1, "{eq}GetOrder.status", expected: true);
         line.Add(LoadTestingTool.Editing.ValuePart.Text("200"));
         line.AddAlternative(true);
-        line.SetCondition("notempty");
+        line.SetCondition("size");
         Assert.False(line.CanCombine);
         Assert.Empty(line.Alternatives);
         Assert.DoesNotContain("<or", row.Cells[1]);
