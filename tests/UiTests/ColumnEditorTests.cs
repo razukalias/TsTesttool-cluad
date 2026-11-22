@@ -38,6 +38,29 @@ public class ColumnEditorTests
     }
 
     [Fact]
+    public void A_request_column_can_be_shared_with_no_step_prefix_but_an_expected_column_cannot()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        var vm = new DataEditorViewModel(path);
+
+        vm.OpenAddColumnCommand.Execute(null);
+        Assert.Contains(DataEditorViewModel.SharedColumn, vm.NewColumnSteps);
+        vm.NewColumnKind = DataEditorViewModel.ExpectedKind;
+        Assert.DoesNotContain(DataEditorViewModel.SharedColumn, vm.NewColumnSteps);
+        vm.NewColumnKind = DataEditorViewModel.RequestKind;
+        Assert.Contains(DataEditorViewModel.SharedColumn, vm.NewColumnSteps);
+
+        vm.NewColumnStep = DataEditorViewModel.SharedColumn;
+        vm.NewColumnName = "orderid";
+        vm.ConfirmAddColumnCommand.Execute(null);
+        Assert.False(vm.AddColumnVisible);
+        vm.VisibleRows[0].Cells[CellOf(vm, "orderid")] = "O-1";
+        vm.SaveCommand.Execute(null);
+        Assert.Equal("O-1", new WorkbookReader().Read(path).RequestData[(1, "CUST001")].Variables["orderid"]);
+    }
+
+    [Fact]
     public void An_expected_column_uses_its_verb_and_is_asserted_by_the_runner()
     {
         using var dir = new TempDir();

@@ -35,8 +35,9 @@ public sealed record RequestPreview(string StepName, string StepType, string Ver
         }
 
         var warnings = new List<string>();
+        var tags = new List<string>();
         var url = stepRow.Get("targeturl");
-        try { url = Substitute(url, variables); }
+        try { url = Unprotect(Substitute(Protect(url, tags), variables), tags); }
         catch (InvalidDataException ex) { warnings.Add(ex.Message); }
 
         var headers = stepHeaders.Where(h => h.StartsWith("header_", StringComparison.OrdinalIgnoreCase))
@@ -56,12 +57,12 @@ public sealed record RequestPreview(string StepName, string StepType, string Ver
             {
                 try
                 {
-                    var raw = File.ReadAllText(file);
+                    var raw = Protect(File.ReadAllText(file), tags);
                     var unknown = System.Text.RegularExpressions.Regex.Matches(raw, @"_(?:\*([\p{L}\p{N}._\-]+)\*|([\p{L}\p{N}._\-]+))_")
                         .Select(m => m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value)
                         .Where(n => !variables.ContainsKey(n)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                     if (unknown.Count > 0) warnings.Add($"No data column for {string.Join(", ", unknown.Select(n => "_" + n + "_"))} (fine if it comes from an earlier step's response).");
-                    body = TemplateRenderer.Render(raw, contentType, variables);
+                    body = Unprotect(TemplateRenderer.Render(raw, contentType, variables), tags);
                 }
                 catch (Exception ex) when (ex is InvalidDataException or IOException) { warnings.Add(ex.Message); }
             }
@@ -74,6 +75,16 @@ public sealed record RequestPreview(string StepName, string StepType, string Ver
         return new RequestPreview(name, type, Or(stepRow.Get("verb"), "POST").ToUpperInvariant(), url, headers, body,
             warnings.Count == 0 ? null : string.Join(" ", warnings));
     }
+
+    /// <summary>
+    /// A reference such as <c>&lt;From_request_GetOrder.orderid_r&gt;</c> contains underscores, so the _name_ pattern would read
+    /// "request_GetOrder.orderid" out of it and report a missing variable. The runner resolves these first; the preview hides them while it fills in the rest.
+    /// </summary>
+    private static string Protect(string value, List<string> tags)
+        => System.Text.RegularExpressions.Regex.Replace(value, @"<From_[^<>\r\n]*>", m => { tags.Add(m.Value); return "\u0001" + (tags.Count - 1) + "\u0002"; });
+
+    private static string Unprotect(string value, List<string> tags)
+        => tags.Count == 0 ? value : System.Text.RegularExpressions.Regex.Replace(value, "\u0001(\\d+)\u0002", m => tags[int.Parse(m.Groups[1].Value)]);
 
     private static string Or(string value, string fallback) => string.IsNullOrWhiteSpace(value) ? fallback : value;
 

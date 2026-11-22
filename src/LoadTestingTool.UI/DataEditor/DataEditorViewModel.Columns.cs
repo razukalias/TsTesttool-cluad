@@ -17,6 +17,9 @@ public sealed partial class DataEditorViewModel
 
     public ObservableCollection<string> NewColumnSteps { get; } = [];
 
+    /// <summary>Entry in the step list for a request column that belongs to no step: a plain header such as "orderid" that every step of the row can use.</summary>
+    public const string SharedColumn = "(shared, no step)";
+
     [ObservableProperty] private bool _addColumnVisible;
     [ObservableProperty] private string? _newColumnStep;
     [ObservableProperty] private string _newColumnVerb = "eq";
@@ -24,6 +27,13 @@ public sealed partial class DataEditorViewModel
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(NewColumnIsExpected), nameof(NewColumnHint))]
     private string _newColumnKind = RequestKind;
+
+    partial void OnNewColumnKindChanged(string value)
+    {
+        var shared = NewColumnSteps.Contains(SharedColumn);
+        if (value == ExpectedKind && shared) { NewColumnSteps.Remove(SharedColumn); if (NewColumnStep == SharedColumn) NewColumnStep = NewColumnSteps.LastOrDefault(); }
+        else if (value != ExpectedKind && !shared && NewColumnSteps.Count > 0) NewColumnSteps.Add(SharedColumn);
+    }
 
     public bool NewColumnIsExpected => NewColumnKind == ExpectedKind;
     public string NewColumnHint => NewColumnIsExpected ? "Response path, e.g. id or data.user.name" : "Variable name, e.g. title";
@@ -48,6 +58,7 @@ public sealed partial class DataEditorViewModel
         if (SelectedTestcase is not { } testcase) return;
         NewColumnSteps.Clear();
         foreach (var step in testcase.Steps) NewColumnSteps.Add(step);
+        if (!NewColumnIsExpected) NewColumnSteps.Add(SharedColumn);
         NewColumnStep = SelectedStep is { } selected && NewColumnSteps.Contains(selected.CurrentName) ? selected.CurrentName : NewColumnSteps.LastOrDefault();
         NewColumnName = string.Empty;
         NewColumnCount = 1;
@@ -77,19 +88,21 @@ public sealed partial class DataEditorViewModel
     {
         var step = NewColumnStep?.Trim() ?? string.Empty;
         var name = NewColumnName.Trim();
-        if (step.Length == 0) { ShowStatus("Choose the step the column belongs to. Add the step on the Steps tab first.", isError: true); return; }
-        if (name.StartsWith(step + ".", StringComparison.OrdinalIgnoreCase)) name = name[(step.Length + 1)..];
+        var shared = step == SharedColumn && !NewColumnIsExpected;
+        if (shared) step = string.Empty;
+        if (step.Length == 0 && !shared) { ShowStatus("Choose the step the column belongs to. Add the step on the Steps tab first.", isError: true); return; }
+        if (step.Length > 0 && name.StartsWith(step + ".", StringComparison.OrdinalIgnoreCase)) name = name[(step.Length + 1)..];
         if (name.Length == 0 || name.StartsWith('.') || name.EndsWith('.')) { ShowStatus("Enter a name for the column.", isError: true); return; }
 
         var expected = NewColumnIsExpected;
         var count = (int)Math.Clamp(NewColumnCount ?? 1, 1, 200);
         var names = count == 1 ? [name] : Enumerable.Range(1, count).Select(i => name + i.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
-        var headers = names.Select(n => expected ? $"{{{NewColumnVerb}}}{step}.{n}" : $"{step}.{n}").ToList();
+        var headers = names.Select(n => expected ? $"{{{NewColumnVerb}}}{step}.{n}" : shared ? n : $"{step}.{n}").ToList();
         var table = expected ? _document.Response : _document.Request;
         for (var i = 0; i < headers.Count; i++)
         {
             var clash = expected ? table.Headers.Any(h => SamePath(h, step, names[i])) : table.FindColumn(headers[i]) >= 0;
-            if (clash) { ShowStatus($"The {(expected ? "response" : "request")} sheet already has a column for {step}.{names[i]}.", isError: true); return; }
+            if (clash) { ShowStatus($"The {(expected ? "response" : "request")} sheet already has a column for {(shared ? "" : step + ".")}{names[i]}.", isError: true); return; }
         }
 
         var near = NewColumnPlacement != PlaceAtEnd && CurrentColumn is { } current && current.Group == (expected ? ColumnGroup.Response : ColumnGroup.Request) ? current : null;

@@ -35,6 +35,20 @@ public class PreviewAndRunTests
     }
 
     [Fact]
+    public void Preview_leaves_From_references_alone_instead_of_reporting_them_as_missing_variables()
+    {
+        using var dir = new TempDir();
+        var vm = Open(dir);
+        File.WriteAllText(dir.Combine("Templates/create.json"), "{ \"name\": \"_name_\", \"order\": \"<From_request_GetOrder.orderid_r>\" }");
+        vm.SelectedRow = vm.VisibleRows[0];
+        vm.SelectedRow = vm.VisibleRows[1];
+        var preview = Assert.IsType<RequestPreview>(vm.Preview);
+        Assert.DoesNotContain("Missing request variable", preview.Warning ?? "");
+        Assert.DoesNotContain("request_GetOrder", preview.Warning ?? "");
+        Assert.Contains("<From_request_GetOrder.orderid_r>", preview.Body);
+    }
+
+    [Fact]
     public void Preview_follows_unsaved_edits_and_the_selected_row()
     {
         using var dir = new TempDir();
