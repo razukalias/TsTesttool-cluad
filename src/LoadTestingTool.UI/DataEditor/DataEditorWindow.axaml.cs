@@ -90,7 +90,10 @@ public partial class DataEditorWindow : Window
         ShowTitle();
         var framed = new DockPanel();
         DockPanel.SetDock(title, Avalonia.Controls.Dock.Top);
+        var sizeBar = DetailTextSize.CreateBar(); sizeBar.Margin = new Avalonia.Thickness(0, 4, 8, 0);
+        DockPanel.SetDock(sizeBar, Avalonia.Controls.Dock.Top); sizeBar.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right;
         framed.Children.Add(title);
+        framed.Children.Add(sizeBar);
         framed.Children.Add(tabs);
         host.Child = framed;
         _shell.ShowRunDetails();

@@ -11,6 +11,9 @@ public sealed class EditorSettings
     /// <summary>Per workbook, the sheets whose tab is hidden in Table view (empty or missing = all sheets).</summary>
     public Dictionary<string, List<string>> HiddenSheets { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The text size of the run panels (Overview, Assertions, Bugs …): 1 = normal, set with A− / A+ or Ctrl + mouse wheel.</summary>
+    public double DetailTextScale { get; set; } = 1.0;
+
     /// <summary>Rows per page of the history lists (50, 100 or 250).</summary>
     public int HistoryPageSize { get; set; } = 100;
 

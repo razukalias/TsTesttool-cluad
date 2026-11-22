@@ -32,16 +32,19 @@ public class AssertionTabLayoutTests
 
         var labels = dashboard.GetVisualDescendants().OfType<Button>().Select(b => b.Content as string).ToList();
         Assert.DoesNotContain("Open Assertion Workbench", labels);
-        var scroll = dashboard.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Content is StackPanel p && ReferenceEquals(p, typeof(LoadTestingTool.UI.MainWindow).GetField("_assertionItems", Flags)!.GetValue(dashboard)));
+        var scroll = dashboard.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Content is Border { Child: LayoutTransformControl { Child: StackPanel p } } && ReferenceEquals(p, typeof(LoadTestingTool.UI.MainWindow).GetField("_assertionItems", Flags)!.GetValue(dashboard)));
         var bar = dashboard.GetVisualDescendants().OfType<LoadTestingTool.UI.PagerBar>().First(b => b.IsVisible && b.Bounds.Width > 0 && b.GetVisualAncestors().Contains(tabs));
         var scrollTop = scroll.TranslatePoint(new Avalonia.Point(0, 0), dashboard)!.Value;
         var barTop = bar.TranslatePoint(new Avalonia.Point(0, 0), dashboard)!.Value;
         Assert.True(barTop.Y >= scrollTop.Y + scroll.Bounds.Height - 1, $"the pager (y={barTop.Y}) must be below the list (y={scrollTop.Y}, h={scroll.Bounds.Height})");
         Assert.True(bar.Bounds.Width <= tabs.Bounds.Width + 1, "the pager must fit the panel width");
 
+        for (var i = 0; i < 3; i++) LoadTestingTool.UI.DetailTextSize.Step(1);   // 1.5 for the screenshot
+        Dispatcher.UIThread.RunJobs();
         var shots = Environment.GetEnvironmentVariable("UI_SCREENSHOT_DIR") ?? Path.Combine(Path.GetTempPath(), "ui-shots");
         Directory.CreateDirectory(shots);
         dashboard.CaptureRenderedFrame()!.Save(Path.Combine(shots, "assertion-tab.png"));
+        LoadTestingTool.UI.DetailTextSize.Step(0);
         dashboard.Close();
     }
 

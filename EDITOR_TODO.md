@@ -925,5 +925,9 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - [x] Removed the "Open Assertion Workbench" button and the click on an assertion that opened the edit form. Texts built with the dashboard's text helper are selectable with the mouse (copy with Ctrl+C) in the overview, assertion, bug, run summary, environment and artifact panels.
 - [ ] Not done: delete the now unused `AssertionWorkbenchWindow`, `AssertionEditorWindow` and `ApplyAssertionEdit`.
 - [ ] Not done: texts that are not built with the dashboard helper (some labels inside buttons and the editor's own panels) are not selectable.
-- [ ] Not done: "Mock server…" needing several clicks right after the app starts: not reproduced (the window opens in about 0.2 s in tests); needs the real startup timing on the user's machine.
+
+## Text size of the run panels
+- [x] **A−  100%  A+** above the run panels (in the editor next to the instance title, in the dashboard under the selected title) and Ctrl + mouse wheel over a panel: one shared scale (80 % to 200 %, remembered) for Overview, Run Summary, Assertions (filters, list and pager), Bugs, Environments and Artifacts. Text wraps to the width that is left.
+- [ ] Not done: at 150 % and more the Assertions filter block takes most of the height of a short panel (the list gets little room); put the filters in a collapsible or scrollable block.
+- [ ] Not done: the ActionManual tab, the Workbook tab and the History explorer are not under the shared scale.
 

@@ -490,11 +490,11 @@ public sealed partial class MainWindow
         foreach (var control in assertionFilterBar.Children) control.Margin = new Thickness(0, 0, 8, 6);
         _assertionSearch.Watermark = "Show: assertion text, term1 & term2…"; _assertionSearch.Width = 230; _assertionSearch.Tag = "assertion-include";
         var filters = new StackPanel { Spacing = 6, Children = { _failedOnly, assertionFilterBar, _assertionChips, assertionActions } };
-        DockPanel.SetDock(filters, Dock.Top); assertionPanel.Children.Add(filters);
+        var filtersHost = DetailTextSize.Wrap(filters); DockPanel.SetDock(filtersHost, Dock.Top); assertionPanel.Children.Add(filtersHost);
         // the bar is added before the list: the last child of a DockPanel fills the rest, so the list must be last (the bar docks to the bottom)
         var assertionPaging = CreatePaginationBar(false);
-        DockPanel.SetDock(assertionPaging, Dock.Bottom); assertionPanel.Children.Add(assertionPaging);
-        assertionPanel.Children.Add(new ScrollViewer { Content = _assertionItems, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+        var pagingHost = DetailTextSize.Wrap(assertionPaging); DockPanel.SetDock(pagingHost, Dock.Bottom); assertionPanel.Children.Add(pagingHost);
+        assertionPanel.Children.Add(new ScrollViewer { Content = DetailTextSize.Wrap(_assertionItems), HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         _manualTab = new TabItem { Header = BuildActionManualTabHeader(0), Content = BuildActionManualPanel() };
         _bugsTab = new TabItem { Header = "Bugs (0)", Content = Scroll(_bugItems) };
         _detailTabs.ItemsSource = new[]
@@ -509,7 +509,7 @@ public sealed partial class MainWindow
         };
         _overviewPanel.Children.Insert(0, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _overviewFilter, DashboardStyle.Action("Copy overview", () => _ = CopyOverviewAsync()) } });
         var selectedHeader = new StackPanel { Spacing = 6, Margin = new Thickness(14), Children = { _selectedTitle,
-            DashboardStyle.Text("Select a row to inspect. Tick a box to run.", 11, false, DashboardStyle.Muted) } };
+            DashboardStyle.Text("Select a row to inspect. Tick a box to run.", 11, false, DashboardStyle.Muted), DetailTextSize.CreateBar() } };
         var right = new DockPanel(); DockPanel.SetDock(selectedHeader, Dock.Top); right.Children.Add(selectedHeader); right.Children.Add(_detailTabs);
         var rightCard = DashboardStyle.Card(right, new Thickness(0)); rightCard.Margin = new Thickness(14, 0, 0, 0);
         var splitter = new GridSplitter { Width = 5, Background = DashboardStyle.Line, ResizeDirection = GridResizeDirection.Columns, ResizeBehavior = GridResizeBehavior.PreviousAndNext, HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -529,7 +529,7 @@ public sealed partial class MainWindow
         Navigate("Instances");
     }
 
-    private static ScrollViewer Scroll(Control control) => new() { Content = control, Padding = new Thickness(14), HorizontalScrollBarVisibility = ScrollBarVisibility.Auto };
+    private static ScrollViewer Scroll(Control control) => new() { Content = DetailTextSize.Wrap(control), Padding = new Thickness(14), HorizontalScrollBarVisibility = ScrollBarVisibility.Auto };
     private void Navigate(string page)
     {
         if (page.Equals("History", StringComparison.OrdinalIgnoreCase))
