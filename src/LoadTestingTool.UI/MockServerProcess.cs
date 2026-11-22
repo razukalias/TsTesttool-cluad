@@ -57,6 +57,18 @@ internal sealed class MockServerProcess
         return "The server did not answer on port " + port + " within 6 seconds. " + Output.Trim();
     }
 
+    /// <summary>Ends the server when its window closes: asks it to stop, then kills the process this window started so nothing keeps running in the background.</summary>
+    public void Shutdown(int port)
+    {
+        try { using var client = new MockServerClient(port); client.StopAsync().Wait(TimeSpan.FromSeconds(1)); }
+        catch (Exception) { /* not running, or already gone */ }
+        var process = _process;
+        _process = null;
+        if (process is null) return;
+        try { if (!process.WaitForExit(500)) process.Kill(true); }
+        catch (InvalidOperationException) { }
+    }
+
     public async Task StopAsync(int port)
     {
         using (var client = new MockServerClient(port)) await client.StopAsync();

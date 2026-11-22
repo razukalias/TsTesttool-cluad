@@ -213,6 +213,24 @@ public class MockServerWindowTests
     }
 
     [AvaloniaFact]
+    public async Task Closing_the_window_stops_the_running_server()
+    {
+        using var dir = new TempDir();
+        var window = Open(dir);
+        window.Config.Port = MockServerHost.FreePort();
+        try
+        {
+            await window.ToggleRunAsync();
+            using var http = new HttpClient();
+            var url = $"http://127.0.0.1:{window.Config.Port}";
+            Assert.Equal(HttpStatusCode.OK, (await http.GetAsync(url + "/health")).StatusCode);
+            window.Close();
+            await Assert.ThrowsAnyAsync<HttpRequestException>(() => http.GetStringAsync(url + "/health"));
+        }
+        finally { using var client = new MockServerClient(window.Config.Port); await client.StopAsync(); }
+    }
+
+    [AvaloniaFact]
     public async Task RunReportsABusyPortAndAMissingRunner()
     {
         using var dir = new TempDir();

@@ -59,7 +59,12 @@ public sealed partial class MockServerWindow : Window
         TryLoadLastServer();
         _timer.Tick += async (_, _) => await PollAsync();
         Opened += (_, _) => _timer.Start();
-        Closed += (_, _) => _timer.Stop();
+        Closed += (_, _) =>
+        {
+            _timer.Stop();
+            if (_running || _process.Owns) _process.Shutdown(_config.Port);   // closing the form disconnects the server
+            _client?.Dispose();
+        };
     }
 
     private static MockServerConfig Starter() => new()
