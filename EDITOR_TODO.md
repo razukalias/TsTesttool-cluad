@@ -943,3 +943,5 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - Dashboard instance header ("2 testcases", ▶ N) may still show old counts until the next instance refresh after a save in the editor; only the run check's catalog is refreshed now.
 - A refused launch (testcase not in the catalog etc.) only shows in the editor status line / Overview run issues; consider a dialog.
 - Object/array header paths (`Step.metadata`) are tested as their JSON text; "Assign actual" on such a cell would write the whole JSON (no guard yet), and the response-tree header builder does not yet tell the user that eq on an object compares its whole JSON text.
+- SQL step: the ConnectionProfile box is free text (no list of the profiles in appsettings.json, no "Test connection" button); a wrong name only fails at run time. Runtime itself verified with the sample instance (SQLite).
+- Mock server: closing asks to save only for this window; routes of a server file that is running are applied on Save (not live while typing).

@@ -56,6 +56,7 @@ public sealed partial class MockServerWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Content = Build();
         LoadIntoControls();
+        TryLoadLastServer();
         _timer.Tick += async (_, _) => await PollAsync();
         Opened += (_, _) => _timer.Start();
         Closed += (_, _) => _timer.Stop();
@@ -152,6 +153,61 @@ public sealed partial class MockServerWindow : Window
     {
         _config = MockServerConfig.Load(path); _path = path;
         LoadIntoControls();
+        RememberLastServer();
+    }
+
+    private string LastServerFile => Path.Combine(_serversFolder, "last-server.txt");
+
+    /// <summary>The window opens with the server file that was open or saved last, not with the built-in sample, so routes saved earlier are still there.</summary>
+    private void TryLoadLastServer()
+    {
+        try
+        {
+            if (!File.Exists(LastServerFile)) return;
+            var path = File.ReadAllText(LastServerFile).Trim();
+            if (path.Length > 0 && File.Exists(path)) { _config = MockServerConfig.Load(path); _path = path; LoadIntoControls(); }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { _problems.Text = "The last mock server file could not be read: " + exception.Message; }
+    }
+
+    private void RememberLastServer()
+    {
+        try { Directory.CreateDirectory(_serversFolder); if (_path is not null) File.WriteAllText(LastServerFile, _path); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { /* the next start opens the sample instead */ }
+    }
+
+    private bool _closeConfirmed;
+
+    /// <summary>Closing with changes that were not saved asks: save, discard or stay.</summary>
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        base.OnClosing(e);
+        if (e.Cancel || !_dirty || _closeConfirmed) return;
+        e.Cancel = true;
+        _ = AskToSaveThenCloseAsync();
+    }
+
+    private async Task AskToSaveThenCloseAsync()
+    {
+        var choice = "cancel";
+        var dialog = new Window { Title = "Unsaved mock server", Width = 420, SizeToContent = SizeToContent.Height, WindowStartupLocation = WindowStartupLocation.CenterOwner, CanResize = false };
+        var save = DashboardStyle.Action("Save", () => { choice = "save"; dialog.Close(); }, "primary");
+        var discard = DashboardStyle.Action("Discard", () => { choice = "discard"; dialog.Close(); });
+        var stay = DashboardStyle.Action("Cancel", () => { choice = "cancel"; dialog.Close(); });
+        dialog.Content = new StackPanel { Margin = new Thickness(18), Spacing = 14, Children =
+        {
+            new TextBlock { Text = "The mock server has changes that are not saved (a new or edited route, port, …). Save them before closing?", TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+            new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Children = { save, discard, stay } }
+        } };
+        await dialog.ShowDialog(this);
+        if (choice == "save")
+        {
+            var error = await SaveAsync();
+            if (error is not null && !error.StartsWith("Saved", StringComparison.Ordinal)) { _status.Text = error; return; }   // stays open: the problem is shown
+        }
+        else if (choice == "cancel") return;
+        _closeConfirmed = true;
+        Close();
     }
 
     private async Task OpenAsync()
@@ -179,6 +235,7 @@ public sealed partial class MockServerWindow : Window
         if (problems.Count > 0) { Revalidate(); return "Fix the problems first: " + problems[0]; }
         _path ??= Path.Combine(_serversFolder, FileNameOf(_config.Name));
         _config.Save(_path);
+        RememberLastServer();
         _dirty = false;
         Title = "Mock server – " + Path.GetFileName(_path);
         if (_running && _client is not null)

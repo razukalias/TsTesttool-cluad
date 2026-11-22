@@ -140,6 +140,22 @@ public class MockServerWindowTests
     }
 
     [AvaloniaFact]
+    public async Task A_route_added_and_saved_is_still_there_when_the_window_is_opened_again()
+    {
+        using var dir = new TempDir();
+        var first = Open(dir);
+        ButtonWith(first, "＋").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var path = first.GetVisualDescendants().OfType<TextBox>().First(t => t.Watermark == "/orders/{id}");
+        path.Text = "/customers/{id}"; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Null(await first.SaveAsync());
+        var second = Open(dir);   // a later visit to the same folder
+        Assert.Equal(4, second.Config.Routes.Count);
+        Assert.Contains(second.Config.Routes, r => r.Path == "/customers/{id}");
+        Assert.Equal(first.FilePath, second.FilePath);
+    }
+
+    [AvaloniaFact]
     public async Task SaveWritesTheFileAndNewFromStarterResets()
     {
         using var dir = new TempDir();
