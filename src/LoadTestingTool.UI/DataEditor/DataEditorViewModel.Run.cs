@@ -274,11 +274,16 @@ public sealed partial class DataEditorViewModel
     /// <summary>Raised when a run has been started, so the window can show the Overview.</summary>
     public event EventHandler? RunStarted;
 
+    /// <summary>Raised whenever pressing Run did not start a run, with the reason. The window shows it prominently: the status line alone was easy to miss.</summary>
+    public event EventHandler<string>? RunRefused;
+
+    private void Refuse(string reason) { ShowStatus(reason, isError: true); RunRefused?.Invoke(this, reason); }
+
     private async Task StartRunAsync(RunRequest request, string label, bool applyReuseChoices = true)
     {
-        if (RunHandler is not { } handler) { ShowStatus("Running is only available when the editor is opened from the dashboard.", isError: true); return; }
-        if (IsRunning) { ShowStatus("This instance is already running. Wait for it to finish or stop it first.", isError: true); return; }
-        if (IsDirty) { ShowStatus("Save your changes first — a run reads the saved workbook.", isError: true); return; }
+        if (RunHandler is not { } handler) { Refuse("Running is only available when the editor is opened from the dashboard."); return; }
+        if (IsRunning) { Refuse("This instance is already running. Wait for it to finish or stop it first."); return; }
+        if (IsDirty) { Refuse("Save your changes first — a run reads the saved workbook."); return; }
         IsStartingRun = true;
         try
         {
@@ -292,7 +297,8 @@ public sealed partial class DataEditorViewModel
             }
             var problem = await handler(request);
             RunOptionsVisible = problem is not null && RunOptionsVisible;
-            ShowStatus(problem ?? $"Started {label}. Results appear in the Result column as it runs.", isError: problem is not null);
+            if (problem is not null) Refuse(problem);
+            else ShowStatus($"Started {label}. Results appear in the Result column as it runs.", isError: false);
             if (problem is null) RunStarted?.Invoke(this, EventArgs.Empty);
         }
         finally { IsStartingRun = false; }

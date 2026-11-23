@@ -67,6 +67,15 @@ public partial class DataEditorWindow : Window
     private bool _logsWired;
     private bool _mockWired;
 
+    private NoticeWindow? _notice;
+
+    private void OnRunRefused(object? sender, string reason)
+    {
+        _notice?.Close();
+        _notice = new NoticeWindow("The run did not start", reason);
+        _notice.Show(this);
+    }
+
     private void AttachRunDetails()
     {
         if (this.FindControl<Button>("StorageCleanupButton") is { } cleanup && !_cleanupWired) { _cleanupWired = true; cleanup.Click += (_, _) => _shell.RunDetails?.OpenStorageCleanup(); }
@@ -138,6 +147,7 @@ public partial class DataEditorWindow : Window
             _subscribed.EditTemplateRequested -= OnEditTemplateRequested;
             _subscribed.NewTestcaseRequested -= OnNewTestcaseRequested;
             _subscribed.RunStarted -= OnRunStarted;
+            _subscribed.RunRefused -= OnRunRefused;
         }
         _subscribed = _shell.Current;
         if (_subscribed is null) return;
@@ -154,6 +164,7 @@ public partial class DataEditorWindow : Window
         _subscribed.EditTemplateRequested += OnEditTemplateRequested;
         _subscribed.NewTestcaseRequested += OnNewTestcaseRequested;
         _subscribed.RunStarted += OnRunStarted;
+        _subscribed.RunRefused += OnRunRefused;
         RebuildColumns();
         RebuildStepColumns();
         RebuildSheetColumns();

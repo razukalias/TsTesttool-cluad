@@ -160,17 +160,22 @@ public class PreviewAndRunTests
         using var dir = new TempDir();
         var vm = Open(dir);
         var started = 0;
+        var refused = new List<string>();
+        vm.RunRefused += (_, reason) => refused.Add(reason);   // the window shows each refusal in a notice, not only in the status line
         vm.RunHandler = _ => { started++; return Task.FromResult<string?>("Customers is already running; stop it first."); };
 
         vm.VisibleRows[0].Cells[vm.Columns.First(c => c.Title == "CreateCustomer.name").CellIndex] = "Edited";
         await vm.RunTestcaseCommand.ExecuteAsync(null);
         Assert.Equal(0, started);
         Assert.Contains("Save your changes first", vm.StatusMessage);
+        Assert.Contains("Save your changes first", Assert.Single(refused));
 
         vm.SaveCommand.Execute(null);
         await vm.RunTestcaseCommand.ExecuteAsync(null);
         Assert.Equal(1, started);
-        Assert.True(vm.StatusIsError);
+        Assert.Contains("already running", vm.StatusMessage);
+        Assert.Equal(2, refused.Count);
+        Assert.Contains("already running", refused[1]);
         Assert.Contains("already running", vm.StatusMessage);
     }
 }
