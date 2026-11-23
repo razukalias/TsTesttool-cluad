@@ -469,7 +469,7 @@
     <!-- Banners: file changed on disk, and unsaved changes on close -->
     <StackPanel Grid.Row="1">
       <Border IsVisible="{Binding ExcelOpen}" Background="#3A2E14" BorderBrush="#8A6A1F" BorderThickness="0,0,0,1" Padding="20,8" Tag="excel-open">
-        <TextBlock Text="This workbook is open in Excel. You can edit here, but saving will fail until you close it there." TextWrapping="Wrap" Foreground="#F3D9A4" FontSize="12.5" />
+        <TextBlock Text="The last save failed because this workbook is open in Excel (or locked by another program). Your edits are still here. Close it there and press Save again." TextWrapping="Wrap" Foreground="#F3D9A4" FontSize="12.5" />
       </Border>
       <Border IsVisible="{Binding FileChangedVisible}" Background="#12315A" BorderBrush="#2F6FD0" BorderThickness="0,0,0,1" Padding="20,12" Tag="file-changed">
         <Grid ColumnDefinitions="*,Auto">

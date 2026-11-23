@@ -25,7 +25,6 @@ public sealed partial class DataEditorViewModel : ObservableObject
         InstanceName = string.IsNullOrWhiteSpace(instanceName) ? Path.GetFileNameWithoutExtension(workbookPath) : instanceName;
         _document = WorkbookDocument.Load(WorkbookPath);
         RememberFileTime();
-        RefreshExcelOpen();
         StepRows.CollectionChanged += (_, _) => { for (var i = 0; i < StepRows.Count; i++) StepRows[i].Position = i + 1; };
         LoadTestcases(null);
         InitSheets();
@@ -561,22 +560,8 @@ public sealed partial class DataEditorViewModel : ObservableObject
     [RelayCommand]
     private void Save() => SaveCore(new WorkbookSaveOptions());
 
-    /// <summary>True while Excel (or another program) holds the workbook open: saving would fail until it is closed.</summary>
+    /// <summary>True after a save failed because Excel (or another program) holds the workbook open. Cleared by the next successful save.</summary>
     [ObservableProperty] private bool _excelOpen;
-
-    /// <summary>Excel keeps a "~$name.xlsx" owner file next to a workbook it has open; a file we cannot open for writing counts too.</summary>
-    public void RefreshExcelOpen()
-    {
-        var owner = Path.Combine(Path.GetDirectoryName(WorkbookPath) ?? string.Empty, "~$" + Path.GetFileName(WorkbookPath));
-        var locked = File.Exists(owner);
-        if (!locked)
-        {
-            try { using var _ = new FileStream(WorkbookPath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read); }
-            catch (IOException) { locked = true; }
-            catch (UnauthorizedAccessException) { locked = true; }
-        }
-        ExcelOpen = locked;
-    }
 
     [RelayCommand]
     private void OverwriteAndSave() => SaveCore(new WorkbookSaveOptions { OverwriteExternalChanges = true });
@@ -593,6 +578,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             RemoveLegacyColumns();
             options.BackupFolder ??= DataEngineBackup.ConfiguredFolder(WorkbookPath);
             var result = _document.Save(options);
+            ExcelOpen = false;
             if (result.Saved) { ClearUndoHistory(); _referenceScan = null; RememberFileTime(); }
             if (result.RequiresReload) ReloadAfterRowsMoved(keepRow);
             ConflictVisible = false;
@@ -623,7 +609,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            RefreshExcelOpen();
+            ExcelOpen = true;   // shown only after a save really failed: probing for Excel beforehand gave false alarms (run in progress, previews, sync tools, a stale ~$ file)
             ShowStatus($"Not saved: {FileName} is open in Excel (or locked by another program). Your edits are still here. Close it there and press Save again.", isError: true);
         }
         return false;

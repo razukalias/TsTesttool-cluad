@@ -38,6 +38,26 @@ public class ColumnEditorTests
     }
 
     [Fact]
+    public void The_Excel_warning_appears_only_when_a_save_fails_and_clears_after_a_good_save()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 2);
+        File.WriteAllText(Path.Combine(dir.Path, "~$" + Path.GetFileName(path)), "x");   // a stale owner file alone must not warn
+        var vm = new DataEditorViewModel(path);
+        Assert.False(vm.ExcelOpen);
+
+        vm.VisibleRows[0].Cells[CellOf(vm, "CreateCustomer.name")] = "changed";
+        using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            vm.SaveCommand.Execute(null);
+        Assert.True(vm.ExcelOpen);
+        Assert.True(vm.IsDirty);
+
+        vm.SaveCommand.Execute(null);
+        Assert.False(vm.ExcelOpen);
+        Assert.False(vm.IsDirty);
+    }
+
+    [Fact]
     public void A_request_column_can_be_shared_with_no_step_prefix_but_an_expected_column_cannot()
     {
         using var dir = new TempDir();

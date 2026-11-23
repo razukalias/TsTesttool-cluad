@@ -38,7 +38,7 @@ public partial class DataEditorWindow
         });
 
         _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _statusTimer.Tick += (_, _) => { _shell.RefreshRunStatus(); _shell.Current?.RefreshExcelOpen(); };   // the Excel warning clears itself once Excel is closed
+        _statusTimer.Tick += (_, _) => _shell.RefreshRunStatus();
         _statusTimer.Start();
         Closed += (_, _) => _statusTimer?.Stop();
         if (this.FindControl<Button>("RunTickedButton") is { } runTicked)
