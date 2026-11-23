@@ -12,6 +12,13 @@ public sealed partial class ResultRow(GeneratedHeader header, string step, strin
     public string Step { get; } = step;
     public bool Existing { get; } = existing;
     public bool CanInclude => !Existing;
+
+    /// <summary>The value the new column gets for the row shown: the response value, or what the ✦ wizard built.</summary>
+    public NewColumnWizard.Cell Value { get; } = new(header.Value);
+
+    /// <summary>The cell text built in the wizard, or null while the plain response value is used.</summary>
+    public string? TypedValue => Value.Edited ? Value.Cells[0] : null;
+    public string WizardTitle => $"{{{Verb}}}{Step}.{Header.Path}";
     [ObservableProperty] private string _verb = verb;
     [ObservableProperty] private bool _included = !existing;
     public string HeaderText => $"{{{Verb}}}{Step}.{Header.Path}";
@@ -160,6 +167,7 @@ public sealed class ResponseColumnsSession
     {
         var columns = Included.Select(r => (r.Verb, r.Header.Path)).ToList();
         if (columns.Count == 0) return 0;
-        return Editor.AddResponseBodyColumns(Step, columns, Fill, CurrentRow, TreeFor);
+        var typed = Included.Where(r => r.TypedValue is not null).ToDictionary(r => r.Header.Path, r => r.TypedValue!, StringComparer.OrdinalIgnoreCase);
+        return Editor.AddResponseBodyColumns(Step, columns, Fill, CurrentRow, TreeFor, typed);
     }
 }

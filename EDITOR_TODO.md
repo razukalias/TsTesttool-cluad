@@ -979,4 +979,6 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 
 ## Record mode to JSON mode (open)
 - OPEN: convert the Record mode to a JSON mode (the record view shows and edits the row as JSON). Needs a design first: which fields go in, how request and expected columns map to keys, and how edits are written back to the cells.
-- OPEN (part of JSON mode): adding a JSON item (a request or expected field) in JSON mode should open the same wizard the table cells have (✦: verbs, chips, + menu, bug tags, dontrun step picker), and the "+ Column" dialog for request/response columns should be reused for it, so a new JSON item also creates the column. To confirm with the user.
+- OPEN (JSON mode, later): adding a JSON item in JSON mode should reuse the value wizard and the add-column dialog. Not started; the user said to leave JSON mode for now.
+- DONE: "Template and response" window (step menu, "Open template and response body…"): every new response field and response header has a ✦ button that opens the same value wizard as a table cell (condition, chips, + menu, OR / AND, warnings). The text it builds becomes the new column's cell for the row shown, instead of the plain response value.
+- OPEN: that wizard has no known-bug bar and no "dontrun" picker (a new column has no cell yet to tag); request-template columns (first tab) have no ✦ yet.

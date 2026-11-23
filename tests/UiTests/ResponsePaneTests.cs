@@ -152,6 +152,105 @@ public class ResponseHeaderVerbTests
     }
 }
 
+public class NewColumnWizardTests
+{
+    private static (AddColumnsWindow Window, DataEditorViewModel Editor) Open(TempDir dir)
+    {
+        var path = Samples.CreateLarge(dir, rows: 3);
+        Directory.CreateDirectory(dir.Combine("History"));
+        using (var book = new XLWorkbook())
+        {
+            var sheet = book.AddWorksheet("RequestHistory");
+            string[] headers = ["runid", "dataid", "stepname", "responsebody", "responseheaders"];
+            for (var i = 0; i < headers.Length; i++) sheet.Cell(1, i + 1).Value = headers[i];
+            sheet.Cell(2, 1).Value = "r1"; sheet.Cell(2, 2).Value = "CUST001"; sheet.Cell(2, 3).Value = "CreateCustomer";
+            sheet.Cell(2, 4).Value = "{\"id\":\"A1\",\"address\":{\"city\":\"Oslo\"}}"; sheet.Cell(2, 5).Value = "X-Trace=abc";
+            book.SaveAs(Path.Combine(dir.Combine("History"), "run1.xlsx"));
+        }
+        var editor = new DataEditorViewModel(path, "Customers");
+        var window = new AddColumnsWindow(editor, "CreateCustomer");
+        window.Width = 1180; window.Height = 760;
+        window.Show();
+        window.SelectTab("Response");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        return (window, editor);
+    }
+
+    [AvaloniaFact]
+    public void Every_new_response_field_has_a_wizard_button_and_opens_the_same_value_line_as_a_cell()
+    {
+        using var dir = new TempDir();
+        var (window, editor) = Open(dir);
+        window.ResponsePane.Session!.Choose("address.city", new NodeChoice(NodeMode.AsOne));
+        window.ResponsePane.UseText(window.ResponsePane.Session.BodyFor("CUST001")!);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var button = window.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Tag, "result-wizard"));
+        button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var line = TopLevelContent<RecordLineView>(window);
+        Assert.NotNull(line);
+        Assert.NotNull(editor);
+        window.Close();
+    }
+
+    private static T? TopLevelContent<T>(Window window) where T : Control
+        => Avalonia.Controls.Primitives.OverlayLayer.GetOverlayLayer(window)?.GetVisualDescendants().OfType<T>().FirstOrDefault()
+           ?? window.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.Popup>().Select(p => p.Child).OfType<Control>().SelectMany(c => c.GetVisualDescendants().OfType<T>().Concat(c is T t ? [t] : [])).FirstOrDefault();
+
+    [AvaloniaFact]
+    public void A_value_built_in_the_wizard_is_written_to_the_new_cell_instead_of_the_response_value()
+    {
+        using var dir = new TempDir();
+        var (window, editor) = Open(dir);
+        var session = window.ResponsePane.Session!;
+        session.Choose("address.city", new NodeChoice(NodeMode.AsOne));
+        var city = session.Results.First(r => r.Header.Path == "address.city");
+        Assert.Null(city.TypedValue);
+        city.Value.Cells[0] = "{contains}Os";   // what the wizard writes for "contains Os"
+        Assert.Equal("{contains}Os", city.TypedValue);
+
+        Assert.Equal(1, window.ResponsePane.IncludedCount);
+        window.AddTicked();
+        var cityColumn = editor.Columns.First(c => c.Title.EndsWith("CreateCustomer.address.city"));
+        var row = editor.VisibleRows.First(r => r.CurrentDataId == "CUST001");
+        Assert.Equal("{contains}Os", row.Cells[cityColumn.CellIndex]);   // typed, written even though "Fill the row shown" would give Oslo
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_typed_value_is_written_even_when_the_cells_are_left_empty_and_other_rows_stay_empty()
+    {
+        using var dir = new TempDir();
+        var (window, editor) = Open(dir);
+        var session = window.ResponsePane.Session!;
+        session.Choose("address.city", new NodeChoice(NodeMode.AsOne));
+        session.Fill = ResponseFill.None;
+        session.Results.First(r => r.Header.Path == "address.city").Value.Cells[0] = "Bergen";
+        window.AddTicked();
+        var column = editor.Columns.First(c => c.Title.EndsWith("CreateCustomer.address.city"));
+        Assert.Equal(["Bergen", "", ""], editor.VisibleRows.Select(r => r.Cells[column.CellIndex]).ToArray());
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void A_response_header_can_be_given_a_value_with_the_wizard_too()
+    {
+        using var dir = new TempDir();
+        var (window, editor) = Open(dir);
+        window.SelectTab("Response header");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => Equals(b.Tag, "result-wizard"));
+        var choice = editor.ResponseHeaderChoices.First(c => c.Name == "X-Trace");
+        choice.IsChosen = true;
+        choice.Cell.Cells[0] = "{contains}ab";
+        window.AddTicked();
+        var column = editor.Columns.First(c => c.Group == ColumnGroup.Response && c.Title.Contains("X-Trace"));
+        Assert.Equal("{contains}ab", editor.VisibleRows.First(r => r.CurrentDataId == "CUST001").Cells[column.CellIndex]);
+        window.Close();
+    }
+}
+
 public class ResponseHelpTests
 {
     [AvaloniaFact]

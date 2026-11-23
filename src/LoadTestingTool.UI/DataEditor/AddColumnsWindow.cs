@@ -116,7 +116,8 @@ public sealed class AddColumnsWindow : Window
             box.IsCheckedChanged += (_, _) => choice.IsChosen = box.IsChecked == true;
             var verb = new ComboBox { ItemsSource = DataEditorViewModel.AssertionVerbs, SelectedItem = choice.Verb, MinWidth = 96, FontSize = 12, Tag = "header-verb" };
             verb.SelectionChanged += (_, _) => { if (verb.SelectedItem is string v) choice.Verb = v; };
-            _headerList.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { verb, box } });
+            var wizard = NewColumnWizard.Button(anchor => NewColumnWizard.Open(_editor, anchor, choice.Cell, choice.WizardTitle, () => box.Content = choice.Cell.Edited ? $"{choice.Name}  =  {choice.Cell.Cells[0]}" : choice.Display));
+            _headerList.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { verb, wizard, box } });
         }
     }
 

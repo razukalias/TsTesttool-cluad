@@ -13,6 +13,10 @@ public sealed partial class ResponseHeaderChoice(string step, string name, strin
     public string Value { get; } = value;
     public string Path => LoadTestingTool.Execution.AssertionEngine.ResponseHeaderPrefix + Name;
     public string Header => $"{Step}.{Path}";
+
+    /// <summary>The value the new column gets for the selected row: the header's value, or what the ✦ wizard built.</summary>
+    public NewColumnWizard.Cell Cell { get; } = new(value);
+    public string WizardTitle => $"{{{Verb}}}{Header}";
     public string Display => Value.Length == 0 ? Name : $"{Name}  =  {(Value.Length > 40 ? Value[..40] + "…" : Value)}";
     // volatile headers (Date, Set-Cookie, Server-Timing …) make poor expectations, so they start unticked
     [ObservableProperty] private bool _isChosen = !Volatile.Contains(name);
@@ -47,7 +51,7 @@ public sealed partial class DataEditorViewModel
     /// Adds <c>{verb}Step.path</c> expected columns to the response sheet and fills their cells from the responses: none, the row shown (<paramref name="currentDataId"/>),
     /// or every row from its own response (<paramref name="treeFor"/> gives a row's response). A row whose response lacks the path keeps an empty cell.
     /// </summary>
-    public int AddResponseBodyColumns(string step, IReadOnlyList<(string Verb, string Path)> columns, ResponseFill fill, string? currentDataId, Func<string, LoadTestingTool.Reporting.ResponseNode?> treeFor)
+    public int AddResponseBodyColumns(string step, IReadOnlyList<(string Verb, string Path)> columns, ResponseFill fill, string? currentDataId, Func<string, LoadTestingTool.Reporting.ResponseNode?> treeFor, IReadOnlyDictionary<string, string>? typed = null)
     {
         if (columns.Count == 0) return 0;
         var keepId = SelectedRow?.CurrentDataId;
@@ -68,8 +72,15 @@ public sealed partial class DataEditorViewModel
                     if (LoadTestingTool.Reporting.ResponseTree.ValueAt(tree, path) is { } value && ApplyCell(row, column!.CellIndex, value) == CellResult.Changed) filled++;
             }
         }
+        if (typed is { Count: > 0 })
+        {
+            // values built in the ✦ wizard: written to the row shown, whatever the fill choice is, and instead of the response value
+            foreach (var row in _allRows.Where(r => r.CurrentDataId.Equals(currentDataId, StringComparison.OrdinalIgnoreCase)))
+                foreach (var (path, text) in typed)
+                    if (Columns.FirstOrDefault(col => col.Group == ColumnGroup.Response && SamePathHeader(col.Title, $"{step}.{path}")) is { } column && ApplyCell(row, column.CellIndex, text) == CellResult.Changed) filled++;
+        }
         if (keepId is not null) SelectedRow = _allRows.FirstOrDefault(r => r.CurrentDataId == keepId && r.TestcaseIndex == keepTestcase) ?? SelectedRow;
-        var note = fill == ResponseFill.None ? string.Empty : $" and filled {filled} {(filled == 1 ? "cell" : "cells")}{(rowsWithout > 0 ? $" ({rowsWithout} {(rowsWithout == 1 ? "row has" : "rows have")} no response)" : string.Empty)}";
+        var note = fill == ResponseFill.None && typed is not { Count: > 0 } ? string.Empty : $" and filled {filled} {(filled == 1 ? "cell" : "cells")}{(rowsWithout > 0 ? $" ({rowsWithout} {(rowsWithout == 1 ? "row has" : "rows have")} no response)" : string.Empty)}";
         ShowStatus($"Added {columns.Count} expected {(columns.Count == 1 ? "column" : "columns")}{note}: {string.Join(", ", columns.Take(4).Select(c => $"{step}.{c.Path}"))}{(columns.Count > 4 ? ", …" : string.Empty)}.", isError: false);
         return columns.Count;
     }
@@ -112,13 +123,13 @@ public sealed partial class DataEditorViewModel
         ResponseHeaderChoices.Clear();
         MarkChanged();
         BuildRows();
-        if (fillSelectedRow && dataId is not null)
+        if ((fillSelectedRow || chosen.Any(h => h.Cell.Edited)) && dataId is not null)
         {
             SelectedRow = _allRows.FirstOrDefault(r => r.CurrentDataId == dataId && r.TestcaseIndex == testcaseIndex) ?? SelectedRow;
             if (SelectedRow is { } row)
-                foreach (var header in chosen)
+                foreach (var header in chosen.Where(h => fillSelectedRow || h.Cell.Edited))
                     if (Columns.FirstOrDefault(c => c.Group == ColumnGroup.Response && SamePathHeader(c.Title, header.Header)) is { } column)
-                        row.Cells[column.CellIndex] = header.Value;
+                        row.Cells[column.CellIndex] = header.Cell.Cells[0];   // the wizard's text when it was used, else the header's value
         }
         ShowStatus($"Added {chosen.Count} expected response {(chosen.Count == 1 ? "header" : "headers")}{(fillSelectedRow ? " and filled them for the selected row" : string.Empty)}: {string.Join(", ", chosen.Take(4).Select(c => c.Header))}{(chosen.Count > 4 ? ", …" : string.Empty)}.", isError: false);
         return chosen.Count;

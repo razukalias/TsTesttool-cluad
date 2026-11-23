@@ -231,7 +231,14 @@ public sealed class ResponseColumnsPane : Grid
         var value = new TextBlock { Text = row.Header.Value.Length == 0 ? string.Empty : "= " + row.ValueText, Foreground = Brush.Parse("#7DD3A8"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
         var status = new TextBlock { Text = row.Status, Foreground = Brush.Parse(row.Existing ? "#6C7A8A" : "#8EA4BC"), FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), Tag = "result-status" };
         include.IsCheckedChanged += (_, _) => RefreshSummaryOnly();
-        return new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(2), Children = { include, verb, header, value, status } };
+        var wizard = NewColumnWizard.Button(anchor => NewColumnWizard.Open(_editor, anchor, row.Value, row.WizardTitle, () =>
+        {
+            value.Text = row.TypedValue is { } typed ? "= " + typed : row.Header.Value.Length == 0 ? string.Empty : "= " + row.ValueText;
+            value.Foreground = Brush.Parse(row.TypedValue is null ? "#7DD3A8" : "#FFB86B");
+        }));
+        wizard.IsEnabled = row.CanInclude;
+        value.Tag = "result-value";
+        return new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(2), Children = { include, verb, wizard, header, value, status } };
     }
 
     private static readonly AvaloniaProperty<bool?> ToggleButton_IsChecked = ToggleButton.IsCheckedProperty;
