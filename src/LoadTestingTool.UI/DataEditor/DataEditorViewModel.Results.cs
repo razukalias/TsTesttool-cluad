@@ -50,9 +50,17 @@ public sealed partial class DataEditorViewModel
     partial void OnEnvironmentChoiceChanged(string value)
     {
         if (value is null) { EnvironmentChoice = AllEnvironments; return; }
+        AssignOutcomes();   // the status, counts and cell marks follow the chosen environment
+        UpdateTestcaseResults();
         ApplyFilter();   // rebuilds the rows, so the cell marks are drawn again too
         RefreshRowFailures();
+        if (ShowFailedCells) RefreshFailedCells();
+        if (ShowFailedColumns || ShowBugColumns) RefreshFailedColumns();
     }
+
+    /// <summary>A row's outcome as the chosen environment saw it (the whole outcome when "All environments"); null when the row did not run there.</summary>
+    private RowOutcome? Scoped(RowOutcome? outcome)
+        => outcome is null || !EnvironmentPicked ? outcome : outcome.In(EnvironmentChoice);
 
     private bool EnvironmentPicked => EnvironmentChoice is { Length: > 0 } choice && choice != AllEnvironments;
 
@@ -105,7 +113,7 @@ public sealed partial class DataEditorViewModel
         {
             row.KnownBugCheck = IsKnownBug;
             row.PathText = DisplayPath;
-            row.Outcome = _results?.Find(row.TestcaseIndex, row.CurrentDataId);
+            row.Outcome = Scoped(_results?.Find(row.TestcaseIndex, row.CurrentDataId));
         }
         UpdateRunSummary();   // also after Undo / Redo, which rebuild the rows
     }
@@ -117,14 +125,16 @@ public sealed partial class DataEditorViewModel
         var passed = 0; var failed = 0; var bugs = 0; var failedCells = 0; var bugCells = 0;
         var rows = new Dictionary<(int, string), DataRowViewModel>();
         foreach (var r in _allRows) rows[(r.TestcaseIndex, r.CurrentDataId.Trim().ToUpperInvariant())] = r;
-        foreach (var (key, outcome) in _results.Rows)
+        foreach (var (key, whole) in _results.Rows)
         {
+            if (Scoped(whole) is not { } outcome) continue;
             if (outcome.Passed) { passed++; continue; }
             if (!rows.TryGetValue(key, out var row)) { failed++; continue; }
             if (row.OnlyKnownBugs) bugs++; else failed++;
             failedCells += row.FailedCount; bugCells += row.BugCount;
         }
-        RunSummaryText = $"Last run {_results.WhenLocal.ToString("d MMM HH:mm", CultureInfo.CurrentCulture)}: {passed} passed, {failed} failed" + (bugs > 0 ? $", {bugs} known {(bugs == 1 ? "bug" : "bugs")}" : string.Empty)
+        var scope = EnvironmentPicked ? $" in {EnvironmentChoice}" : string.Empty;
+        RunSummaryText = $"Last run{scope} {_results.WhenLocal.ToString("d MMM HH:mm", CultureInfo.CurrentCulture)}: {passed} passed, {failed} failed" + (bugs > 0 ? $", {bugs} known {(bugs == 1 ? "bug" : "bugs")}" : string.Empty)
             + (failedCells + bugCells > 0 ? $" ({failedCells} failed {(failedCells == 1 ? "cell" : "cells")}, {bugCells} bug {(bugCells == 1 ? "cell" : "cells")})" : string.Empty);
     }
 
@@ -132,7 +142,7 @@ public sealed partial class DataEditorViewModel
     {
         foreach (var testcase in Testcases)
         {
-            var rows = _results?.Rows.Where(r => r.Key.Testcase == testcase.Index).Select(r => r.Value).ToList() ?? [];
+            var rows = _results?.Rows.Where(r => r.Key.Testcase == testcase.Index).Select(r => Scoped(r.Value)).OfType<RowOutcome>().ToList() ?? [];
             testcase.SetResults(rows.Count(r => r.Passed), rows.Count(r => !r.Passed));
         }
     }

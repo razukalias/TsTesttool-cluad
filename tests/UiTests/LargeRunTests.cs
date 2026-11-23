@@ -194,6 +194,38 @@ public class EnvironmentChoiceTests
         Assert.Equal(3, editor.VisibleRows.Count);
     }
 
+    [Fact]
+    public void The_status_counts_and_summary_follow_the_chosen_environment()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        // CUST001 passes in dev and fails in test; CUST002 fails in both; CUST003 only ran in dev (passed)
+        FakeRun.Write(FakeRun.Folder(path), $"events_{FakeRun.RunId}.ndjson",
+            FakeRun.Request(1, "CUST001", "CreateCustomer", env: "dev"), FakeRun.Request(1, "CUST001", "CreateCustomer", env: "test"),
+            FakeRun.Assertion(1, "CUST001", "CreateCustomer", "name", "eq", "Customer 1", "x", env: "test"),
+            FakeRun.Request(1, "CUST002", "CreateCustomer", env: "dev"), FakeRun.Request(1, "CUST002", "CreateCustomer", env: "test"),
+            FakeRun.Assertion(1, "CUST002", "CreateCustomer", "name", "eq", "Customer 2", "y", env: "dev"),
+            FakeRun.Assertion(1, "CUST002", "CreateCustomer", "name", "eq", "Customer 2", "y", env: "test"),
+            FakeRun.Request(1, "CUST003", "CreateCustomer", env: "dev"));
+        var editor = new DataEditorViewModel(path, "Customers");
+        editor.ApplyResults(RunResultsReader.ReadLatest(editor.ResultsFolder));
+        string StatusOf(string id) => editor.VisibleRows.Single(r => r.CurrentDataId == id).ResultText;
+
+        Assert.Equal(["FAIL", "FAIL", "PASS"], new[] { StatusOf("CUST001"), StatusOf("CUST002"), StatusOf("CUST003") });   // all environments together
+
+        editor.EnvironmentChoice = "dev";
+        Assert.Equal(["PASS", "FAIL", "PASS"], new[] { StatusOf("CUST001"), StatusOf("CUST002"), StatusOf("CUST003") });
+        Assert.Contains("in dev", editor.RunSummaryText);
+        Assert.Contains("2 passed, 1 failed", editor.RunSummaryText);
+
+        editor.EnvironmentChoice = "test";
+        Assert.Equal(["FAIL", "FAIL", "—"], new[] { StatusOf("CUST001"), StatusOf("CUST002"), StatusOf("CUST003") });          // CUST003 did not run in test
+        Assert.Contains("0 passed, 2 failed", editor.RunSummaryText);
+
+        editor.EnvironmentChoice = DataEditorViewModel.AllEnvironments;
+        Assert.Equal("FAIL", StatusOf("CUST001"));
+    }
+
     private const string EnvironmentChoiceTests_All = DataEditorViewModel.AllEnvironments;
 }
 

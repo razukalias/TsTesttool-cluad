@@ -28,6 +28,20 @@ public sealed class RowOutcome
     public int SecondaryAssertions { get; internal set; }
     public long MaxDurationMs { get; internal set; }
     public List<FailureDetail> Failures { get; } = [];
+
+    /// <summary>The same row seen through one environment of a multi-environment run (null when the row did not run there).</summary>
+    public RowOutcome? In(string environment)
+        => _byEnvironment.TryGetValue(environment, out var outcome) ? outcome : null;
+
+    internal RowOutcome Child(string environment)
+    {
+        if (!_byEnvironment.TryGetValue(environment, out var outcome)) _byEnvironment[environment] = outcome = new RowOutcome();
+        return outcome;
+    }
+
+    internal IEnumerable<RowOutcome> Children => _byEnvironment.Values;
+    private readonly Dictionary<string, RowOutcome> _byEnvironment = new(StringComparer.OrdinalIgnoreCase);
+
     public bool Passed => FailedRequests == 0 && FailedAssertions == 0 && Requests > 0;
 }
 
@@ -68,7 +82,7 @@ public static class RunResultsReader
 
         var rows = new Dictionary<(int, string), RowOutcome>();
         foreach (var file in runFiles) ReadFile(file.FullName, rows);
-        foreach (var outcome in rows.Values) FoldExplainedRequests(outcome);
+        foreach (var outcome in rows.Values) { FoldExplainedRequests(outcome); foreach (var child in outcome.Children) FoldExplainedRequests(child); }
         return new RunResults { RunId = runId, WhenLocal = runFiles.Max(f => f.LastWriteTime), Rows = rows };
     }
 
@@ -138,6 +152,11 @@ public static class RunResultsReader
                 var environment = Text(root, "environment");
                 if (isRequest) AddRequest(outcome, root, environment);
                 else AddAssertion(outcome, root, environment);
+                if (environment.Length > 0)   // also keep the row per environment, so the table can show one environment's status
+                {
+                    if (isRequest) AddRequest(outcome.Child(environment), root, environment);
+                    else AddAssertion(outcome.Child(environment), root, environment);
+                }
             }
             catch (JsonException)
             {
