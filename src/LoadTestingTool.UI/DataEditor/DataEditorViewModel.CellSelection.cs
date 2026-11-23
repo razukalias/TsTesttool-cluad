@@ -13,7 +13,7 @@ public sealed partial class DataEditorViewModel
             if (_cellSelection is null)
             {
                 _cellSelection = new CellSelection(this);
-                _cellSelection.Changed += (_, _) => OnPropertyChanged(nameof(SelectionText));
+                _cellSelection.Changed += (_, _) => { OnPropertyChanged(nameof(SelectionText)); if (FindVisible && FindScope == ScopeSelectedCells) UpdateMatches(); };
             }
             return _cellSelection;
         }

@@ -139,7 +139,7 @@ public sealed partial class DataEditorViewModel
 
     partial void OnShowFailedOnlyChanged(bool value) => ApplyFilter();
 
-    partial void OnSelectedRowChanged(DataRowViewModel? value) { RefreshRowFailures(); RefreshPreview(); if (ShowRecord) BuildRecord(); }
+    partial void OnSelectedRowChanged(DataRowViewModel? value) { RefreshRowFailures(); RefreshPreview(); if (ShowRecord) BuildRecord(); if (FindVisible && FindScope == ScopeCurrentRow) UpdateMatches(); }
 
     partial void OnSelectedFailureChanged(FailureViewModel? value)
     {

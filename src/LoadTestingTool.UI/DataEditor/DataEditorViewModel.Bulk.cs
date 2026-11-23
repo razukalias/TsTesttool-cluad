@@ -12,7 +12,15 @@ public sealed partial class DataEditorViewModel
     public const string ScopeAllColumns = "All columns";
     public const string ScopeCurrentColumn = "Current column";
 
-    public static IReadOnlyList<string> FindScopes { get; } = [ScopeAllColumns, ScopeCurrentColumn];
+    public const string ScopeCurrentRow = "Current row";
+    public const string ScopeSelectedCells = "Selected cells";
+    public const string ScopeHeaders = "Column headers";
+    public const string ScopeHeadersAndCells = "Headers + all cells";
+
+    public static IReadOnlyList<string> FindScopes { get; } = [ScopeAllColumns, ScopeCurrentColumn, ScopeCurrentRow, ScopeSelectedCells, ScopeHeaders, ScopeHeadersAndCells];
+
+    private bool FindInHeaders => !ShowSteps && FindScope is ScopeHeaders or ScopeHeadersAndCells;
+    private bool FindInCells => FindScope is not ScopeHeaders;
 
     /// <summary>Grid position of the cell being worked in (0 is the data ID); set by the view.</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(CurrentColumnTitle))]
@@ -124,6 +132,14 @@ public sealed partial class DataEditorViewModel
         var total = 0;
         var cellsChanged = 0;
         Record($"replace \"{Shorten(FindText)}\" with \"{Shorten(ReplaceText)}\"");
+        var headersChanged = 0;
+        if (FindInHeaders)
+        {
+            // A header is renamed like the column menu does it; <From_…> references to it are rewritten when saving, which asks first.
+            var renames = HeaderMatches().Select(h => (h.Cell, Name: Replace(h.Header))).ToList();
+            foreach (var (cell, name) in renames) if (RenameColumnTo(cell, name)) { headersChanged++; total++; }
+        }
+        if (!FindInCells) { FinishBulk(headersChanged, $"Renamed {headersChanged} column {(headersChanged == 1 ? "header" : "headers")}. <From_…> references to them are updated when you save.", 0, 0); UpdateMatches(); return; }
         if (ShowSteps)
         {
             foreach (var (step, cell, text) in StepMatchingCells())
@@ -136,28 +152,53 @@ public sealed partial class DataEditorViewModel
             var replaced = Replace(text);
             if (ApplyCell(row, cell, replaced) == CellResult.Changed) { cellsChanged++; total += CountMatches(text); }
         }
-        FinishBulk(cellsChanged, $"Replaced {total} {(total == 1 ? "match" : "matches")} in {cellsChanged} {(cellsChanged == 1 ? "cell" : "cells")}", 0, 0);
+        var headerNote = headersChanged > 0 ? $" and renamed {headersChanged} {(headersChanged == 1 ? "header" : "headers")} (<From_…> references follow when you save)" : string.Empty;
+        FinishBulk(cellsChanged + headersChanged, $"Replaced {total} {(total == 1 ? "match" : "matches")} in {cellsChanged} {(cellsChanged == 1 ? "cell" : "cells")}{headerNote}", 0, 0);
         UpdateMatches();
     }
 
     private IEnumerable<(DataRowViewModel Row, int Cell, string Text)> MatchingCells()
     {
-        if (FindText.Length == 0) yield break;
+        if (FindText.Length == 0 || !FindInCells) yield break;
+        if (FindScope == ScopeSelectedCells)
+        {
+            foreach (var (row, cell) in CellSelection.Cells)
+            {
+                var text = row.Cells[cell];
+                if (IsMatch(text)) yield return (row, cell, text);
+            }
+            yield break;
+        }
         var currentOnly = FindScope == ScopeCurrentColumn;
+        var currentRow = FindScope == ScopeCurrentRow;
+        if (currentRow && SelectedRow is null) yield break;
         for (var cell = 1; cell <= Columns.Count; cell++)
         {
             if (currentOnly && cell != CurrentCellIndex) continue;
             foreach (var row in VisibleRows)
             {
+                if (currentRow && !ReferenceEquals(row, SelectedRow)) continue;
                 var text = row.Cells[cell];
                 if (IsMatch(text)) yield return (row, cell, text);
             }
         }
     }
 
+    /// <summary>Column headers (with their {verb} and step prefix) that contain the text to find.</summary>
+    private IEnumerable<(int Cell, string Header)> HeaderMatches()
+    {
+        if (FindText.Length == 0 || !FindInHeaders) yield break;
+        for (var cell = 1; cell <= Columns.Count; cell++)
+        {
+            var header = TableOf(Columns[cell - 1]).Headers[Columns[cell - 1].SheetColumn];
+            if (IsMatch(header)) yield return (cell, header);
+        }
+    }
+
     private IEnumerable<(StepRowViewModel Step, int Cell, string Text)> StepMatchingCells()
     {
         if (FindText.Length == 0) yield break;
+        if (FindScope is ScopeHeaders) yield break;
         var currentOnly = FindScope == ScopeCurrentColumn;
         for (var cell = 1; cell <= StepColumns.Count; cell++)
         {
@@ -189,9 +230,15 @@ public sealed partial class DataEditorViewModel
         if (!FindVisible || FindText.Length == 0) { MatchSummary = string.Empty; return; }
         var columnCount = ShowSteps ? StepColumns.Count : Columns.Count;
         if (FindScope == ScopeCurrentColumn && (CurrentCellIndex < 1 || CurrentCellIndex > columnCount)) { MatchSummary = "Click a cell to choose the column."; return; }
+        if (ShowSteps && FindScope is ScopeCurrentRow or ScopeSelectedCells or ScopeHeaders or ScopeHeadersAndCells) { MatchSummary = "This scope works in the data table. Steps search all columns or the current column."; return; }
+        if (FindScope == ScopeCurrentRow && SelectedRow is null) { MatchSummary = "Select a row first."; return; }
+        if (FindScope == ScopeSelectedCells && CellSelection.Count == 0) { MatchSummary = "Select cells first (click, Shift+click or drag)."; return; }
         var cells = (ShowSteps ? StepMatchingCells().Select(c => c.Text) : MatchingCells().Select(c => c.Text)).ToList();
+        var headers = HeaderMatches().Select(h => h.Header).ToList();
         var matches = cells.Sum(CountMatches);
-        MatchSummary = matches == 0 ? "No matches" : $"{matches} {(matches == 1 ? "match" : "matches")} in {cells.Count} {(cells.Count == 1 ? "cell" : "cells")}";
+        var headerPart = headers.Count == 0 ? string.Empty : $"{headers.Count} {(headers.Count == 1 ? "header" : "headers")}";
+        var cellPart = matches == 0 ? string.Empty : $"{matches} {(matches == 1 ? "match" : "matches")} in {cells.Count} {(cells.Count == 1 ? "cell" : "cells")}";
+        MatchSummary = headerPart.Length + cellPart.Length == 0 ? "No matches" : string.Join(" and ", new[] { cellPart, headerPart }.Where(s => s.Length > 0));
     }
 
     // ---- Shared ----------------------------------------------------------------------------

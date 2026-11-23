@@ -568,7 +568,7 @@
         </Border>
         <Border IsVisible="{Binding FindVisible}" Classes="panel" Padding="14,12">
           <StackPanel Spacing="10">
-            <TextBlock Classes="caption" Text="FIND &amp; REPLACE (in the rows shown)" />
+            <TextBlock Classes="caption" Text="FIND &amp; REPLACE (in the rows shown) · scope: all columns, current column, current row, selected cells, column headers, or headers and cells. A renamed header also updates &lt;From_…&gt; references when you save." />
             <WrapPanel Classes="form">
               <TextBox x:Name="FindBox" Text="{Binding FindText, Mode=TwoWay}" Watermark="Find" MinWidth="200" />
               <TextBox Text="{Binding ReplaceText, Mode=TwoWay}" Watermark="Replace with" MinWidth="200" />

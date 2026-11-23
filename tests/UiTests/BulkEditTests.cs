@@ -276,6 +276,59 @@ public class BulkEditTests
     }
 
     [Fact]
+    public void Find_and_replace_can_search_headers_the_current_row_and_selected_cells()
+    {
+        using var dir = new TempDir();
+        var vm = new DataEditorViewModel(Samples.CreateLarge(dir, rows: 4));
+        var name = CellOf(vm, "CreateCustomer.name");
+        vm.OpenFindCommand.Execute(null);
+
+        // the current row only
+        vm.FindText = "Customer 3";
+        vm.FindScope = DataEditorViewModel.ScopeCurrentRow;
+        vm.SelectedRow = vm.VisibleRows[2];
+        Assert.DoesNotContain("No matches", vm.MatchSummary);
+        vm.ReplaceText = "Client 3";
+        vm.ReplaceAllCommand.Execute(null);
+        Assert.Equal("Client 3", vm.VisibleRows[2].Cells[name]);
+        Assert.Equal("Customer 1", vm.VisibleRows[0].Cells[name]);
+
+        // selected cells only
+        vm.CellSelection.Select(vm.VisibleRows[0], name);
+        vm.FindText = "Customer 1";
+        vm.FindScope = DataEditorViewModel.ScopeSelectedCells;
+        vm.ReplaceText = "Buyer 1";
+        vm.ReplaceAllCommand.Execute(null);
+        Assert.Equal("Buyer 1", vm.VisibleRows[0].Cells[name]);
+        Assert.Equal("Customer 2", vm.VisibleRows[1].Cells[name]);
+
+        // headers: renames the column, leaves the cells alone
+        vm.FindText = "CreateCustomer.name";
+        vm.ReplaceText = "CreateCustomer.fullname";
+        vm.FindScope = DataEditorViewModel.ScopeHeaders;
+        Assert.Equal("2 headers", vm.MatchSummary);   // the request column and the expected-value column ({eq} is kept)
+        vm.ReplaceAllCommand.Execute(null);
+        Assert.Equal("Buyer 1", vm.VisibleRows[0].Cells[CellOf(vm, "CreateCustomer.fullname")]);
+        Assert.Equal("No matches", vm.MatchSummary);
+    }
+
+    [Fact]
+    public void Find_reaches_From_references_in_cells_and_a_header_rename_is_listed_with_them()
+    {
+        using var dir = new TempDir();
+        var vm = new DataEditorViewModel(Samples.CreateLarge(dir, rows: 2));
+        var name = CellOf(vm, "CreateCustomer.name");
+        vm.VisibleRows[0].Cells[name] = "<From_request_orderid_r>";
+        vm.OpenFindCommand.Execute(null);
+        vm.FindScope = DataEditorViewModel.ScopeHeadersAndCells;
+        vm.FindText = "orderid";
+        vm.ReplaceText = "customerid";
+        Assert.Equal("1 match in 1 cell", vm.MatchSummary);
+        vm.ReplaceAllCommand.Execute(null);
+        Assert.Equal("<From_request_customerid_r>", vm.VisibleRows[0].Cells[name]);
+    }
+
+    [Fact]
     public void Replacing_with_nothing_to_find_is_refused()
     {
         using var dir = new TempDir();
