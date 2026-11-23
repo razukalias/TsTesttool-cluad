@@ -730,6 +730,7 @@
                 <TextBlock Text="Steps run top to bottom, in sheet order. Renaming a step also renames its data columns and updates references to it." Foreground="#8EA4BC" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="16,0,0,0">
                   <TextBlock Text="{Binding StepCountText}" Foreground="#8EA4BC" VerticalAlignment="Center" />
+                  <Button Content="▦ Back to table" Tag="back-to-table" Command="{Binding OpenDataTabCommand}" ToolTip.Tip="Leave Config edit mode and show the data table again" />
                   <Button Content="All steps" Command="{Binding ShowAllStepsCommand}" IsVisible="{Binding HasFocusedStep}" />
                   <Button Content="Expand all" Command="{Binding ExpandAllStepsCommand}" IsVisible="{Binding NoFocusedStep}" />
                   <Button Content="Collapse all" Command="{Binding CollapseAllStepsCommand}" IsVisible="{Binding NoFocusedStep}" />

@@ -180,6 +180,11 @@ public class StepTreeMenuTests
         gear.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         Assert.True(shell.Current!.ShowSteps);
         Assert.Equal(step.Name, shell.Current.FocusedStep?.CurrentName);
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var back = window.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Tag, "back-to-table"));
+        back.Command!.Execute(null);
+        Assert.False(shell.Current.ShowSteps);
         window.Close();
     }
 
