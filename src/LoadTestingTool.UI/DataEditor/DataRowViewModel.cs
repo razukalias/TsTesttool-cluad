@@ -7,6 +7,9 @@ namespace LoadTestingTool.UI.DataEditor;
 
 public enum ColumnGroup { Id, Request, Response }
 
+/// <summary>One environment's result for a row, as a small coloured chip in the table: <paramref name="Text"/> is e.g. "✗ test".</summary>
+public sealed record EnvChip(string Environment, string Status, string Text, string Color);
+
 /// <param name="Title">Text shown in the column header.</param>
 /// <param name="Group">Where the value lives: the request inputs or the expected response.</param>
 /// <param name="CellIndex">Position in <see cref="DataRowViewModel.Cells"/> (0 is the data ID).</param>
@@ -229,10 +232,10 @@ public sealed partial class TestcaseItem : ObservableObject
     public IReadOnlyList<string> ChosenSteps => StepNodes.Where(n => n.IsChosen).Select(n => n.Name).ToList();
     internal event EventHandler? ChosenChanged;
 
-    public void SetResults(int passed, int failed)
+    public void SetResults(int passed, int failed, int errors = 0)
     {
         if (passed + failed == 0) { ResultText = string.Empty; return; }
-        ResultText = failed > 0 ? $"{failed} failed · {passed} passed" : $"{passed} passed";
+        ResultText = failed > 0 ? $"{failed} failed{(errors > 0 ? $" ({errors} with errors)" : string.Empty)} · {passed} passed" : $"{passed} passed";
         ResultColor = failed > 0 ? "#FF7588" : "#39D39B";
     }
 }
@@ -315,21 +318,60 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
     /// <summary>The path of a failed assertion as the column header spells it (the event can carry it in lower case); set by the editor.</summary>
     internal Func<FailureDetail, string>? PathText { get; set; }
 
-    /// <summary>PASS, FAIL, or BUG when everything that failed is a known bug (so the row is not a failure).</summary>
+    /// <summary>PASS, FAIL, ERROR (a step broke: timeout, connection, script …), or BUG when everything that failed is a known bug (so the row is not a failure).</summary>
     public string ResultText => Outcome is null ? "—" : Standing;
-    public string ResultColor => Outcome is null ? "#5E7590" : Standing switch { "PASS" => "#39D39B", "BUG" => "#F6A623", _ => "#FF7588" };
+    public string ResultColor => Outcome is null ? "#5E7590" : ColorOf(Standing);
 
-    private string Standing
+    internal static string ColorOf(string status) => status switch { "PASS" => "#39D39B", "BUG" => "#F6A623", "ERROR" => "#C792EA", "FAIL" => "#FF7588", _ => "#5E7590" };
+    internal static string SymbolOf(string status) => status switch { "PASS" => "✓", "BUG" => "⚑", "ERROR" => "⚠", "FAIL" => "✗", _ => "–" };
+
+    private string Standing => Outcome is { } outcome ? StandingOf(outcome) : "—";
+
+    /// <summary>The status of a row (or of the row in one environment).</summary>
+    internal string StandingOf(RowOutcome outcome)
+    {
+        if (outcome.Passed) return "PASS";
+        if (outcome.Failures.Any(f => f.IsError)) return "ERROR";
+        // Failures beyond the ones kept for the row cannot be checked: then it stays a failure
+        if (KnownBugCheck is null || outcome.Failures.Count == 0 || outcome.Problems > outcome.Failures.Count) return "FAIL";
+        return outcome.Failures.Where(f => !f.IsSecondary).All(f => KnownBugCheck(this, f)) ? "BUG" : "FAIL";
+    }
+
+    /// <summary>The row as every environment of the run saw it, whatever environment the table is showing; null without a run.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(EnvChips), nameof(EnvDetail), nameof(EnvDiffers), nameof(HasEnvChips))]
+    private RowOutcome? _allOutcome;
+
+    /// <summary>The environments of the shown run, in order (set by the editor).</summary>
+    internal IReadOnlyList<string> RunEnvironments { get; set; } = [];
+
+    /// <summary>Status of this row in one environment: PASS, FAIL, ERROR, BUG, or — when the row did not run there.</summary>
+    public string StatusIn(string environment) => AllOutcome?.In(environment) is { } outcome ? StandingOf(outcome) : "—";
+
+    public bool HasEnvChips => AllOutcome is not null && RunEnvironments.Count > 1;
+
+    /// <summary>One chip per environment; with more than <see cref="MaxEnvChips"/> a single chip counts the passing ones.</summary>
+    public IReadOnlyList<EnvChip> EnvChips
     {
         get
         {
-            if (Outcome is not { } outcome) return "—";
-            if (outcome.Passed) return "PASS";
-            // Failures beyond the ones kept for the row cannot be checked: then it stays a failure
-            if (KnownBugCheck is null || outcome.Failures.Count == 0 || outcome.Problems > outcome.Failures.Count) return "FAIL";
-            return outcome.Failures.Where(f => !f.IsSecondary).All(f => KnownBugCheck(this, f)) ? "BUG" : "FAIL";
+            if (!HasEnvChips) return [];
+            var all = RunEnvironments.Select(e => (Name: e, Status: StatusIn(e))).ToList();
+            if (all.Count <= MaxEnvChips) return all.Select(e => new EnvChip(e.Name, e.Status, $"{SymbolOf(e.Status)} {e.Name}", ColorOf(e.Status))).ToList();
+            var ran = all.Where(e => e.Status != "—").ToList();
+            var passed = ran.Count(e => e.Status == "PASS");
+            var worst = ran.Any(e => e.Status == "ERROR") ? "ERROR" : ran.Any(e => e.Status == "FAIL") ? "FAIL" : ran.Any(e => e.Status == "BUG") ? "BUG" : ran.Count > 0 ? "PASS" : "—";
+            return [new EnvChip(string.Empty, worst, $"{passed}/{all.Count} {SymbolOf("PASS")}", ColorOf(worst))];
         }
     }
+
+    public const int MaxEnvChips = 4;
+
+    /// <summary>One line per environment for the tooltip of the chips.</summary>
+    public string EnvDetail => !HasEnvChips ? string.Empty
+        : string.Join("\n", RunEnvironments.Select(e => $"{e}: {StatusIn(e) switch { "—" => "did not run", var s => s }}{(AllOutcome!.In(e) is { Passed: false } o ? $" ({o.Problems} {(o.Problems == 1 ? "problem" : "problems")})" : string.Empty)}"));
+
+    /// <summary>True when the environments that ran this row do not agree on its status.</summary>
+    public bool EnvDiffers => HasEnvChips && RunEnvironments.Select(StatusIn).Where(s => s != "—").Distinct().Count() > 1;
 
     /// <summary>How many things failed in the latest run (failed assertions and failed steps) that are not known bugs.</summary>
     public int FailedCount => Outcome is { Passed: false } outcome ? outcome.Failures.Count(f => !f.IsSecondary && !(KnownBugCheck?.Invoke(this, f) ?? false)) : 0;
@@ -360,12 +402,12 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
         : string.Join("\n", outcome.Failures.Select(f => (f.IsSecondary ? "ALSO   " : KnownBugCheck?.Invoke(this, f) ?? false ? "BUG    " : "FAILED ") + (f.IsAssertion ? PathText?.Invoke(f) ?? $"{f.StepName}.{f.ResponsePath}" : $"{f.StepName} (step)") + (f.Environment.Length > 0 ? $" [{f.Environment}]" : string.Empty)));
 
     /// <summary>True when the row's latest run failed for something other than a known bug.</summary>
-    public bool FailedForReal => Outcome is not null && Standing == "FAIL";
+    public bool FailedForReal => Outcome is not null && Standing is "FAIL" or "ERROR";
 
     /// <summary>True when everything that failed in the latest run is a known bug.</summary>
     public bool OnlyKnownBugs => Outcome is not null && Standing == "BUG";
 
-    internal void RefreshStanding() { if (Outcome is not null) OnPropertyChanged(nameof(ResultText)); OnPropertyChanged(nameof(ResultColor)); OnPropertyChanged(nameof(CountsText)); OnPropertyChanged(nameof(CountsDetail)); OnPropertyChanged(nameof(BugTagText)); }
+    internal void RefreshStanding() { if (Outcome is not null) OnPropertyChanged(nameof(ResultText)); OnPropertyChanged(nameof(EnvChips)); OnPropertyChanged(nameof(EnvDiffers)); OnPropertyChanged(nameof(ResultColor)); OnPropertyChanged(nameof(CountsText)); OnPropertyChanged(nameof(CountsDetail)); OnPropertyChanged(nameof(BugTagText)); }
 
     public int TestcaseIndex { get; }
     public TableRow Request { get; }

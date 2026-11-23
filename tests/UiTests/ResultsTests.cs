@@ -52,7 +52,7 @@ public class ResultsTests
         events.RemoveAll(e => JsonSerializer.Serialize(e).Contains("\"CUST002\"") || JsonSerializer.Serialize(e).Contains("\"CUST004\""));
         events.Add(FakeRun.Request(1, "CUST002", "CreateCustomer", result: "FAIL", status: 201));
         events.Add(FakeRun.Assertion(1, "CUST002", "CreateCustomer", "name", "eq", "Customer 2", "Kund 2", message: "Values differ"));
-        events.Add(FakeRun.Request(1, "CUST004", "CreateCustomer", result: "FAIL", status: 500, category: "HTTP", error: "Internal Server Error"));
+        events.Add(FakeRun.Request(1, "CUST004", "CreateCustomer", result: "FAIL", status: 500, category: "HttpStatus", error: "Internal Server Error"));
         FakeRun.Write(folder, $"events_{FakeRun.RunId}.ndjson", [.. events]);
         return path;
     }
@@ -74,7 +74,7 @@ public class ResultsTests
         var assertionFailure = Assert.Single(results.Find(1, "CUST002")!.Failures, f => f.IsAssertion);
         Assert.Equal(("name", "Customer 2", "Kund 2"), (assertionFailure.ResponsePath, assertionFailure.Expected, assertionFailure.Actual));
         var stepFailure = Assert.Single(results.Find(1, "CUST004")!.Failures);
-        Assert.Equal("HTTP 500 — HTTP — Internal Server Error", stepFailure.Message);
+        Assert.Equal("HTTP 500 — HttpStatus — Internal Server Error", stepFailure.Message);
         Assert.Null(results.Find(1, "CUST999"));
     }
 
@@ -314,7 +314,7 @@ public class ResultsTests
         vm.SelectedRow = vm.VisibleRows[1];
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        Assert.Equal(3 + vm.Columns.Count, window.FindControl<DataGrid>("Grid")!.Columns.Count);
+        Assert.Equal(4 + vm.Columns.Count, window.FindControl<DataGrid>("Grid")!.Columns.Count);
         var shots = Environment.GetEnvironmentVariable("UI_SCREENSHOT_DIR") ?? System.IO.Path.GetTempPath();
         window.CaptureRenderedFrame()!.Save(System.IO.Path.Combine(shots, "editor-results.png"));
         window.Close();

@@ -37,6 +37,14 @@ public sealed partial class DataEditorViewModel
 
     [ObservableProperty] private bool _showFailedOnly;
 
+    /// <summary>Keep only the rows whose status is not the same in every environment that ran them.</summary>
+    [ObservableProperty] private bool _showDifferingOnly;
+
+    partial void OnShowDifferingOnlyChanged(bool value) => ApplyFilter();
+
+    /// <summary>The run covered more than one environment, so the table can show the Envs column.</summary>
+    public bool HasEnvColumn => _results is { Environments.Count: > 1 };
+
     public const string AllEnvironments = "All environments";
 
     /// <summary>"All environments" plus every environment that has a failure in the shown run; empty when the run has no environment names.</summary>
@@ -73,7 +81,7 @@ public sealed partial class DataEditorViewModel
 
     private void RefreshEnvironmentOptions()
     {
-        var names = _results?.Rows.Values.SelectMany(r => r.Failures).Select(f => f.Environment).Where(e => e.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList() ?? [];
+        var names = _results?.Rows.Values.SelectMany(r => r.Failures).Select(f => f.Environment).Concat(_results.Environments).Where(e => e.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList() ?? [];
         var options = names.Count == 0 ? [] : new[] { AllEnvironments }.Concat(names).ToList();
         if (!options.SequenceEqual(EnvironmentOptions)) { EnvironmentOptions.Clear(); foreach (var o in options) EnvironmentOptions.Add(o); }
         if (!options.Contains(EnvironmentChoice)) EnvironmentChoice = AllEnvironments;
@@ -98,10 +106,12 @@ public sealed partial class DataEditorViewModel
     {
         _results = results;
         OnPropertyChanged(nameof(HasResults));
+        OnPropertyChanged(nameof(HasEnvColumn));
+        if (!HasEnvColumn && ShowDifferingOnly) ShowDifferingOnly = false;
         RefreshEnvironmentOptions();
         AssignOutcomes();
         UpdateTestcaseResults();
-        if (ShowFailedOnly || EnvironmentPicked) ApplyFilter(); // otherwise the rows stay as they are, so selection and scroll position survive a refresh
+        if (ShowFailedOnly || ShowDifferingOnly || EnvironmentPicked) ApplyFilter(); // otherwise the rows stay as they are, so selection and scroll position survive a refresh
         RefreshRowFailures();
         if (ShowFailedCells) RefreshFailedCells();
         if (ShowFailedColumns || ShowBugColumns) RefreshFailedColumns();
@@ -113,7 +123,10 @@ public sealed partial class DataEditorViewModel
         {
             row.KnownBugCheck = IsKnownBug;
             row.PathText = DisplayPath;
-            row.Outcome = Scoped(_results?.Find(row.TestcaseIndex, row.CurrentDataId));
+            var whole = _results?.Find(row.TestcaseIndex, row.CurrentDataId);
+            row.RunEnvironments = _results?.Environments ?? [];
+            row.AllOutcome = whole;
+            row.Outcome = Scoped(whole);
         }
         UpdateRunSummary();   // also after Undo / Redo, which rebuild the rows
     }
@@ -122,7 +135,7 @@ public sealed partial class DataEditorViewModel
     private void UpdateRunSummary()
     {
         if (_results is null) { RunSummaryText = "No results yet"; return; }
-        var passed = 0; var failed = 0; var bugs = 0; var failedCells = 0; var bugCells = 0;
+        var passed = 0; var failed = 0; var bugs = 0; var errors = 0; var failedCells = 0; var bugCells = 0;
         var rows = new Dictionary<(int, string), DataRowViewModel>();
         foreach (var r in _allRows) rows[(r.TestcaseIndex, r.CurrentDataId.Trim().ToUpperInvariant())] = r;
         foreach (var (key, whole) in _results.Rows)
@@ -130,11 +143,11 @@ public sealed partial class DataEditorViewModel
             if (Scoped(whole) is not { } outcome) continue;
             if (outcome.Passed) { passed++; continue; }
             if (!rows.TryGetValue(key, out var row)) { failed++; continue; }
-            if (row.OnlyKnownBugs) bugs++; else failed++;
+            if (row.OnlyKnownBugs) bugs++; else if (row.ResultText == "ERROR") errors++; else failed++;
             failedCells += row.FailedCount; bugCells += row.BugCount;
         }
         var scope = EnvironmentPicked ? $" in {EnvironmentChoice}" : string.Empty;
-        RunSummaryText = $"Last run{scope} {_results.WhenLocal.ToString("d MMM HH:mm", CultureInfo.CurrentCulture)}: {passed} passed, {failed} failed" + (bugs > 0 ? $", {bugs} known {(bugs == 1 ? "bug" : "bugs")}" : string.Empty)
+        RunSummaryText = $"Last run{scope} {_results.WhenLocal.ToString("d MMM HH:mm", CultureInfo.CurrentCulture)}: {passed} passed, {failed} failed" + (errors > 0 ? $", {errors} {(errors == 1 ? "error" : "errors")}" : string.Empty) + (bugs > 0 ? $", {bugs} known {(bugs == 1 ? "bug" : "bugs")}" : string.Empty)
             + (failedCells + bugCells > 0 ? $" ({failedCells} failed {(failedCells == 1 ? "cell" : "cells")}, {bugCells} bug {(bugCells == 1 ? "cell" : "cells")})" : string.Empty);
     }
 
@@ -143,7 +156,7 @@ public sealed partial class DataEditorViewModel
         foreach (var testcase in Testcases)
         {
             var rows = _results?.Rows.Where(r => r.Key.Testcase == testcase.Index).Select(r => Scoped(r.Value)).OfType<RowOutcome>().ToList() ?? [];
-            testcase.SetResults(rows.Count(r => r.Passed), rows.Count(r => !r.Passed));
+            testcase.SetResults(rows.Count(r => r.Passed), rows.Count(r => !r.Passed), rows.Count(r => r.Errors > 0));
         }
     }
 
@@ -180,10 +193,11 @@ public sealed partial class DataEditorViewModel
             RowResultColor = "#F6A623";
             return;
         }
+        var isError = SelectedRow.ResultText == "ERROR";
         RowResultHeadline = outcome.Passed
             ? $"Passed · {outcome.Requests} {(outcome.Requests == 1 ? "request" : "requests")} · slowest {outcome.MaxDurationMs} ms"
-            : $"Failed · {problems} {(problems == 1 ? "problem" : "problems")} in {outcome.Requests} {(outcome.Requests == 1 ? "request" : "requests")}";
-        RowResultColor = outcome.Passed ? "#39D39B" : "#FF7588";
+            : $"{(isError ? "Error (a step broke before its assertions could be checked)" : "Failed")} · {problems} {(problems == 1 ? "problem" : "problems")} in {outcome.Requests} {(outcome.Requests == 1 ? "request" : "requests")}";
+        RowResultColor = outcome.Passed ? "#39D39B" : isError ? "#C792EA" : "#FF7588";
     }
 
     private FailureViewModel DescribeFailure(FailureDetail failure)

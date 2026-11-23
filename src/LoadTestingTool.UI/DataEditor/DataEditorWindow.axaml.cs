@@ -305,6 +305,7 @@ public partial class DataEditorWindow : Window
     /// <summary>A grid that was hidden forgets its selection; restore it when its tab is shown again.</summary>
     private void OnEditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(DataEditorViewModel.HasEnvColumn)) { ApplyColumnVisibility(); return; }
         if (e.PropertyName != nameof(DataEditorViewModel.ShowSteps) || sender is not DataEditorViewModel editor) return;
         Dispatcher.UIThread.Post(() =>
         {
@@ -464,7 +465,7 @@ public partial class DataEditorWindow : Window
     {
         if (this.FindControl<DataGrid>("Grid") is not { } grid || _shell?.Current is not { } editor) return;
         foreach (var column in grid.Columns)
-            column.IsVisible = !(editor.ShowFailedColumns || editor.ShowBugColumns) || column.Tag is not int cell || cell < 1
+            column.IsVisible = column.Tag is EnvsColumnTag ? editor.HasEnvColumn : !(editor.ShowFailedColumns || editor.ShowBugColumns) || column.Tag is not int cell || cell < 1
                 || editor.ShowFailedColumns && editor.FailedColumnCells.Contains(cell) || editor.ShowBugColumns && editor.BugColumnCells.Contains(cell);
         StretchLastColumn(grid);
     }
@@ -503,6 +504,7 @@ public partial class DataEditorWindow : Window
         grid.Columns.Add(CreateTickColumn(editor));
         grid.Columns.Add(CreateColumn(new GridColumn("Data ID", ColumnGroup.Id, 0, -1)));
         grid.Columns.Add(CreateResultColumn());
+        grid.Columns.Add(CreateEnvsColumn());
         foreach (var column in editor.Columns)
         {
             var created = CreateColumn(column, editor.ExcelLetterOf(column), column.Group == ColumnGroup.Response ? OpenVerbMenu : null, verb: column.Group == ColumnGroup.Response ? editor.VerbOf(editor.Columns.ToList().IndexOf(column) + 1) : string.Empty);

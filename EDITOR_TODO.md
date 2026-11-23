@@ -969,3 +969,10 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
   - Never report the underscore-name false positive again (the `_request_Step.col_` read out of `<From_…>`): strip `<…>` references before looking for `_name_` placeholders everywhere (preview fixed; check validator and GlobalValidationService.NormalizeRuntimeVariablesForJson).
   - Re-validate on every edit and clear the message as soon as the cause is fixed (currently stays after the fix).
 - Wizard (to build): "Insert variable…" button next to every step-config field that takes text (URL, headers, condition, loop items, SQL, body) and in the template editor: pick source (Request column / Response of an earlier step / Config / generated value such as guid, randomnumber, datum), pick the column or response path from a list (earlier steps only, with a sample value from the last run), choose row mode (current row `_r` or fixed row number), and it inserts the correctly spelled `<From_…>` token at the cursor. Also "Add column to request" from the same dialog when the variable does not exist yet.
+
+## Envs column and ERROR status (DONE)
+- DONE: "Envs" column in the table (one chip per environment: ✓ pass, ✗ fail, ⚠ error, ⚑ known bug, – not run; more than 4 environments collapse to "3/5 ✓"). Shown only when the latest run has more than one environment. Click opens a popup: status per environment (click a chip to switch the table to it), columns that differ, fail everywhere, pass everywhere; click a column to go to it.
+- DONE: "Rows that differ between environments" filter in the Show droplist.
+- DONE: ERROR status for a step that broke (timeout, connection, script, SQL, missing reference …) as opposed to FAIL (wrong value or unexpected HTTP status). Counted separately in the run summary and the testcase result.
+- OPEN: sort the table by the number of failed environments (the grid has no sorting in any column yet).
+- OPEN: the popup lists passing columns only when the run logged PASS assertion events; runs without them list failed columns only (the popup says so).

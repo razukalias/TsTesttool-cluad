@@ -3,9 +3,18 @@ using System.Text.Json;
 namespace LoadTestingTool.UI.DataEditor;
 
 /// <summary>One thing that went wrong for a data row in a run: a failed step, or a failed assertion.</summary>
-public sealed record FailureDetail(string StepName, string? ResponsePath, string? Verb, string? Expected, string? Actual, string Message, string Environment, bool Bare = false, bool Secondary = false)
+public sealed record FailureDetail(string StepName, string? ResponsePath, string? Verb, string? Expected, string? Actual, string Message, string Environment, bool Bare = false, bool Secondary = false, string Category = "")
 {
     public bool IsAssertion => ResponsePath is not null;
+
+    /// <summary>
+    /// The step itself broke (it could not connect, timed out, could not build its request, hit a script or SQL error …), as opposed to a
+    /// wrong value (a failed assertion) or an unexpected HTTP status. Such a row is shown as ERROR, not FAIL.
+    /// </summary>
+    public bool IsError => !IsAssertion && IsErrorCategory(Category);
+
+    /// <summary>Failure categories that mean "something went wrong that the test did not check for".</summary>
+    public static bool IsErrorCategory(string category) => category is not ("" or "Assertion" or "HttpStatus" or "Cancelled");
 
     /// <summary>A failed assertion of a step that also failed for its own reason: the step error is what counts, the assertion stays marked in its cell.</summary>
     public bool IsSecondary => Secondary;
@@ -43,6 +52,18 @@ public sealed class RowOutcome
     private readonly Dictionary<string, RowOutcome> _byEnvironment = new(StringComparer.OrdinalIgnoreCase);
 
     public bool Passed => FailedRequests == 0 && FailedAssertions == 0 && Requests > 0;
+
+    /// <summary>Steps that broke on their own (see <see cref="FailureDetail.IsError"/>).</summary>
+    public int Errors => Failures.Count(f => f.IsError);
+
+    /// <summary>Environments this row ran in (only filled for multi-environment runs).</summary>
+    public IReadOnlyCollection<string> Environments => _byEnvironment.Keys;
+
+    /// <summary>"step.path" (lower case) of the assertions that passed, so a comparison between environments can tell a passing column from one that was not checked.</summary>
+    public HashSet<string> PassedColumns { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>"step.path" of assertions the runner counted as known bugs.</summary>
+    public HashSet<string> BugColumns { get; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>The latest run found in an instance's Results folder, summarised per data row.</summary>
@@ -51,6 +72,9 @@ public sealed class RunResults
     public string RunId { get; init; } = string.Empty;
     public DateTime WhenLocal { get; init; }
     public IReadOnlyDictionary<(int Testcase, string DataId), RowOutcome> Rows { get; init; } = new Dictionary<(int, string), RowOutcome>();
+
+    /// <summary>Every environment the run covered (empty when the events carry no environment names).</summary>
+    public IReadOnlyList<string> Environments { get; init; } = [];
     public int PassedRows => Rows.Values.Count(r => r.Passed);
     public int FailedRows => Rows.Values.Count(r => !r.Passed);
 
@@ -83,7 +107,8 @@ public static class RunResultsReader
         var rows = new Dictionary<(int, string), RowOutcome>();
         foreach (var file in runFiles) ReadFile(file.FullName, rows);
         foreach (var outcome in rows.Values) { FoldExplainedRequests(outcome); foreach (var child in outcome.Children) FoldExplainedRequests(child); }
-        return new RunResults { RunId = runId, WhenLocal = runFiles.Max(f => f.LastWriteTime), Rows = rows };
+        var environments = rows.Values.SelectMany(r => r.Environments).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
+        return new RunResults { RunId = runId, WhenLocal = runFiles.Max(f => f.LastWriteTime), Rows = rows, Environments = environments };
     }
 
     /// <summary>
@@ -177,12 +202,19 @@ public static class RunResultsReader
         var message = string.Join(" — ", parts);
         // a step the runner marked failed only because its assertions failed carries the category "Assertion" and no error of its own
         var bare = Text(root, "errorMessage").Length == 0 && Text(root, "failureCategory") is "" or "Assertion";
-        outcome.Failures.Add(new FailureDetail(Text(root, "stepName"), null, null, null, null, message.Length > 0 ? message : "The step failed.", environment, bare));
+        outcome.Failures.Add(new FailureDetail(Text(root, "stepName"), null, null, null, null, message.Length > 0 ? message : "The step failed.", environment, bare, Category: Text(root, "failureCategory")));
     }
 
     private static void AddAssertion(RowOutcome outcome, JsonElement root, string environment)
     {
-        if (!Text(root, "result").Equals("FAIL", StringComparison.OrdinalIgnoreCase)) return;
+        var result = Text(root, "result");
+        if (!result.Equals("FAIL", StringComparison.OrdinalIgnoreCase))
+        {
+            var column = $"{Text(root, "stepName")}.{Text(root, "responsePath")}";
+            if (result.Equals("PASS", StringComparison.OrdinalIgnoreCase)) outcome.PassedColumns.Add(column);
+            else if (result.Equals("KNOWN_BUG", StringComparison.OrdinalIgnoreCase)) outcome.BugColumns.Add(column);
+            return;
+        }
         outcome.FailedAssertions++;
         if (outcome.Failures.Count >= MaxFailuresPerRow) return;
         outcome.Failures.Add(new FailureDetail(Text(root, "stepName"), Text(root, "responsePath"), Text(root, "assertionVerb"),
