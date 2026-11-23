@@ -7,6 +7,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using LoadTestingTool.Domain;
 using LoadTestingTool.Excel;
+using LoadTestingTool.Execution;
 
 namespace LoadTestingTool.UI;
 
@@ -256,11 +257,11 @@ internal static class GlobalValidationService
         catch (Exception ex) { error = ex.Message; return false; }
     }
 
-    private static string NormalizeRuntimeVariablesForJson(string content)
+    internal static string NormalizeRuntimeVariablesForJson(string content)
     {
         // The runner resolves underscore-delimited variables such as _userId_ before rendering JSON.
         // Replace placeholders outside JSON string literals with a valid numeric token for static validation.
-        return Regex.Replace(content, "(?<![\\\"\\w])_[\\p{L}\\p{N}._-]+_(?![\\\"\\w])", "0");
+        return Regex.Replace(content, "(?<![\\\"\\w])" + TemplateRenderer.PlaceholderPattern + "(?![\\\"\\w])", "0");
     }
 
     private static ValidationIssue Issue(string severity, string location, string problem, string fix) => new(severity, location, problem, fix);

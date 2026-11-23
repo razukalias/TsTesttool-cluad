@@ -8,6 +8,9 @@ namespace LoadTestingTool.Execution;
 public static class TemplateRenderer
 {
     private const string Name = @"[\p{L}\p{N}._\-\[\]]+";
+
+    /// <summary>The placeholder the renderer replaces: _name_ or _*name*_, where the name may contain an index such as counterpart[0]. Static checks use the same pattern so they never disagree with a run.</summary>
+    public static string PlaceholderPattern => $@"_(?:\*{Name}\*|{Name})_";
     private static readonly JsonSerializerOptions ReadableJsonOptions = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
