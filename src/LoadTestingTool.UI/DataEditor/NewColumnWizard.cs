@@ -34,6 +34,7 @@ public static class NewColumnWizard
         content.Children.Add(close);
         content.Children.Add(new TextBlock { Text = "The value the new column gets for the row shown (the other rows follow the \"Cells of the new columns\" choice).", FontSize = 11, Foreground = Brush.Parse("#8EA4BC"), TextWrapping = TextWrapping.Wrap, Tag = "cell-wizard-note" });
         content.Children.Add(new RecordLineView(line, editor));
+        content.Children.Add(BugBar(editor, cell));
         var ok = new Button { Content = "OK", Classes = { "primary" }, Tag = "cell-wizard-ok", HorizontalAlignment = HorizontalAlignment.Right };
         ok.Click += (_, _) => flyout.Hide();
         content.Children.Add(ok);
@@ -41,6 +42,34 @@ public static class NewColumnWizard
         flyout.ShowAt(anchor);
         return flyout;
     }
+
+    /// <summary>"Known bug in …": writes (or removes) the <c>&lt;bug: environment; description&gt;</c> tag in the new column's cell text, like the bar on a table cell.</summary>
+    private static Control BugBar(DataEditorViewModel editor, Cell cell)
+    {
+        var choices = new List<string> { "all" };
+        choices.AddRange(editor.BugEnvironmentChoices);
+        var environment = new ComboBox { ItemsSource = choices, SelectedIndex = 0, MinWidth = 110, Tag = "bug-environment" };
+        var description = new TextBox { Watermark = "what is wrong (optional)", MinWidth = 180, Tag = "bug-description" };
+        var tag = new Button { Content = "⚑  Tag as known bug", Tag = "bug-tag" };
+        ToolTip.SetTip(tag, "Writes <bug: environment; description> into this cell. A failing assertion of the column then counts as a known bug in that environment, not as a failure");
+        var remove = new Button { Content = "Remove tag", Tag = "bug-untag", IsEnabled = HasTag(cell) };
+        tag.Click += (_, _) =>
+        {
+            var wanted = environment.SelectedItem as string ?? "all";
+            var text = (description.Text ?? string.Empty).Trim().Replace(';', ',').Replace('>', ')');
+            var current = LoadTestingTool.Execution.BugTag.Without(cell.Cells[0] ?? string.Empty);
+            cell.Cells[0] = (current.Length > 0 ? current + " " : string.Empty) + $"<bug: {wanted}" + (text.Length > 0 ? $"; {text}" : string.Empty) + ">";
+            remove.IsEnabled = true;
+        };
+        remove.Click += (_, _) => { cell.Cells[0] = LoadTestingTool.Execution.BugTag.Without(cell.Cells[0] ?? string.Empty); remove.IsEnabled = false; };
+        return new StackPanel
+        {
+            Orientation = Orientation.Horizontal, Spacing = 8, Tag = "bug-bar",
+            Children = { new TextBlock { Text = "Known bug in", VerticalAlignment = VerticalAlignment.Center, Foreground = Brush.Parse("#8EA4BC") }, environment, description, tag, remove },
+        };
+    }
+
+    private static bool HasTag(Cell cell) => (cell.Cells[0] ?? string.Empty).Contains("<bug", StringComparison.OrdinalIgnoreCase);
 
     public static Button Button(Action<Control> open)
     {

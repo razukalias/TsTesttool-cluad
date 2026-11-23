@@ -194,6 +194,32 @@ public class NewColumnWizardTests
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void The_wizard_has_a_known_bug_bar_that_tags_the_new_cell()
+    {
+        using var dir = new TempDir();
+        var (window, editor) = Open(dir);
+        var session = window.ResponsePane.Session!;
+        session.Choose("address.city", new NodeChoice(NodeMode.AsOne));
+        window.ResponsePane.UseText(session.BodyFor("CUST001")!);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var result = session.Results.First(r => r.Header.Path == "address.city");
+        var button = window.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Tag, "result-wizard"));
+        button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var layer = Avalonia.Controls.Primitives.OverlayLayer.GetOverlayLayer(window)!;
+        var bar = layer.GetVisualDescendants().OfType<StackPanel>().First(p => Equals(p.Tag, "bug-bar"));
+        bar.GetVisualDescendants().OfType<TextBox>().First(t => Equals(t.Tag, "bug-description")).Text = "wrong; city > x";
+        bar.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Tag, "bug-tag")).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal("Oslo <bug: all; wrong, city ) x>", result.Value.Cells[0]);
+
+        bar.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Tag, "bug-untag")).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal("Oslo", result.Value.Cells[0]);
+        Assert.NotNull(editor);
+        window.Close();
+    }
+
     private static T? TopLevelContent<T>(Window window) where T : Control
         => Avalonia.Controls.Primitives.OverlayLayer.GetOverlayLayer(window)?.GetVisualDescendants().OfType<T>().FirstOrDefault()
            ?? window.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.Popup>().Select(p => p.Child).OfType<Control>().SelectMany(c => c.GetVisualDescendants().OfType<T>().Concat(c is T t ? [t] : [])).FirstOrDefault();
