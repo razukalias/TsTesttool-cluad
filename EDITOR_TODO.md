@@ -976,3 +976,6 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - DONE: ERROR status for a step that broke (timeout, connection, script, SQL, missing reference …) as opposed to FAIL (wrong value or unexpected HTTP status). Counted separately in the run summary and the testcase result.
 - OPEN: sort the table by the number of failed environments (the grid has no sorting in any column yet).
 - OPEN: the popup lists passing columns only when the run logged PASS assertion events; runs without them list failed columns only (the popup says so).
+
+## Record mode to JSON mode (open)
+- OPEN: convert the Record mode to a JSON mode (the record view shows and edits the row as JSON). Needs a design first: which fields go in, how request and expected columns map to keys, and how edits are written back to the cells.
