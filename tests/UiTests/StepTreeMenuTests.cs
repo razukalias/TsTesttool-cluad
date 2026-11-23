@@ -1,3 +1,4 @@
+using Avalonia;
 using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
@@ -151,6 +152,35 @@ public class StepTreeMenuTests
         Assert.Equal(numbers, cards.Select(c => c.Number).ToArray());
         Assert.Equal(testcase.StepNodes.Select(n => n.Depth).ToArray(), cards.Select(c => c.Depth).ToArray());
         Assert.True(cards.First(c => c.Depth == 1).CardMargin.Left > 0);
+    }
+
+    [AvaloniaFact]
+    public void The_gear_beside_a_step_opens_that_steps_settings_and_the_arrows_sit_above_each_other()
+    {
+        using var dir = new TempDir();
+        var window = DataEditorWindow.Open(Samples.CreateLarge(dir, rows: 3), null);
+        window.Width = 1400; window.Height = 900; window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var shell = window.Shell;
+        var testcase = shell.Instances[0].Testcases[0];
+        shell.SelectedNode = testcase;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var step = testcase.StepNodes[0];
+        var tree = window.GetVisualDescendants().OfType<TreeView>().First();
+
+        var gear = tree.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Tag, "config") && ReferenceEquals(b.DataContext, step));
+        var up = tree.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Tag, "up") && ReferenceEquals(b.DataContext, step));
+        var down = tree.GetVisualDescendants().OfType<Button>().First(b => Equals(b.Tag, "down") && ReferenceEquals(b.DataContext, step));
+        Assert.True(down.TranslatePoint(default, tree)!.Value.Y > up.TranslatePoint(default, tree)!.Value.Y);                 // one above the other
+        Assert.True(Math.Abs(down.TranslatePoint(default, tree)!.Value.X - up.TranslatePoint(default, tree)!.Value.X) < 2);
+        var box = tree.GetVisualDescendants().OfType<CheckBox>().First(c => ReferenceEquals(c.DataContext, step));
+        Assert.True(gear.TranslatePoint(default, tree)!.Value.X < box.TranslatePoint(default, tree)!.Value.X);              // the gear is left of the tick box
+
+        Assert.False(shell.Current!.ShowSteps);
+        gear.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.True(shell.Current!.ShowSteps);
+        Assert.Equal(step.Name, shell.Current.FocusedStep?.CurrentName);
+        window.Close();
     }
 
     [AvaloniaFact]

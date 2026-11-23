@@ -33,6 +33,7 @@ public partial class DataEditorWindow
             else if (way == "stop") { if (node is InstanceNode running) _shell.StopInstance(running); }
             else if (way == "status") ShowStatusDetails(node);
             else if (way == "add") _ = AddChildAsync(tree, node);
+            else if (way == "config") { if (node is StepNode configStep) _shell.OpenStepConfig(configStep); }
             else _shell.MoveNode(node, way == "up" ? -1 : 1);
             e.Handled = true;
         });
@@ -93,6 +94,8 @@ public partial class DataEditorWindow
                 menu.Items.Add(Item("Delete testcase…", () => _shell.OpenTestcasePanel((TestcaseItem)node, delete: true)));
                 break;
             case StepNode step:
+                menu.Items.Add(Item("⚙  Open step settings", () => _shell.OpenStepConfig(step)));
+                menu.Items.Add(new Separator());
                 menu.Items.Add(Item("Rename", () => BeginTreeRename(tree, node)));
                 menu.Items.Add(Item("Duplicate step…", () => _shell.OpenDuplicateStepPanel(step)));
                 menu.Items.Add(CopyStepMenu(step));

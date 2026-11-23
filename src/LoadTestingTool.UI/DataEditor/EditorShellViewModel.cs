@@ -376,6 +376,15 @@ public sealed partial class EditorShellViewModel : ObservableObject
         if (started == 0) (Current ?? Instances.FirstOrDefault(i => i.Editor is not null)?.Editor)?.Report("Tick at least one testcase, step or data row to run.", isError: true);
     }
 
+    /// <summary>The ⚙ beside a step in the tree: shows the testcase's steps as forms (Config edit mode) with only this step's settings in view.</summary>
+    public void OpenStepConfig(StepNode step)
+    {
+        SelectedNode = step;
+        if (Current is not { } editor) return;
+        editor.ViewModeIndex = 1;
+        editor.SelectStepNamed(step.Name, showSettings: true);
+    }
+
     /// <summary>The ▲ ▼ buttons beside a tree item: runs it earlier (-1) or later (+1).</summary>
     public void MoveNode(object node, int direction)
     {
