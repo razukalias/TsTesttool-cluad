@@ -60,18 +60,18 @@ public sealed partial class MainWindow
 
         var total = _bugStatRoots?.Sum(r => r.Count) ?? 0;
         if (_bugsTab is not null) _bugsTab.Header = _bugStatRoots is null ? "Bugs" : $"Bugs ({total})";
-        if (_bugStatRoots is not null) _bugStatsNote.Text = _bugStatRoots.Count == 0 ? "No instances." : $"{total} bug tag(s) in {_bugStatRoots.Count(r => r.Count > 0)} of {_bugStatRoots.Count} instance(s).";
-        foreach (var root in _bugStatRoots ?? [])
+        if (_bugStatRoots is not null) _bugStatsNote.Text = _bugStatRoots.Count == 0 ? "No instances." : total == 0 ? "No bug tags in any instance." : $"{total} bug tag(s) in {_bugStatRoots.Count(r => r.Count > 0)} of {_bugStatRoots.Count} instance(s).";
+        foreach (var root in (_bugStatRoots ?? []).Where(r => r.Count > 0))   // only instances that hold bug tags
         {
             var open = _bugOpen.Contains(root.Name);
             _bugStats.Children.Add(StatRow(root, 0, open));
             if (!open) continue;
-            foreach (var testcase in root.Children)
+            foreach (var testcase in root.Children.Where(c => c.Count > 0))
             {
                 var key = root.Name + "/" + testcase.Name;
                 var testcaseOpen = _bugOpen.Contains(key);
                 _bugStats.Children.Add(StatRow(testcase, 1, testcaseOpen));
-                if (testcaseOpen) foreach (var step in testcase.Children) _bugStats.Children.Add(StatRow(step, 2, false));
+                if (testcaseOpen) foreach (var step in testcase.Children.Where(c => c.Count > 0)) _bugStats.Children.Add(StatRow(step, 2, false));
             }
         }
 
