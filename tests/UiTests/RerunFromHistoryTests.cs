@@ -194,3 +194,38 @@ public class RerunWindowNotModalTests
         Assert.Null(main.OpenRerunWindow);
     }
 }
+
+public class RunHistoryIndexCacheTests
+{
+    [Fact]
+    public void A_history_workbook_is_opened_once_and_its_run_is_kept_in_a_small_index_file()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "rerun-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var config = new AppConfig { HistoryFolder = folder };
+            var run = new RunResult { RunId = "runC", StartedAt = DateTimeOffset.Now, EndedAt = DateTimeOffset.Now };
+            var testcase = new TestcaseResult { TestcaseIndex = 1, Testcase = "Order", DataId = "d1", Iteration = 1, Environment = "qa", StartedAt = DateTimeOffset.Now, EndedAt = DateTimeOffset.Now };
+            testcase.Requests.Add(new RequestResult { Testcase = "Order", StepName = "Create", HttpStatus = 500 });
+            run.Testcases.Add(testcase);
+            new HistoryWriter(config).Write(run, Path.Combine(folder, "runC"), "runC.xlsx");
+            var workbook = new FileInfo(Path.Combine(folder, "runC", "runC.xlsx"));
+
+            var first = RunHistoryIndex.Scan(folder);
+            Assert.Single(first);
+            Assert.True(File.Exists(workbook.FullName + ".runindex.json"));
+
+            // damage the workbook but keep its size and time: only the index can still answer
+            var length = workbook.Length; var time = workbook.LastWriteTimeUtc;
+            File.WriteAllBytes(workbook.FullName, new byte[length]);
+            File.SetLastWriteTimeUtc(workbook.FullName, time);
+            var second = RunHistoryIndex.Scan(folder);
+            Assert.Equal(first.Select(r => (r.RunId, r.DataId, r.Result)), second.Select(r => (r.RunId, r.DataId, r.Result)));
+
+            // a changed workbook is read again
+            File.WriteAllBytes(workbook.FullName, [1, 2, 3]);
+            Assert.Empty(RunHistoryIndex.Scan(folder));
+        }
+        finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+    }
+}

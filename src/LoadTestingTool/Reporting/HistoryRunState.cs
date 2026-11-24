@@ -140,33 +140,57 @@ public static class RunHistoryIndex
         {
             try
             {
-                using var stream = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                using var book = new XLWorkbook(stream);
-                if (!book.TryGetWorksheet(HistoryRunStateStore.SheetName, out var sheet)) continue;
-                string? runId = null, rerunOf = null; DateTimeOffset started = default;
-                var results = new List<(string RowKey, string Testcase, string Result)>();
-                foreach (var row in sheet.RowsUsed().Skip(1))
+                var index = ReadRunFile(file);
+                if (index is null) continue;
+                var (runId, started, rerunOf) = (index.RunId, index.Started, index.RerunOf);
+                foreach (var result in index.Results)
                 {
-                    var kind = row.Cell(2).GetString();
-                    if (kind == "run")
-                    {
-                        runId = row.Cell(3).GetString();
-                        if (row.Cell(4).GetString() == "startedat") DateTimeOffset.TryParse(row.Cell(6).GetString(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out started);
-                        else if (row.Cell(4).GetString() == "rerunof") rerunOf = row.Cell(6).GetString();
-                    }
-                    else if (kind == "result") results.Add((row.Cell(1).GetString(), row.Cell(3).GetString(), row.Cell(6).GetString()));
-                }
-                if (string.IsNullOrEmpty(runId)) continue;
-                foreach (var (rowKey, testcase, result) in results)
-                {
+                    var (rowKey, testcase, outcome) = (result[0], result[1], result[2]);
                     var parts = rowKey.Split('|');
-                    if (parts.Length < 4 || !int.TryParse(parts[0], out var index) || !int.TryParse(parts[2], out var iteration) || !seen.Add((runId, rowKey))) continue;
-                    rows.Add(new RunHistoryRow(runId, started, string.IsNullOrEmpty(rerunOf) ? null : rerunOf, index, testcase, parts[1], iteration, parts[3] == "default" ? string.Empty : parts[3], result));
+                    if (parts.Length < 4 || !int.TryParse(parts[0], out var number) || !int.TryParse(parts[2], out var iteration) || !seen.Add((runId, rowKey))) continue;
+                    rows.Add(new RunHistoryRow(runId, started, string.IsNullOrEmpty(rerunOf) ? null : rerunOf, number, testcase, parts[1], iteration, parts[3] == "default" ? string.Empty : parts[3], outcome));
                 }
             }
             catch (Exception) { /* unreadable history files are skipped */ }
         }
         return (rows.OrderByDescending(r => r.StartedAt).ThenBy(r => r.TestcaseIndex).ThenBy(r => r.DataId).ThenBy(r => r.Iteration).ToList(), page.Count);
+    }
+
+    /// <summary>What the re-run dialog needs of one history workbook, kept in a small file beside it so the workbook is opened only once.</summary>
+    internal sealed record RunFileIndex(long Length, long ModifiedTicks, string RunId, DateTimeOffset Started, string? RerunOf, List<string[]> Results);
+
+    private static string SidecarOf(FileInfo file) => file.FullName + ".runindex.json";
+
+    /// <summary>The run recorded in a history workbook: from its sidecar index when that is still current, else read from the workbook (and the sidecar is written for next time). Null when the workbook holds no run.</summary>
+    internal static RunFileIndex? ReadRunFile(FileInfo file)
+    {
+        var sidecar = SidecarOf(file);
+        try
+        {
+            if (File.Exists(sidecar) && System.Text.Json.JsonSerializer.Deserialize<RunFileIndex>(File.ReadAllText(sidecar)) is { } cached && cached.Length == file.Length && cached.ModifiedTicks == file.LastWriteTimeUtc.Ticks) return cached;
+        }
+        catch (Exception) { /* a damaged or older index is read again from the workbook */ }
+
+        using var stream = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var book = new XLWorkbook(stream);
+        if (!book.TryGetWorksheet(HistoryRunStateStore.SheetName, out var sheet)) return null;
+        string? runId = null, rerunOf = null; DateTimeOffset started = default;
+        var results = new List<string[]>();
+        foreach (var row in sheet.RowsUsed().Skip(1))
+        {
+            var kind = row.Cell(2).GetString();
+            if (kind == "run")
+            {
+                runId = row.Cell(3).GetString();
+                if (row.Cell(4).GetString() == "startedat") DateTimeOffset.TryParse(row.Cell(6).GetString(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out started);
+                else if (row.Cell(4).GetString() == "rerunof") rerunOf = row.Cell(6).GetString();
+            }
+            else if (kind == "result") results.Add([row.Cell(1).GetString(), row.Cell(3).GetString(), row.Cell(6).GetString()]);
+        }
+        if (string.IsNullOrEmpty(runId)) return null;
+        var index = new RunFileIndex(file.Length, file.LastWriteTimeUtc.Ticks, runId, started, rerunOf, results);
+        try { File.WriteAllText(sidecar, System.Text.Json.JsonSerializer.Serialize(index)); } catch (Exception) { /* a read-only history folder just reads the workbook every time */ }
+        return index;
     }
 
     /// <summary>The runs found, newest first.</summary>
