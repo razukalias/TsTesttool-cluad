@@ -27,7 +27,7 @@ public class StepTypeTests
     private static void Pump() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();
     private static void Leave(Control c) => c.RaiseEvent(new RoutedEventArgs(InputElement.LostFocusEvent));
 
-    private static IEnumerable<string> Labels(Control root) => root.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "");
+    private static IEnumerable<string> Labels(Control root) => root.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? "");   // what the person sees: a hidden tab button is not a label
 
     [AvaloniaFact]
     public void Writing_a_column_the_sheet_lacks_adds_it_and_can_be_undone()
@@ -241,6 +241,8 @@ public class StepTypeTests
         Pump();
         var form = window.GetVisualDescendants().OfType<StepFormView>().Single();
         Assert.DoesNotContain("HEADERS", Labels(form));
+        form.ShowTab(true);   // the template is on its own tab
+        Pump();
         Assert.Contains("TEMPLATE · create.json", Labels(form));
         shell.Current!.FocusedStep!.Write("templetsource", "");
         Pump();

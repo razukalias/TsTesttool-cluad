@@ -13,6 +13,10 @@
     <x:Double x:Key="TreeViewItemIndent">10</x:Double>
   </Window.Resources>
   <Window.Styles>
+    <!-- the grids' scroll bars take their own room instead of floating over the last row -->
+    <Style Selector="DataGrid ScrollBar">
+      <Setter Property="AllowAutoHide" Value="False" />
+    </Style>
     <Style Selector="Border.stepcard"><Setter Property="Background" Value="#13233A" /><Setter Property="BorderBrush" Value="#22364F" /><Setter Property="BorderThickness" Value="1" /><Setter Property="CornerRadius" Value="10" /></Style>
     <Style Selector="Button.stepheader"><Setter Property="Background" Value="Transparent" /><Setter Property="Padding" Value="14,10" /><Setter Property="BorderThickness" Value="0" /></Style>
     <Style Selector="DataGridColumnHeader">

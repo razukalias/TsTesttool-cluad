@@ -105,3 +105,40 @@ public class StepFormTests
         window.Close();
     }
 }
+
+public class StepFormTabsTests
+{
+    [Avalonia.Headless.XUnit.AvaloniaFact]
+    public void The_step_form_has_a_Config_tab_and_a_Template_tab_and_only_one_shows()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        var window = DataEditorWindow.Open(path, null);
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var shell = window.Shell;
+        shell.Current!.ShowSteps = true;
+        shell.SelectedNode = shell.Instances[0].Testcases[0].StepNodes[0];
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var form = window.GetVisualDescendants().OfType<StepFormView>().First();
+        var config = form.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().First(b => (string?)b.Tag == "step-tab-config");
+        var template = form.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().First(b => (string?)b.Tag == "step-tab-template");
+        Assert.True(template.IsVisible);                       // an HTTP step has a template
+        Assert.False(form.ShowingTemplate);                    // the config fields come first
+        Assert.True(config.IsChecked);
+        var fields = form.GetVisualDescendants().OfType<Avalonia.Controls.TextBox>().First(t => t.IsEffectivelyVisible);
+        Assert.NotNull(fields);
+
+        form.ShowTab(true);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(form.ShowingTemplate);
+        Assert.True(template.IsChecked);
+        Assert.False(config.IsChecked);
+        Assert.Contains(form.GetVisualDescendants().OfType<AvaloniaEdit.TextEditor>(), e => e.IsEffectivelyVisible);   // the template editor shows
+
+        form.ShowTab(false);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.DoesNotContain(form.GetVisualDescendants().OfType<AvaloniaEdit.TextEditor>(), e => e.IsEffectivelyVisible);
+        window.Close();
+    }
+}

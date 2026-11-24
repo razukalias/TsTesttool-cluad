@@ -1,6 +1,7 @@
 using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Input;
@@ -67,6 +68,32 @@ public sealed class StepFormView : UserControl
     private TextBox? _templateBox;
     private readonly Border _typeCard = new();
     private Control? _templatePanel;
+    private readonly ToggleButton _configTab = new();
+    private readonly ToggleButton _templateTab = new();
+    private bool _onTemplateTab;
+
+    /// <summary>The template tab is showing (false: the config fields).</summary>
+    public bool ShowingTemplate => _onTemplateTab && _templateTab.IsVisible;
+
+    /// <summary>Switches between the config fields and the template.</summary>
+    public void ShowTab(bool template)
+    {
+        _onTemplateTab = template;
+        ApplyTab();
+    }
+
+    private void ApplyTab()
+    {
+        var usesTemplate = UsesTemplate(_step.TypeText);
+        _templateTab.IsVisible = _templatePanel is not null && usesTemplate;
+        var onTemplate = _onTemplateTab && _templateTab.IsVisible;
+        _configTab.IsChecked = !onTemplate;
+        _templateTab.IsChecked = onTemplate;
+        if (_templatePanel is not null) _templatePanel.IsVisible = onTemplate;
+        LeftSide.IsVisible = !onTemplate;
+    }
+
+    private Control LeftSide { get; set; } = new Border();
     private readonly TextEditor _editor = new();
     private readonly TermHighlighter _highlighter = new();
     private readonly TextBox _search = new() { Watermark = "Search: term1 & term2 …", MinWidth = 90 };
@@ -84,22 +111,27 @@ public sealed class StepFormView : UserControl
         BuildSettings();
 
         var left = new StackPanel { Spacing = 12 };
+        LeftSide = left;
         left.Children.Add(CardOf(_settings));
         _typeCard.Child = null;
         left.Children.Add(_typeCard);
 
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition(1.25, GridUnitType.Star) { MinWidth = 260 });
-        grid.Children.Add(left);
+        // two tabs: the step's config fields, and its template (the editor and its tools); a step type without a template has only the first
+        var host = new Grid();
+        host.Children.Add(left);
         if (editor is not null)
         {
-            grid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star) { MinWidth = 250 });
             _templatePanel = BuildTemplatePanel();
-            _templatePanel.Margin = new Thickness(16, 0, 0, 0);
-            Grid.SetColumn(_templatePanel, 1);
-            grid.Children.Add(_templatePanel);
+            host.Children.Add(_templatePanel);
+            _configTab.Content = "Config"; _configTab.Tag = "step-tab-config"; _configTab.Padding = new Thickness(14, 5);
+            _templateTab.Content = "Template"; _templateTab.Tag = "step-tab-template"; _templateTab.Padding = new Thickness(14, 5);
+            _configTab.Click += (_, _) => ShowTab(false);
+            _templateTab.Click += (_, _) => ShowTab(true);
+            var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 0, 0, 10), Children = { _configTab, _templateTab } };
+            DockPanel.SetDock(bar, Dock.Top);
+            Content = new DockPanel { Children = { bar, host } };
         }
-        Content = grid;
+        else Content = host;
         UpdateTypeParts();
 
         NotifyCollectionChangedEventHandler follow = (_, e) =>
@@ -115,7 +147,7 @@ public sealed class StepFormView : UserControl
             // saving the workbook also writes a template that was named or edited here but not saved yet
             Action withWorkbook = () =>
             {
-                if (_templatePanel?.IsVisible == true && Source.Length > 0 && (_isNew || (_editor.Text ?? string.Empty) != _loaded)) Save();
+                if (_templatePanel is not null && UsesTemplate(_step.TypeText) && Source.Length > 0 && (_isNew || (_editor.Text ?? string.Empty) != _loaded)) Save();
             };
             editor.SavingWorkbook += withWorkbook;
             _cleanup.Add(() => editor.SavingWorkbook -= withWorkbook);
@@ -493,7 +525,7 @@ public sealed class StepFormView : UserControl
             body.Children.Add(new StepTypeSection(_step));
             _typeCard.Child = CardOf(body);
         }
-        if (_templatePanel is not null) _templatePanel.IsVisible = UsesTemplate(type);
+        ApplyTab();
         if (_step.Editor is not null) LoadTemplate();
     }
 
