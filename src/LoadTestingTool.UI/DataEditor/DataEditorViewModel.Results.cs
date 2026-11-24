@@ -148,7 +148,8 @@ public sealed partial class DataEditorViewModel
         }
         var scope = EnvironmentPicked ? $" in {EnvironmentChoice}" : string.Empty;
         RunSummaryText = $"Last run{scope} {_results.WhenLocal.ToString("d MMM HH:mm", CultureInfo.CurrentCulture)}: {passed} passed, {failed} failed" + (errors > 0 ? $", {errors} {(errors == 1 ? "error" : "errors")}" : string.Empty) + (bugs > 0 ? $", {bugs} known {(bugs == 1 ? "bug" : "bugs")}" : string.Empty)
-            + (failedCells + bugCells > 0 ? $" ({failedCells} failed {(failedCells == 1 ? "cell" : "cells")}, {bugCells} bug {(bugCells == 1 ? "cell" : "cells")})" : string.Empty);
+            + (failedCells + bugCells > 0 ? $" ({failedCells} failed {(failedCells == 1 ? "cell" : "cells")}, {bugCells} bug {(bugCells == 1 ? "cell" : "cells")})" : string.Empty)
+            + (_results.RowsFromEarlierRuns > 0 ? $" · {_results.RowsFromEarlierRuns} {(_results.RowsFromEarlierRuns == 1 ? "row keeps its" : "rows keep their")} result from an earlier run" : string.Empty);
     }
 
     private void UpdateTestcaseResults()

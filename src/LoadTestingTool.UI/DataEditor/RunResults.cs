@@ -49,6 +49,26 @@ public sealed class RowOutcome
     }
 
     internal IEnumerable<RowOutcome> Children => _byEnvironment.Values;
+
+    /// <summary>The run this result comes from when it is older than the run shown (a later run did not run this row or environment again); null for the run shown.</summary>
+    public string? FromRunId { get; internal set; }
+
+    internal bool HasEnvironment(string environment) => _byEnvironment.ContainsKey(environment);
+    internal IEnumerable<KeyValuePair<string, RowOutcome>> EnvironmentPairs => _byEnvironment;
+
+    /// <summary>Adds what an older run saw in one environment of this row (the newer run did not run it there).</summary>
+    internal void AdoptEnvironment(string environment, RowOutcome older, string fromRunId)
+    {
+        _byEnvironment[environment] = older;
+        older.FromRunId = fromRunId;
+        Requests += older.Requests;
+        FailedRequests += older.FailedRequests;
+        FailedAssertions += older.FailedAssertions;
+        MaxDurationMs = Math.Max(MaxDurationMs, older.MaxDurationMs);
+        foreach (var failure in older.Failures) if (Failures.Count < 40) Failures.Add(failure);
+        PassedColumns.UnionWith(older.PassedColumns);
+        BugColumns.UnionWith(older.BugColumns);
+    }
     private readonly Dictionary<string, RowOutcome> _byEnvironment = new(StringComparer.OrdinalIgnoreCase);
 
     public bool Passed => FailedRequests == 0 && FailedAssertions == 0 && Requests > 0;
@@ -76,6 +96,8 @@ public sealed class RunResults
     /// <summary>Every environment the run covered (empty when the events carry no environment names).</summary>
     public IReadOnlyList<string> Environments { get; init; } = [];
     public int PassedRows => Rows.Values.Count(r => r.Passed);
+    /// <summary>Rows whose result comes from an older run because the latest run did not run them (a rerun of some rows).</summary>
+    public int RowsFromEarlierRuns => Rows.Values.Count(r => r.FromRunId is not null);
     public int FailedRows => Rows.Values.Count(r => !r.Passed);
 
     public RowOutcome? Find(int testcase, string dataId) => Rows.TryGetValue((testcase, dataId.Trim().ToUpperInvariant()), out var outcome) ? outcome : null;
@@ -100,12 +122,34 @@ public static class RunResultsReader
         if (files.Count == 0) return null;
 
         // Files of one run share the run ID in their name; take the run whose newest file is most recent.
-        var latest = files.OrderByDescending(f => f.LastWriteTimeUtc).First();
-        var runId = RunIdOf(latest.Name);
-        var runFiles = files.Where(f => RunIdOf(f.Name) == runId).ToList();
+        var runs = files.GroupBy(f => RunIdOf(f.Name)).Select(g => (RunId: g.Key, Files: g.ToList(), Newest: g.Max(f => f.LastWriteTimeUtc), Bytes: g.Sum(f => f.Length)))
+            .OrderByDescending(r => r.Newest).ToList();
+        var latest = runs[0];
+        var runId = latest.RunId;
+        var runFiles = latest.Files;
 
         var rows = new Dictionary<(int, string), RowOutcome>();
         foreach (var file in runFiles) ReadFile(file.FullName, rows);
+
+        // A rerun (or a run of a few rows or one environment) holds only what it ran. What it did not run keeps the result of the run before:
+        // look back through the older, bigger runs and add the rows and environments the newer ones lack, until a run that covered everything.
+        var older = 0;
+        foreach (var previous in runs.Skip(1))
+        {
+            if (++older > 10) break;
+            if (previous.Bytes <= latest.Bytes) continue;   // a run smaller than the latest cannot be what the latest is a part of
+            var oldRows = new Dictionary<(int, string), RowOutcome>();
+            foreach (var file in previous.Files) ReadFile(file.FullName, oldRows);
+            var complete = rows.Keys.All(oldRows.ContainsKey) && rows.All(r => r.Value.Environments.All(e => oldRows[r.Key].HasEnvironment(e)));
+            foreach (var (key, oldOutcome) in oldRows)
+            {
+                if (!rows.TryGetValue(key, out var current)) { oldOutcome.FromRunId = previous.RunId; foreach (var child in oldOutcome.Children) child.FromRunId = previous.RunId; rows[key] = oldOutcome; continue; }
+                foreach (var (environment, child) in oldOutcome.EnvironmentPairs.ToList())
+                    if (!current.HasEnvironment(environment) && current.Environments.Count > 0) current.AdoptEnvironment(environment, child, previous.RunId);
+            }
+            if (complete) break;
+        }
+
         foreach (var outcome in rows.Values) { FoldExplainedRequests(outcome); foreach (var child in outcome.Children) FoldExplainedRequests(child); }
         var environments = rows.Values.SelectMany(r => r.Environments).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
         return new RunResults { RunId = runId, WhenLocal = runFiles.Max(f => f.LastWriteTime), Rows = rows, Environments = environments };
