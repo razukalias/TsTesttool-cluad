@@ -47,6 +47,48 @@ internal static class DashboardStyle
     {
         "PASSED" => "Passed", "FAILED" => "Failed", "CANCELLED" => "Cancelled", _ => value
     };
+    /// <summary>A figure tile: small caption, big value, optional small note under it; a coloured strip on the left carries the meaning.</summary>
+    public static Border Tile(string label, string value, IBrush? color = null, string? note = null, double width = 128)
+    {
+        var caption = Text(label, 10, false, Muted); caption.TextWrapping = TextWrapping.Wrap;
+        var body = new StackPanel { Spacing = 2, Children = { caption, Text(value, 20, true, color ?? Brush("#E3EDF9")) } };
+        if (!string.IsNullOrWhiteSpace(note)) body.Children.Add(Text(note, 10, false, Muted));
+        var tile = new Border { Background = Panel, BorderBrush = Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(10, 8), Width = width, Margin = new Thickness(0, 0, 8, 8), Child = body };
+        if (color is not null) tile.BorderBrush = color is SolidColorBrush solid ? new SolidColorBrush(solid.Color, 0.45) : Line;
+        return tile;
+    }
+    /// <summary>A section heading with a thin rule, to separate blocks of the tabs.</summary>
+    public static Control Section(string title, string? hint = null)
+    {
+        var head = new StackPanel { Spacing = 2, Margin = new Thickness(0, 10, 0, 6) };
+        head.Children.Add(Text(title.ToUpperInvariant(), 10, true, Muted));
+        if (!string.IsNullOrWhiteSpace(hint)) head.Children.Add(Text(hint, 10, false, Muted));
+        head.Children.Add(new Border { Height = 1, Background = Line, Margin = new Thickness(0, 4, 0, 0) });
+        foreach (var text in head.Children.OfType<TextBlock>()) text.TextWrapping = TextWrapping.Wrap;
+        return head;
+    }
+    /// <summary>A small rounded label such as "Environment  All global environments".</summary>
+    public static Border Pill(string label, string value)
+    {
+        var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { Text(label, 11, false, Muted), Text(value, 11, true) } };
+        ToolTip.SetTip(line, value);
+        return new Border { Background = Brush("#17283B"), CornerRadius = new CornerRadius(12), Padding = new Thickness(10, 4), Margin = new Thickness(0, 0, 8, 6), Child = line };
+    }
+    /// <summary>One bar split in proportion to the given amounts (a run of zero amounts shows an empty track).</summary>
+    public static Control ProportionBar(params (long Amount, IBrush Color)[] parts)
+    {
+        var shown = parts.Where(p => p.Amount > 0).ToList();
+        var grid = new Grid { Height = 8 };
+        if (shown.Count == 0) { grid.Children.Add(new Border { Background = Line, CornerRadius = new CornerRadius(4) }); return grid; }
+        grid.ColumnDefinitions = new ColumnDefinitions(string.Join(",", shown.Select(p => $"{p.Amount}*")));
+        for (var i = 0; i < shown.Count; i++)
+        {
+            var segment = new Border { Background = shown[i].Color, Margin = new Thickness(0, 0, i == shown.Count - 1 ? 0 : 2, 0),
+                CornerRadius = new CornerRadius(i == 0 ? 4 : 0, i == shown.Count - 1 ? 4 : 0, i == shown.Count - 1 ? 4 : 0, i == 0 ? 4 : 0) };
+            Grid.SetColumn(segment, i); grid.Children.Add(segment);
+        }
+        return grid;
+    }
     public static Border Badge(string value)
     {
         var status = Status(value);
@@ -249,20 +291,20 @@ public sealed partial class MainWindow
         _bugsTab = new TabItem { Header = "Bugs (0)", Content = Scroll(_bugItems) };
         _detailTabs.ItemsSource = new[]
         {
-            new TabItem { Header = "Overview", Content = Scroll(_overviewPanel) },
+            new TabItem { Header = "Overview", Content = Scroll(_overviewPanel, wrap: true) },
             _manualTab,
-            new TabItem { Header = "Run Summary", Content = Scroll(_runSummaryPanel) },
+            new TabItem { Header = "Run Summary", Content = Scroll(_runSummaryPanel, wrap: true) },
             new TabItem { Header = "Assertions", Content = assertionPanel },
             _bugsTab,
             new TabItem { Header = "Environments", Content = Scroll(_environmentCompareItems) },
             new TabItem { Header = "Artifacts", Content = Scroll(_artifactPanel) }
         };
-        _overviewPanel.Children.Insert(0, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _overviewFilter, DashboardStyle.Action("Copy overview", () => _ = CopyOverviewAsync()) } });
+        _overviewPanel.Children.Insert(0, new WrapPanel { Children = { _overviewFilter, DashboardStyle.Action("Copy overview", () => _ = CopyOverviewAsync()) } });
         Content = _detailTabs;
         _details.TextWrapping = TextWrapping.Wrap; _details.Foreground = DashboardStyle.Muted; _details.FontSize = 11;
     }
 
-    private static ScrollViewer Scroll(Control control) => new() { Content = DetailTextSize.Wrap(control), Padding = new Thickness(14), HorizontalScrollBarVisibility = ScrollBarVisibility.Auto };
+    private static ScrollViewer Scroll(Control control, bool wrap = false) => new() { Content = new Border { Padding = new Thickness(14), Child = DetailTextSize.Wrap(control) }, HorizontalScrollBarVisibility = wrap ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto };
 
     private void LaunchHistoryWorkspace(string? instance = null, string? testcase = null)
     {
@@ -644,6 +686,7 @@ public sealed partial class MainWindow
         }
     }
 
+    private static TextBlock Wrapped(TextBlock text) { text.TextWrapping = TextWrapping.Wrap; return text; }
     private static Control Field(string label, Control control) => new StackPanel { Spacing = 6, Children = { DashboardStyle.Text(label, 12, false, DashboardStyle.Muted), control } };
 
     private void RefreshRunSummary(InstanceInfo? item)
@@ -670,50 +713,58 @@ public sealed partial class MainWindow
         title.Children.Add(DashboardStyle.Text("Run Summary", 17, true));
         var stateBadge = DashboardStyle.Badge(string.IsNullOrWhiteSpace(state) ? "Ready" : state); Grid.SetColumn(stateBadge, 1); title.Children.Add(stateBadge);
         _runSummaryPanel.Children.Add(title);
-        if (ActiveScope(item) is { } summaryScope) _runSummaryPanel.Children.Add(DashboardStyle.Text($"Preview for {ScopeText(summaryScope)}: what its ▶ button would run.", 12, true));
-        _runSummaryPanel.Children.Add(DashboardStyle.Text("Selection preview. dontrun skips individual steps inside a row; it does not automatically remove the whole row.", 11, false, DashboardStyle.Muted));
+        if (ActiveScope(item) is { } summaryScope) _runSummaryPanel.Children.Add(Wrapped(DashboardStyle.Text($"Preview for {ScopeText(summaryScope)}: what its ▶ button would run.", 12, true)));
+        _runSummaryPanel.Children.Add(Wrapped(DashboardStyle.Text("Selection preview. dontrun skips individual steps inside a row; it does not automatically remove the whole row.", 11, false, DashboardStyle.Muted)));
 
-        Border Metric(string label, long value, IBrush color) => DashboardStyle.Card(new StackPanel { Spacing = 4, Children = { DashboardStyle.Text(label, 10, false, DashboardStyle.Muted), DashboardStyle.Text(value.ToString("N0"), 20, true, color) } }, new Thickness(10));
-        Grid MetricRow(params Control[] controls)
-        {
-            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*"), Margin = new Thickness(0, 0, 0, 8) };
-            for (var i = 0; i < controls.Length; i++) { controls[i].Margin = new Thickness(0, 0, i == controls.Length - 1 ? 0 : 8, 0); Grid.SetColumn(controls[i], i); row.Children.Add(controls[i]); }
-            return row;
-        }
-        _runSummaryPanel.Children.Add(MetricRow(
-            Metric("Testcases selected", summary.Testcases, DashboardStyle.Blue),
-            Metric("Steps selected", summary.SelectedSteps, DashboardStyle.Blue),
-            Metric("Rows selected", summary.RowsSelected, DashboardStyle.Blue)));
-        _runSummaryPanel.Children.Add(MetricRow(
-            Metric("Environments", summary.Environments, DashboardStyle.Blue),
-            Metric("Max concurrent rows", summary.MaxParallelRows, DashboardStyle.Blue),
-            Metric("Iterations", summary.Iterations, DashboardStyle.Blue)));
-        _runSummaryPanel.Children.Add(MetricRow(
-            Metric("Step executions planned", summary.PlannedSteps, DashboardStyle.Green),
-            Metric("Steps skipped by dontrun", summary.SkippedSteps, DashboardStyle.Brush("#F6C76B")),
-            Metric("Rows fully skipped", summary.RowsFullySkipped, DashboardStyle.Red)));
+        var amber = DashboardStyle.Brush("#FFB36B"); var yellow = DashboardStyle.Brush("#F6C76B");
         var passedRequests = item.Requests.Where(request => request.Result.Equals("PASS", StringComparison.OrdinalIgnoreCase)).ToList();
         var failedRequests = item.Requests.Where(request => request.Result.Equals("FAIL", StringComparison.OrdinalIgnoreCase) && !IsUnexpectedRequest(request)).ToList();
         var unexpectedRequests = item.Requests.Where(IsUnexpectedRequest).ToList();
-        _runSummaryPanel.Children.Add(MetricRow(
-            Metric("Passed environments", passedRequests.Select(x => x.Environment).Distinct(StringComparer.OrdinalIgnoreCase).Count(), DashboardStyle.Green),
-            Metric("Passed testcases", passedRequests.Select(x => x.Testcase).Distinct(StringComparer.OrdinalIgnoreCase).Count(), DashboardStyle.Green),
-            Metric("Passed steps", passedRequests.Count, DashboardStyle.Green)));
-        _runSummaryPanel.Children.Add(MetricRow(
-            Metric("Failed environments", failedRequests.Select(x => x.Environment).Distinct(StringComparer.OrdinalIgnoreCase).Count(), DashboardStyle.Red),
-            Metric("Failed testcases", failedRequests.Select(x => x.Testcase).Distinct(StringComparer.OrdinalIgnoreCase).Count(), DashboardStyle.Red),
-            Metric("Failed steps", failedRequests.Count, DashboardStyle.Red)));
-        _runSummaryPanel.Children.Add(MetricRow(
-            Metric("Error environments", unexpectedRequests.Select(x => x.Environment).Distinct(StringComparer.OrdinalIgnoreCase).Count(), DashboardStyle.Brush("#FFB36B")),
-            Metric("Error testcases", unexpectedRequests.Select(x => x.Testcase).Distinct(StringComparer.OrdinalIgnoreCase).Count(), DashboardStyle.Brush("#FFB36B")),
-            Metric("Error steps", unexpectedRequests.Count, DashboardStyle.Brush("#FFB36B"))));
+
+        // the plan: what the selection would run, as tiles that wrap to the width of the pane
+        _runSummaryPanel.Children.Add(DashboardStyle.Section("Plan", "what the current selection would run"));
+        var plan = new WrapPanel();
+        plan.Children.Add(DashboardStyle.Tile("Testcases", summary.Testcases.ToString("N0"), DashboardStyle.Blue));
+        plan.Children.Add(DashboardStyle.Tile("Steps", summary.SelectedSteps.ToString("N0"), DashboardStyle.Blue));
+        plan.Children.Add(DashboardStyle.Tile("Rows", summary.RowsSelected.ToString("N0"), DashboardStyle.Blue));
+        plan.Children.Add(DashboardStyle.Tile("Environments", summary.Environments.ToString("N0"), DashboardStyle.Blue));
+        plan.Children.Add(DashboardStyle.Tile("Iterations", summary.Iterations.ToString("N0"), DashboardStyle.Blue));
+        plan.Children.Add(DashboardStyle.Tile("Max concurrent rows", summary.MaxParallelRows.ToString("N0"), DashboardStyle.Blue));
+        plan.Children.Add(DashboardStyle.Tile("Step executions", summary.PlannedSteps.ToString("N0"), DashboardStyle.Green));
+        plan.Children.Add(DashboardStyle.Tile("Skipped (dontrun)", summary.SkippedSteps.ToString("N0"), summary.SkippedSteps > 0 ? yellow : null));
+        plan.Children.Add(DashboardStyle.Tile("Rows fully skipped", summary.RowsFullySkipped.ToString("N0"), summary.RowsFullySkipped > 0 ? DashboardStyle.Red : null));
+        _runSummaryPanel.Children.Add(plan);
+
+        // the outcome of the run: one bar and one small table (what, environments, testcases, steps)
+        _runSummaryPanel.Children.Add(DashboardStyle.Section("Result", "environments, testcases and steps by outcome"));
+        var outcome = new Grid { ColumnDefinitions = new ColumnDefinitions("*,64,64,64") };
+        for (var r = 0; r < 4; r++) outcome.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+        void Cell(int row, int column, string text, IBrush? color, bool bold, bool right = true)
+        {
+            var cell = DashboardStyle.Text(text, 12, bold, color); cell.Margin = new Thickness(0, 3); if (right) cell.HorizontalAlignment = HorizontalAlignment.Right;
+            Grid.SetRow(cell, row); Grid.SetColumn(cell, column); outcome.Children.Add(cell);
+        }
+        Cell(0, 1, "Envs", DashboardStyle.Muted, false); Cell(0, 2, "Testcases", DashboardStyle.Muted, false); Cell(0, 3, "Steps", DashboardStyle.Muted, false);
+        void Line(int row, string name, IBrush color, IReadOnlyList<DashboardRequest> list)
+        {
+            Cell(row, 0, $"●  {name}", color, true, false);
+            Cell(row, 1, list.Select(x => x.Environment).Distinct(StringComparer.OrdinalIgnoreCase).Count().ToString("N0"), list.Count > 0 ? color : DashboardStyle.Muted, list.Count > 0);
+            Cell(row, 2, list.Select(x => x.Testcase).Distinct(StringComparer.OrdinalIgnoreCase).Count().ToString("N0"), list.Count > 0 ? color : DashboardStyle.Muted, list.Count > 0);
+            Cell(row, 3, list.Count.ToString("N0"), list.Count > 0 ? color : DashboardStyle.Muted, list.Count > 0);
+        }
+        Line(1, "Passed", DashboardStyle.Green, passedRequests); Line(2, "Failed", DashboardStyle.Red, failedRequests); Line(3, "Unexpected error", amber, unexpectedRequests);
+        _runSummaryPanel.Children.Add(DashboardStyle.Card(new StackPanel { Spacing = 10, Children =
+        {
+            DashboardStyle.ProportionBar((passedRequests.Count, DashboardStyle.Green), (failedRequests.Count, DashboardStyle.Red), (unexpectedRequests.Count, amber)),
+            outcome
+        }}, new Thickness(12, 10)));
 
         Control ResultColumn(string title, IReadOnlyList<DashboardRequest> requests, IBrush color, string emptyText)
         {
             var content = new StackPanel { Spacing = 4 };
             content.Children.Add(DashboardStyle.Text(title, 13, true, color));
             if (requests.Count == 0)
-                content.Children.Add(DashboardStyle.Text(emptyText, 11, false, DashboardStyle.Muted));
+                content.Children.Add(Wrapped(DashboardStyle.Text(emptyText, 11, false, DashboardStyle.Muted)));
             else
                 foreach (var environmentGroup in requests.GroupBy(x => string.IsNullOrWhiteSpace(x.Environment) ? "default" : x.Environment, StringComparer.OrdinalIgnoreCase).OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
                 {
@@ -737,6 +788,7 @@ public sealed partial class MainWindow
         var passedColumn = ResultColumn("Passed results", passedRequests, DashboardStyle.Green, "No passed environments, testcases, or steps yet.");
         failedColumn.Margin = new Thickness(0, 0, 8, 0); passedColumn.Margin = new Thickness(0);
         resultColumns.Children.Add(failedColumn); Grid.SetColumn(passedColumn, 1); resultColumns.Children.Add(passedColumn);
+        _runSummaryPanel.Children.Add(DashboardStyle.Section("Details"));
         _runSummaryPanel.Children.Add(resultColumns);
 
         var warnings = new List<string>();
@@ -747,9 +799,7 @@ public sealed partial class MainWindow
         if (summary.PlannedExecutions == 0) _runSummaryPanel.Children.Add(DashboardStyle.Text("✗ No executable step executions are planned for the current selection.", 11, true, DashboardStyle.Red));
         else if (warnings.Count == 0) _runSummaryPanel.Children.Add(DashboardStyle.Text("✓ Selection is ready: every selected row has at least one executable step.", 11, true, DashboardStyle.Green));
 
-        _runSummaryPanel.Children.Add(new Border { Height = 1, Background = DashboardStyle.Line, Margin = new Thickness(0, 4) });
-        _runSummaryPanel.Children.Add(DashboardStyle.Text("Status summary", 13, true));
-        _runSummaryPanel.Children.Add(DashboardStyle.Text("Expand a status to see its environments, testcase names, step names, data IDs, counts, and errors.", 11, false, DashboardStyle.Muted));
+        _runSummaryPanel.Children.Add(DashboardStyle.Section("Status summary", "Expand a status to see its environments, testcase names, step names, data IDs, counts, and errors."));
         var statusEntries = new[]
         {
             (Name: "Passed", Color: DashboardStyle.Green, Match: new Func<DashboardRequest, bool>(request => request.Result.Equals("PASS", StringComparison.OrdinalIgnoreCase))),
@@ -1033,7 +1083,7 @@ public sealed partial class MainWindow
         Detach(_overviewStepExclude);
         _overviewPanel.Children.Clear();
         Detach(_overviewRun);
-        _overviewPanel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _overviewFilter, DashboardStyle.Action("Copy overview", () => _ = CopyOverviewAsync()) } });
+        _overviewPanel.Children.Add(new WrapPanel { Children = { _overviewFilter, DashboardStyle.Action("Copy overview", () => _ = CopyOverviewAsync()) } });
         if (item is not null) _overviewPanel.Children.Add(RunPicker(item));
         if (item is null)
         {
@@ -1057,19 +1107,42 @@ public sealed partial class MainWindow
                 _overviewPanel.Children.Add(DashboardStyle.Text(item.Requests.Count > 0 ? "Not run yet — this was not part of the last run of the instance." : "No results yet — run it to see them here.", 12, false, DashboardStyle.Muted));
         }
         void AddOverview(Control control, string searchable) { if (MatchesTerms(searchable, _overviewFilter.Text)) _overviewPanel.Children.Add(control); }
-        AddOverview(DashboardStyle.Badge(item.Status), item.Status);
-        AddOverview(KeyValue("Environment", string.IsNullOrWhiteSpace(item.EnvironmentSelection) ? "All global environments" : item.EnvironmentSelection), item.EnvironmentSelection);
-        AddOverview(KeyValue("Mode / order", $"{(item.RowsExecutionMode == "sequential" ? "Loop" : "Parallel")} / {(item.RunEnvironmentsParallel ? "Parallel" : "Sequential")}"), $"{item.RowsExecutionMode} {(item.RunEnvironmentsParallel ? "Parallel" : "Sequential")}");
-        AddOverview(KeyValue("Started", item.StartedAt?.ToString("HH:mm:ss") ?? "Not started"), item.StartedAt?.ToString() ?? "Not started");
-        AddOverview(KeyValue("Requests", ((scoped ? null : item.CompletedRequests) ?? requests.Count).ToString()), $"{item.CompletedRequests} {requests.Count}");
+        // header: the state of the run and when it ran, then the settings as small labels, then the figures as tiles and the assertions as one bar
+        var headline = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
+        var stateBadge = DashboardStyle.Badge(item.Status); stateBadge.Margin = new Thickness(0, 0, 10, 6); headline.Children.Add(stateBadge);
+        var when = DashboardStyle.Text($"{(item.StartedAt is { } startedAt ? $"Started {startedAt:HH:mm:ss}" : "Not started")}  ·  Duration {FormatRunDuration(item)}", 12, false, DashboardStyle.Muted); when.Margin = new Thickness(0, 0, 0, 6);
+        headline.Children.Add(when);
+        AddOverview(headline, $"{item.Status} {item.StartedAt}");
+        var settings = new WrapPanel();
+        settings.Children.Add(DashboardStyle.Pill("Environment", string.IsNullOrWhiteSpace(item.EnvironmentSelection) ? "All global environments" : item.EnvironmentSelection));
+        settings.Children.Add(DashboardStyle.Pill("Rows", item.RowsExecutionMode == "sequential" ? "Loop" : "Parallel"));
+        settings.Children.Add(DashboardStyle.Pill("Environments", item.RunEnvironmentsParallel ? "Parallel" : "Sequential"));
+        AddOverview(settings, $"Environment {item.EnvironmentSelection} {item.RowsExecutionMode} {(item.RunEnvironmentsParallel ? "Parallel" : "Sequential")} Mode order");
         var average = (scoped ? null : item.AverageMs) ?? (requests.Count == 0 ? (double?)null : requests.Average(r => r.DurationMs));
-        AddOverview(KeyValue("Avg. latency", average is null ? "—" : $"{average:F1} ms"), average?.ToString() ?? "Available");
-        AddOverview(KeyValue("p95 latency", scoped ? "—" : item.P95Ms is null ? "Available on completion" : $"{item.P95Ms} ms"), item.P95Ms?.ToString() ?? "Available");
-        AddOverview(KeyValue("Throughput", scoped ? "—" : item.RequestsPerSecond is null ? "Available on completion" : $"{item.RequestsPerSecond:F2} requests / sec"), item.RequestsPerSecond?.ToString() ?? "Available");
-        AddOverview(KeyValue("Assertions", $"{assertions.Count(a => a.Result == "PASS")} passed / {assertions.Count(a => a.Result == "FAIL")} failed" + (assertions.Any(a => a.Result == "KNOWN_BUG") ? $" / {assertions.Count(a => a.Result == "KNOWN_BUG")} known bugs" : string.Empty)), $"{assertions.Count} pass fail known bugs");
+        var figures = new UniformGrid { Columns = 4, Margin = new Thickness(0, 4, 0, 0) };
+        figures.Children.Add(DashboardStyle.Tile("Requests", ((scoped ? null : item.CompletedRequests) ?? requests.Count).ToString("N0"), DashboardStyle.Blue, width: double.NaN));
+        figures.Children.Add(DashboardStyle.Tile("Avg. latency", average is null ? "—" : $"{average:F0} ms", width: double.NaN));
+        figures.Children.Add(DashboardStyle.Tile("p95 latency", scoped ? "—" : item.P95Ms is null ? "…" : $"{item.P95Ms} ms", width: double.NaN));
+        figures.Children.Add(DashboardStyle.Tile("Throughput", scoped ? "—" : item.RequestsPerSecond is null ? "…" : $"{item.RequestsPerSecond:F1}/s", width: double.NaN));
+        AddOverview(figures, $"Requests Avg. latency p95 latency Throughput {item.CompletedRequests} {requests.Count} {average} {item.P95Ms} {item.RequestsPerSecond}");
+        var passedAssertions = assertions.Count(a => a.Result == "PASS"); var failedAssertions = assertions.Count(a => a.Result == "FAIL"); var bugAssertions = assertions.Count(a => a.Result == "KNOWN_BUG");
+        var assertionLine = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14, Children =
+        {
+            DashboardStyle.Text($"{passedAssertions:N0} passed", 12, true, DashboardStyle.Green),
+            DashboardStyle.Text($"{failedAssertions:N0} failed", 12, true, failedAssertions > 0 ? DashboardStyle.Red : DashboardStyle.Muted)
+        }};
+        if (bugAssertions > 0) assertionLine.Children.Add(DashboardStyle.Text($"{bugAssertions:N0} known bugs", 12, true, DashboardStyle.Brush("#F6C76B")));
+        var assertionCard = DashboardStyle.Card(new StackPanel { Spacing = 8, Children =
+        {
+            DashboardStyle.Text("Assertions", 10, false, DashboardStyle.Muted),
+            DashboardStyle.ProportionBar((passedAssertions, DashboardStyle.Green), (failedAssertions, DashboardStyle.Red), (bugAssertions, DashboardStyle.Brush("#F6C76B"))),
+            assertionLine
+        }}, new Thickness(12, 10));
+        assertionCard.Margin = new Thickness(0, 0, 0, 4);
+        AddOverview(assertionCard, $"Assertions {assertions.Count} pass fail known bugs");
         if (issues.Count > 0)
         {
-            _overviewPanel.Children.Add(DashboardStyle.Text($"Run issues  ·  {issues.Count(i => i.Severity.Equals("Error", StringComparison.OrdinalIgnoreCase))} error(s) / {issues.Count(i => i.Severity.Equals("Warning", StringComparison.OrdinalIgnoreCase))} warning(s)", 13, true));
+            _overviewPanel.Children.Add(DashboardStyle.Section("Run issues", $"{issues.Count(i => i.Severity.Equals("Error", StringComparison.OrdinalIgnoreCase))} error(s) / {issues.Count(i => i.Severity.Equals("Warning", StringComparison.OrdinalIgnoreCase))} warning(s)"));
             foreach (var issue in issues.Where(i => MatchesTerms($"{i.Severity} {i.Category} {i.Environment} {i.Testcase} {i.DataId} {i.StepName} {i.Message}", _overviewFilter.Text)).OrderByDescending(i => i.OccurredAt))
             {
                 var color = issue.Severity.Equals("Warning", StringComparison.OrdinalIgnoreCase) ? DashboardStyle.Brush("#FFB36B") : DashboardStyle.Red;
@@ -1083,7 +1156,7 @@ public sealed partial class MainWindow
                 _overviewPanel.Children.Add(DashboardStyle.Card(content, new Thickness(8)));
             }
         }
-        _overviewPanel.Children.Add(DashboardStyle.Text($"Step execution timeline  ·  Total duration: {FormatRunDuration(item)}", 13, true));
+        _overviewPanel.Children.Add(DashboardStyle.Section("Step execution timeline", $"Total duration {FormatRunDuration(item)}"));
         var stepFilterBar = new WrapPanel { Orientation = Orientation.Horizontal, ItemWidth = double.NaN, ItemHeight = double.NaN, Children =
         {
             _overviewStepStatus, _overviewStepEnvironment, _overviewStepTestcase, _overviewStepName, _overviewStepFilter, _overviewStepExclude
@@ -1093,7 +1166,7 @@ public sealed partial class MainWindow
         if (OverviewChips() is { } overviewChips) _overviewPanel.Children.Add(overviewChips);
         var hiddenByExclude = string.IsNullOrWhiteSpace(_overviewStepExclude.Text) ? 0 : requests.Count(r => IsExcludedStep(r) && MatchesOverviewStep(r, applyExclude: false));
         if (hiddenByExclude > 0) _overviewPanel.Children.Add(DashboardStyle.Text($"{hiddenByExclude} {(hiddenByExclude == 1 ? "step is" : "steps are")} hidden by the exclude box. Clear it to see {(hiddenByExclude == 1 ? "it" : "them")} again.", 11, false, DashboardStyle.Muted));
-        _overviewPanel.Children.Add(DashboardStyle.Text("Filters apply to completed steps only. Use & between terms to require all terms; matching text remains visible in the details viewer.", 10, false, DashboardStyle.Muted));
+        _overviewPanel.Children.Add(Wrapped(DashboardStyle.Text("Filters apply to completed steps only. Use & between terms to require all terms; matching text remains visible in the details viewer.", 10, false, DashboardStyle.Muted)));
         var stepPositions = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var stepTotals = requests
             .GroupBy(request => $"{request.Testcase}\u001F{request.DataId}\u001F{request.Environment}", StringComparer.OrdinalIgnoreCase)
@@ -1135,7 +1208,7 @@ public sealed partial class MainWindow
         _overviewPanel.Children.Add(overviewPaging);
         if (requests.Count > 0)
         {
-            _overviewPanel.Children.Add(DashboardStyle.Text("Latency trend  /  last 30 requests", 13, true));
+            _overviewPanel.Children.Add(DashboardStyle.Section("Latency trend", "last 30 requests"));
             _overviewPanel.Children.Add(new LatencyChart(requests.TakeLast(30).Select(r => (double)r.DurationMs).ToArray()) { Height = 90 });
             _overviewPanel.Children.Add(DashboardStyle.Text($"Range: 0–{requests.TakeLast(30).Max(r => r.DurationMs)} ms / observed completion order", 10, false, DashboardStyle.Muted));
         }

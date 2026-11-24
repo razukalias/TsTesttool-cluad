@@ -1028,3 +1028,9 @@ To add:
 - [ ] Secrets for all of the above come from `${ENV_NAME}` / vault (see CI/CD item 2), never stored in the workbook; masked in logs and history.
 - [ ] Windows integrated auth does not work on a Linux CI agent – needs an alternative (token or Basic) when the pipeline runs there.
 - [ ] Editor: an Authentication section in the environment / step form, and a validator warning when a step needs auth that is not configured.
+
+## Overview and Run Summary tabs – new design (done 2026-11-24)
+- [x] **Overview:** header with the run state, start time and duration; the settings as small labels (Environment, Rows, Environments); four figure tiles (Requests, Avg., p95, Throughput); the assertions as one coloured bar with passed / failed / known-bug counts; section headings with a thin rule (issues, timeline, latency trend). Filter row and settings wrap to the width of the pane. All earlier figures are still there.
+- [x] **Run Summary:** "Plan" (nine tiles that wrap to the pane width) and "Result" (one bar plus a small table: Passed / Failed / Unexpected error by environments, testcases, steps) in place of 18 equal boxes; hints wrap instead of being cut off; section headings.
+- [x] **Fixed on the way:** the left edge of every dashboard tab's content was clipped (the scroll viewer's own padding); the padding is now inside the scrolled content. Overview and Run Summary no longer show a horizontal scroll bar.
+- Not done: the Assertions, Bugs, Environments and Artifacts tabs keep the old look; the "Failed results / Passed results" lists in Run Summary are unchanged; screenshots were checked in the headless renderer only (please look in the real window). Test: DashboardSummaryDesignTests (also writes `dashboard-overview-run.png` and `dashboard-run-summary.png` to UI_SCREENSHOT_DIR).
