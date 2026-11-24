@@ -356,7 +356,7 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
         {
             if (!HasEnvChips) return [];
             var all = RunEnvironments.Select(e => (Name: e, Status: StatusIn(e))).ToList();
-            if (all.Count <= MaxEnvChips) return all.Select(e => new EnvChip(e.Name, e.Status, $"{SymbolOf(e.Status)} {e.Name}", ColorOf(e.Status))).ToList();
+            if (all.Count <= MaxEnvChips) return all.Select(e => new EnvChip(e.Name, e.Status, $"{SymbolOf(e.Status)} {e.Name}{(EarlierEnvironments.Contains(e.Name) ? " ↶" : string.Empty)}", ColorOf(e.Status))).ToList();
             var ran = all.Where(e => e.Status != "—").ToList();
             var passed = ran.Count(e => e.Status == "PASS");
             var worst = ran.Any(e => e.Status == "ERROR") ? "ERROR" : ran.Any(e => e.Status == "FAIL") ? "FAIL" : ran.Any(e => e.Status == "BUG") ? "BUG" : ran.Count > 0 ? "PASS" : "—";
@@ -368,7 +368,7 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
 
     /// <summary>One line per environment for the tooltip of the chips.</summary>
     public string EnvDetail => !HasEnvChips ? string.Empty
-        : string.Join("\n", RunEnvironments.Select(e => $"{e}: {StatusIn(e) switch { "—" => "did not run", var s => s }}{(AllOutcome!.In(e) is { Passed: false } o ? $" ({o.Problems} {(o.Problems == 1 ? "problem" : "problems")})" : string.Empty)}"));
+        : string.Join("\n", RunEnvironments.Select(e => $"{e}: {StatusIn(e) switch { "—" => "did not run", var s => s }}{(AllOutcome!.In(e) is { Passed: false } o ? $" ({o.Problems} {(o.Problems == 1 ? "problem" : "problems")})" : string.Empty)}{(AllOutcome.In(e) is { FromRunId: { } from } ? $" — from the run of {RowOutcome.RunTime(from)}" : string.Empty)}"));
 
     /// <summary>True when the environments that ran this row do not agree on its status.</summary>
     public bool EnvDiffers => HasEnvChips && RunEnvironments.Select(StatusIn).Where(s => s != "—").Distinct().Count() > 1;
@@ -384,6 +384,12 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
 
     public string BugTagText => BugTagCount > 0 ? $"⚑ {BugTagCount}" : string.Empty;
 
+    /// <summary>The older run this row's result comes from when the latest run did not run it; null otherwise.</summary>
+    public string? EarlierRun => (AllOutcome ?? Outcome)?.FromRunId is { } id ? RowOutcome.RunTime(id) : null;
+
+    /// <summary>The environments whose result comes from an older run while the rest of the row is from the latest.</summary>
+    internal IReadOnlyList<string> EarlierEnvironments => AllOutcome is { FromRunId: null } all ? all.EnvironmentPairs.Where(p => p.Value.FromRunId is not null).Select(p => p.Key).ToList() : [];
+
     /// <summary>"2 failed · 1 bug" beside the PASS / FAIL / BUG status; empty when nothing failed.</summary>
     public string CountsText
     {
@@ -393,13 +399,14 @@ public sealed partial class DataRowViewModel : ObservableObject, IFormattedRow, 
             var parts = new List<string>();
             if (failed > 0) parts.Add($"{failed} failed");
             if (bugs > 0) parts.Add($"{bugs} {(bugs == 1 ? "bug" : "bugs")}");
+            if (EarlierRun is not null) parts.Add("earlier run");
             return string.Join(" · ", parts);
         }
     }
 
     /// <summary>One line per failure for the tooltip of the counts: whether it counts as failed or as a known bug, and which field.</summary>
-    public string CountsDetail => Outcome is not { Passed: false } outcome ? string.Empty
-        : string.Join("\n", outcome.Failures.Select(f => (f.IsSecondary ? "ALSO   " : KnownBugCheck?.Invoke(this, f) ?? false ? "BUG    " : "FAILED ") + (f.IsAssertion ? PathText?.Invoke(f) ?? $"{f.StepName}.{f.ResponsePath}" : $"{f.StepName} (step)") + (f.Environment.Length > 0 ? $" [{f.Environment}]" : string.Empty)));
+    public string CountsDetail => (EarlierRun is { } earlier ? $"Result of the run of {earlier}: the latest run did not run this row.\n" : string.Empty) + (Outcome is not { Passed: false } outcome ? string.Empty
+        : string.Join("\n", outcome.Failures.Select(f => (f.IsSecondary ? "ALSO   " : KnownBugCheck?.Invoke(this, f) ?? false ? "BUG    " : "FAILED ") + (f.IsAssertion ? PathText?.Invoke(f) ?? $"{f.StepName}.{f.ResponsePath}" : $"{f.StepName} (step)") + (f.Environment.Length > 0 ? $" [{f.Environment}]" : string.Empty))));
 
     /// <summary>True when the row's latest run failed for something other than a known bug.</summary>
     public bool FailedForReal => Outcome is not null && Standing is "FAIL" or "ERROR";

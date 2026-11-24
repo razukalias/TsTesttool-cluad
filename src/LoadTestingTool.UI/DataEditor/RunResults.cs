@@ -53,6 +53,14 @@ public sealed class RowOutcome
     /// <summary>The run this result comes from when it is older than the run shown (a later run did not run this row or environment again); null for the run shown.</summary>
     public string? FromRunId { get; internal set; }
 
+    /// <summary>The name of the testcase the events gave for this row (empty when they carry none); used to match rows of older runs when testcases were reordered.</summary>
+    public string Testcase { get; internal set; } = string.Empty;
+
+    /// <summary>"24 Nov 20:10" for a run ID of the form yyyyMMdd_HHmmss_xxxxxxxxxx; the ID itself when it does not read that way.</summary>
+    public static string RunTime(string runId)
+        => runId.Length >= 15 && DateTime.TryParseExact(runId[..15], "yyyyMMdd_HHmmss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var when)
+            ? when.ToString("d MMM HH:mm", System.Globalization.CultureInfo.CurrentCulture) : runId;
+
     internal bool HasEnvironment(string environment) => _byEnvironment.ContainsKey(environment);
     internal IEnumerable<KeyValuePair<string, RowOutcome>> EnvironmentPairs => _byEnvironment;
 
@@ -141,8 +149,18 @@ public static class RunResultsReader
             var oldRows = new Dictionary<(int, string), RowOutcome>();
             foreach (var file in previous.Files) ReadFile(file.FullName, oldRows);
             var complete = rows.Keys.All(oldRows.ContainsKey) && rows.All(r => r.Value.Environments.All(e => oldRows[r.Key].HasEnvironment(e)));
-            foreach (var (key, oldOutcome) in oldRows)
+            // Testcases are matched by their number, but when the events carry the testcase name and the number now means another testcase (or the
+            // testcase moved), the old rows follow the name: they go to the number the newest run gave that testcase, or are left out when it is gone.
+            var names = rows.Where(r => r.Value.Testcase.Length > 0).GroupBy(r => r.Key.Item1).ToDictionary(g => g.Key, g => g.First().Value.Testcase);
+            var indexOf = names.GroupBy(n => n.Value, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().Key, StringComparer.OrdinalIgnoreCase);
+            foreach (var (oldKey, oldOutcome) in oldRows)
             {
+                var key = oldKey;
+                if (oldOutcome.Testcase.Length > 0)
+                {
+                    if (indexOf.TryGetValue(oldOutcome.Testcase, out var moved)) key = (moved, oldKey.Item2);
+                    else if (names.ContainsKey(oldKey.Item1)) continue;   // that number is another testcase now
+                }
                 if (!rows.TryGetValue(key, out var current)) { oldOutcome.FromRunId = previous.RunId; foreach (var child in oldOutcome.Children) child.FromRunId = previous.RunId; rows[key] = oldOutcome; continue; }
                 foreach (var (environment, child) in oldOutcome.EnvironmentPairs.ToList())
                     if (!current.HasEnvironment(environment) && current.Environments.Count > 0) current.AdoptEnvironment(environment, child, previous.RunId);
@@ -219,6 +237,7 @@ public static class RunResultsReader
                 var key = (Int(root, "testcaseIndex"), Text(root, "dataId").Trim().ToUpperInvariant());
                 if (!rows.TryGetValue(key, out var outcome)) rows[key] = outcome = new RowOutcome();
                 var environment = Text(root, "environment");
+                if (outcome.Testcase.Length == 0) outcome.Testcase = Text(root, "testcase");
                 if (isRequest) AddRequest(outcome, root, environment);
                 else AddAssertion(outcome, root, environment);
                 if (environment.Length > 0)   // also keep the row per environment, so the table can show one environment's status
