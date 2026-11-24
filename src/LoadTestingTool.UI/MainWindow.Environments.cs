@@ -135,6 +135,8 @@ public sealed partial class MainWindow
         public IReadOnlyList<string> GetSelection(string instanceName)
         {
             var saved = window._instances.FirstOrDefault(x => x.Name == instanceName)?.EnvironmentSelection ?? string.Empty;
+            // An instance with no selection of its own runs in the central default (the runner does the same), so the editor must show that, not "all".
+            if (string.IsNullOrWhiteSpace(saved)) saved = window._config.EnvironmentSelection ?? string.Empty;
             return saved.Split([',', '|'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
         }
 

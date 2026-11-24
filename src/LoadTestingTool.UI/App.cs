@@ -22,6 +22,8 @@ public sealed class UiConfig
     public string RowsExecutionMode { get; set; } = "parallel";
     public bool SpoolResultsToDisk { get; set; } = true;
     public bool RunEnvironmentsParallel { get; set; }
+    /// <summary>The central default environments (comma list) for an instance that has none of its own; empty = all. The runner reads the same key.</summary>
+    public string EnvironmentSelection { get; set; } = string.Empty;
     public bool GenerateResults { get; set; } = true;
     public List<string> Environments { get; set; } = [];
     public Dictionary<string, UiInstanceDefinition> Instances { get; set; } = new(StringComparer.OrdinalIgnoreCase);
