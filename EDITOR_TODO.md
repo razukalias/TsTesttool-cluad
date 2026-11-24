@@ -987,3 +987,9 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 
 ### XML (SOAP) response tree in "Template and response" (open, postponed by the user 2026-11-24)
 - DONE 2026-11-24: the XML tree is built straight from the XML with the runner's path rules, with a Tree / Raw toggle. `#count` is not offered for XML nodes.
+
+
+## Editor fixes reported 2026-11-24 (open)
+- [ ] **Rerun does not show all failed rows:** after clicking Rerun (rerun failed), the table/list shows only part of the failed rows. Reproduce with an instance that has several failed testcases, rerun, and compare the rows shown with the failed set; the results of the rerun must be merged into the existing results (and the "failed" filter must list every row that is still failed, not only those from the last run). Add a test.
+- [ ] **Shared variables on every step in table view and other modes:** the shared variables should appear as columns/fields on all steps — in the table view and in the other modes (steps list, tree, record) — not only on some. Decide where they live in the table (one block of columns after the step's own, or per step) and make the ✦ wizard and the variable lists use the same set.
+- [ ] **Clicking a testcase switches the step drop-list to "all steps":** when a testcase (or the instance) is clicked in the tree, the step drop-list/filter should reset to "all steps" so the whole testcase shows; today it keeps the previously chosen step.
