@@ -111,3 +111,36 @@ public class JsonViewTreeTests
         Assert.False(root.Leaves().Single(l => l.Path == "statusCode").Missing);               // the status is not in the body, and is not "missing"
     }
 }
+
+public class JsonViewXmlTests
+{
+    [Fact]
+    public void An_xml_response_and_an_xml_template_give_trees_like_json_does()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        Directory.CreateDirectory(dir.Combine("History"));
+        using (var book = new XLWorkbook())
+        {
+            var sheet = book.AddWorksheet("RequestHistory");
+            string[] headers = ["runid", "dataid", "stepname", "responsebody"];
+            for (var i = 0; i < headers.Length; i++) sheet.Cell(1, i + 1).Value = headers[i];
+            sheet.Cell(2, 1).Value = "r1"; sheet.Cell(2, 2).Value = "CUST001"; sheet.Cell(2, 3).Value = "CreateCustomer";
+            sheet.Cell(2, 4).Value = "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><CreateResponse xmlns=\"http://t/\"><Id>7</Id><Lines><Line sku=\"a\">1</Line><Line sku=\"b\">2</Line></Lines></CreateResponse></s:Body></s:Envelope>";
+            book.SaveAs(System.IO.Path.Combine(dir.Combine("History"), "run1.xlsx"));
+        }
+        var templates = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(path)!, "Templates");
+        Directory.CreateDirectory(templates);
+        File.WriteAllText(System.IO.Path.Combine(templates, "create.json"), "<Create xmlns=\"http://t/\"><Name>_name_</Name><Mail a=\"_email_\"/><Extra>_note_</Extra></Create>");
+        var editor = new DataEditorViewModel(path, "Customers");
+        editor.StepFilter = "CreateCustomer";
+
+        var response = editor.BuildJsonTree(JsonTab.Response, "CreateCustomer");
+        var paths = response.Leaves().Where(l => l.Extra).Select(l => l.Path).OrderBy(p => p).ToList();
+        Assert.Contains("CreateResponse.Id", paths);
+        Assert.Contains(paths, p => p.StartsWith("CreateResponse.Lines.Line[0]") && p.EndsWith("@sku"));
+
+        var template = editor.BuildJsonTree(JsonTab.Template, "CreateCustomer");
+        Assert.Equal(["email", "name", "note"], template.Leaves().Select(l => l.Name).OrderBy(n => n).ToArray());
+    }
+}
