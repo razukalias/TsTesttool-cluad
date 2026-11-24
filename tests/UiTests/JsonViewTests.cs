@@ -247,4 +247,24 @@ public class JsonViewTests
         editor.UndoCommand.Execute(null);                               // one undo step takes the columns back
         Assert.DoesNotContain(editor.Columns, c => c.Title == "CreateCustomer.phone");
     }
+
+    [AvaloniaFact]
+    public void The_raw_toggle_shows_the_text_with_a_row_picker_and_the_rows_come_back()
+    {
+        using var dir = new TempDir();
+        var (window, editor, view) = Open(dir);
+        view.Select("name");
+        Dispatcher.UIThread.RunJobs();
+        var toggle = Tagged<ToggleButton>(window, "json-raw");
+        toggle.IsChecked = true;
+        Click(toggle);
+        Assert.True(Tagged<DockPanel>(window, "json-raw-panel").IsVisible);
+        Assert.False(Tagged<ListBox>(window, "json-rows").IsVisible);
+        Assert.Contains("CUST001", Tagged<ComboBox>(window, "json-raw-row").ItemsSource!.Cast<string>());
+        Assert.False(string.IsNullOrEmpty(Tagged<TextBox>(window, "json-raw-text").Text));
+        toggle.IsChecked = false;
+        Click(toggle);
+        Assert.True(Tagged<ListBox>(window, "json-rows").IsVisible);
+        Assert.False(Tagged<DockPanel>(window, "json-raw-panel").IsVisible);
+    }
 }

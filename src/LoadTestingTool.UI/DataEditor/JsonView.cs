@@ -31,6 +31,10 @@ public sealed class JsonView : UserControl
     private readonly TextBlock _hint = new() { Foreground = Muted, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Tag = "json-hint" };
     private readonly StackPanel _actions = new() { Orientation = Orientation.Horizontal, Spacing = 4, Tag = "json-actions" };
     private readonly List<ToggleButton> _tabButtons = [];
+    private readonly ToggleButton _rawToggle = new() { Content = "‹/›  Raw", Tag = "json-raw", Padding = new Thickness(8, 3), MinHeight = 28 };
+    private readonly ComboBox _rawRow = new() { Tag = "json-raw-row", MinWidth = 150, MinHeight = 28 };
+    private readonly TextBox _rawText = new() { Tag = "json-raw-text", IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontSize = 12, BorderThickness = new Thickness(0) };
+    private readonly DockPanel _rawPanel = new() { Tag = "json-raw-panel", IsVisible = false };
     private readonly ComboBox _fillChoice = new() { Tag = "json-fill-choice", ItemsSource = new[] { "Leave the cells empty", "Fill the row shown", "Fill every row from its own response" }, SelectedIndex = 1, MinWidth = 210 };
     private JsonTab _tab = JsonTab.Response;
     private JsonViewNode? _root;
@@ -83,7 +87,12 @@ public sealed class JsonView : UserControl
         DockPanel.SetDock(_actions, Dock.Right);
         header.Children.Add(_actions);
         DockPanel.SetDock(header, Dock.Top);
-        var right = new Border { BorderBrush = Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(8), Margin = new Thickness(6, 0, 14, 14), Child = new DockPanel { Children = { header, _rows } } };
+        DockPanel.SetDock(_rawRow, Dock.Top);
+        _rawPanel.Children.Add(_rawRow);
+        _rawPanel.Children.Add(_rawText);
+        _rawToggle.Click += (_, _) => UpdateRaw();
+        _rawRow.SelectionChanged += (_, _) => { if (!_building) FillRaw(); };
+        var right = new Border { BorderBrush = Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(8), Margin = new Thickness(6, 0, 14, 14), Child = new DockPanel { Children = { header, _rows, _rawPanel } } };
 
         var body = new Grid { ColumnDefinitions = new ColumnDefinitions("320,*") };
         body.Children.Add(left);
@@ -152,7 +161,9 @@ public sealed class JsonView : UserControl
         if (node.Extra) name.Foreground = Brush.Parse("#8CC1FF");
         if (node.Missing) { name.Foreground = Brush.Parse("#FF7588"); name.TextDecorations = TextDecorations.Strikethrough; }
         panel.Children.Add(name);
-        if (!node.IsLeaf) panel.Children.Add(new TextBlock { Text = $"{{ }} {node.Children.Count}", Foreground = Muted, FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
+        if (node.Variable.Length > 0 && !node.Variable.Equals(node.Name, StringComparison.OrdinalIgnoreCase)) panel.Children.Add(new TextBlock { Text = "← " + node.Variable, Foreground = Muted, FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
+        if (node.Constant) panel.Children.Add(new TextBlock { Text = "= " + (node.Sample.Length > 24 ? node.Sample[..24] + "…" : node.Sample), Foreground = Brush.Parse("#5E7590"), FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
+        if (!node.IsLeaf) panel.Children.Add(new TextBlock { Text = node.Children.All(c => c.Name.StartsWith('[')) ? $"[ ] {node.Children.Count}" : $"{{ }} {node.Children.Count}", Foreground = Muted, FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
         void Badge(string text, string color, string tip) => panel.Children.Add(new TextBlock { Text = text, Foreground = Brush.Parse(color), FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Tag = "json-badge", [ToolTip.TipProperty] = tip });
         if (node.Passed > 0) Badge($"✓ {node.Passed}", DataRowViewModel.ColorOf("PASS"), $"{node.Passed} passed in the rows shown");
         if (node.Failed > 0) Badge($"✗ {node.Failed}", DataRowViewModel.ColorOf("FAIL"), $"{node.Failed} failed in the rows shown");
@@ -169,9 +180,38 @@ public sealed class JsonView : UserControl
 
     private IReadOnlyList<DataRowViewModel> SelectedRows => _rows.SelectedItems?.OfType<DataRowViewModel>().OrderBy(r => _editor.VisibleRows.IndexOf(r)).ToList() ?? [];
 
+    /// <summary>Shows the raw text (or the rows) and keeps the row picker of the raw text in step with the rows shown.</summary>
+    private void UpdateRaw()
+    {
+        var raw = _rawToggle.IsChecked == true && _tab != JsonTab.Config;
+        _rawPanel.IsVisible = raw;
+        _rows.IsVisible = !raw;
+        if (!raw) return;
+        var ids = _editor.VisibleRows.Select(r => r.CurrentDataId).ToList();
+        var keep = _rawRow.SelectedItem as string ?? (_rows.SelectedItems?.OfType<DataRowViewModel>().FirstOrDefault() ?? _editor.VisibleRows.FirstOrDefault())?.CurrentDataId;
+        var wasBuilding = _building;
+        _building = true;
+        try
+        {
+            _rawRow.ItemsSource = ids;
+            _rawRow.SelectedItem = ids.FirstOrDefault(i => i == keep) ?? ids.FirstOrDefault();
+        }
+        finally { _building = wasBuilding; }
+        FillRaw();
+    }
+
+    private void FillRaw()
+    {
+        var row = _editor.VisibleRows.FirstOrDefault(r => r.CurrentDataId == _rawRow.SelectedItem as string);
+        _rawText.Text = row is null ? "No rows shown." : _editor.JsonRawText(_tab, Step, row);
+    }
+
     private void BuildRows()
     {
         _actions.Children.Clear();
+        _actions.Children.Add(_rawToggle);
+        _rawToggle.IsVisible = _tab != JsonTab.Config;
+        UpdateRaw();
         var node = _selected;
         _rows.ItemsSource = null;
         if (node is null)
@@ -182,8 +222,9 @@ public sealed class JsonView : UserControl
             AddAction("＋ Row", "Add a row to the testcase", () => _editor.AddRows(1), "json-add-row");
             return;
         }
-        _title.Text = (_tab == JsonTab.Response ? Step + "." : string.Empty) + node.Path;
-        _hint.Text = $"{_editor.VisibleRows.Count} rows shown";
+        _title.Text = (_tab == JsonTab.Response ? Step + "." : string.Empty) + node.Path + (node.Variable.Length > 0 && !node.Variable.Equals(node.Name, StringComparison.OrdinalIgnoreCase) ? " ← " + node.Variable : string.Empty);
+        _hint.Text = node.Constant ? "Fixed text in the template, no variable to fill: " + node.Sample : $"{_editor.VisibleRows.Count} rows shown";
+        if (node.Constant) { AddExtrasAction(_root); return; }
         _rows.ItemsSource = _editor.VisibleRows.ToList();
 
         AddExtrasAction(node);

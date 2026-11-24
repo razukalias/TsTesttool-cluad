@@ -1,4 +1,7 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.Linq;
 using LoadTestingTool.Editing;
 using LoadTestingTool.Reporting;
 
@@ -25,6 +28,10 @@ public sealed class JsonViewNode
     /// <summary>A column, but the last responses do not have the field.</summary>
     public bool Missing { get; set; }
     public bool Shared { get; set; }
+    /// <summary>For a request item: the <c>_variable_</c> of the template that this item is (its column is <c>Step.variable</c> or the shared <c>variable</c>).</summary>
+    public string Variable { get; set; } = string.Empty;
+    /// <summary>Text of the template that has no variable in it.</summary>
+    public bool Constant { get; set; }
     public string Sample { get; set; } = string.Empty;
     public int Passed { get; set; }
     public int Failed { get; set; }
@@ -76,8 +83,8 @@ public sealed partial class DataEditorViewModel
     /// <summary>Forget what the JSON view read from the history (after a run, or when the view opens).</summary>
     public void ForgetJsonSamples() { _jsonSamplesStep = string.Empty; _jsonSamples = new(StringComparer.OrdinalIgnoreCase); }
 
-    /// <summary>The names of the <c>_variables_</c> the step's template uses; null when the step has no readable template.</summary>
-    private HashSet<string>? TemplateVariableNames(string step)
+    /// <summary>The text of the step's template file; null when the step has none or it cannot be read.</summary>
+    private string? TemplateText(string step)
     {
         var row = _document.Config.Rows.FirstOrDefault(r => !r.IsBlank && string.Equals(r.Get("stepname").Trim(), step, StringComparison.OrdinalIgnoreCase)
             && (SelectedTestcase is not { } t || WorkbookDocument.EffectiveIndex(r) == t.Index));
@@ -86,11 +93,125 @@ public sealed partial class DataEditorViewModel
         try
         {
             var file = TemplateEditorWindow.ResolveInside(TemplatesFolder, source);
-            if (!File.Exists(file)) return null;
-            return Regex.Matches(File.ReadAllText(file), LoadTestingTool.Execution.TemplateRenderer.PlaceholderPattern)
-                .Select(m => m.Value.Trim('_').Trim('*')).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return File.Exists(file) ? File.ReadAllText(file) : null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException) { return null; }
+    }
+
+    private static readonly Regex PlaceholderAt = new(@"\G" + LoadTestingTool.Execution.TemplateRenderer.PlaceholderPattern, RegexOptions.Compiled);
+
+    private static string PlaceholderName(string text) => text.Trim('_').Trim('*');
+
+    /// <summary>The names of the <c>_variables_</c> the step's template uses; null when the step has no readable template.</summary>
+    private HashSet<string>? TemplateVariableNames(string step)
+        => TemplateText(step) is { } text
+            ? Regex.Matches(text, LoadTestingTool.Execution.TemplateRenderer.PlaceholderPattern).Select(m => PlaceholderName(m.Value)).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : null;
+
+    /// <summary>JSON with the placeholders that stand alone (a number or a boolean position, <c>"isPrimary": _isPrimary[0]_</c>) put in quotes so it parses; placeholders inside strings stay as they are.</summary>
+    internal static string QuoteBarePlaceholders(string text)
+    {
+        var result = new System.Text.StringBuilder(text.Length + 16);
+        var inString = false;
+        for (var i = 0; i < text.Length;)
+        {
+            var c = text[i];
+            if (inString)
+            {
+                result.Append(c);
+                if (c == '\\' && i + 1 < text.Length) { result.Append(text[i + 1]); i += 2; continue; }
+                if (c == '"') inString = false;
+                i++;
+                continue;
+            }
+            if (c == '"') { inString = true; result.Append(c); i++; continue; }
+            var m = PlaceholderAt.Match(text, i);
+            if (m.Success && m.Length > 0) { result.Append('"').Append(m.Value).Append('"'); i += m.Length; continue; }
+            result.Append(c);
+            i++;
+        }
+        return result.ToString();
+    }
+
+    /// <summary>
+    /// The structure of a template (JSON properties and array elements, XML elements and attributes) with each <c>_variable_</c> as a leaf that points at its column.
+    /// Null when the text is neither JSON nor XML, so the caller falls back to a plain list of variables.
+    /// </summary>
+    private JsonViewNode? TemplateStructure(string step, string text)
+    {
+        var root = new JsonViewNode { Name = step, Path = string.Empty };
+        var prefix = step + ".";
+        (GridColumn? Column, bool Shared) ColumnFor(string name)
+        {
+            var own = Columns.FirstOrDefault(c => c.Group == ColumnGroup.Request && string.Equals(c.Title, prefix + name, StringComparison.OrdinalIgnoreCase));
+            if (own is not null) return (own, false);
+            var shared = Columns.FirstOrDefault(c => c.Group == ColumnGroup.Request && string.Equals(c.Title, name, StringComparison.OrdinalIgnoreCase) && RequestStepPrefix(c.Title) is null);
+            return (shared, shared is not null);
+        }
+        void Bind(JsonViewNode node, string name)
+        {
+            node.Variable = name;
+            var (column, shared) = ColumnFor(name);
+            node.Column = column; node.Shared = shared; node.Extra = column is null;
+        }
+        void Leaf(JsonViewNode node, string value)
+        {
+            var names = Regex.Matches(value, LoadTestingTool.Execution.TemplateRenderer.PlaceholderPattern).Select(m => PlaceholderName(m.Value)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (names.Count == 0) { node.Constant = true; node.Sample = value; }
+            else if (names.Count == 1) Bind(node, names[0]);
+            else foreach (var name in names) { var child = new JsonViewNode { Name = name, Path = node.Path + "#" + name, Parent = node }; node.Children.Add(child); Bind(child, name); }
+        }
+        JsonViewNode Make(JsonViewNode parent, string name, string path)
+        {
+            var node = new JsonViewNode { Name = name, Path = path, Parent = parent };
+            parent.Children.Add(node);
+            return node;
+        }
+        string Join(string path, string name) => path.Length == 0 ? name : path + "." + name;
+
+        void FillJson(JsonViewNode node, JsonElement element)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (var property in element.EnumerateObject()) FillJson(Make(node, property.Name, Join(node.Path, property.Name)), property.Value);
+                    break;
+                case JsonValueKind.Array:
+                    var index = 0;
+                    foreach (var item in element.EnumerateArray()) { FillJson(Make(node, $"[{index}]", node.Path + $"[{index}]"), item); index++; }
+                    break;
+                case JsonValueKind.String: Leaf(node, element.GetString() ?? string.Empty); break;
+                default: Leaf(node, element.GetRawText()); break;
+            }
+        }
+        void FillXml(JsonViewNode node, XElement element)
+        {
+            foreach (var attribute in element.Attributes().Where(a => !a.IsNamespaceDeclaration))
+                Leaf(Make(node, "@" + attribute.Name.LocalName, Join(node.Path, "@" + attribute.Name.LocalName)), attribute.Value);
+            var children = element.Elements().ToList();
+            if (children.Count == 0) { if (element.Value.Trim().Length > 0 || !element.Attributes().Any(a => !a.IsNamespaceDeclaration)) Leaf(node.Children.Count == 0 ? node : Make(node, "#text", Join(node.Path, "#text")), element.Value.Trim()); return; }
+            foreach (var group in children.GroupBy(c => c.Name.LocalName))
+            {
+                var items = group.ToList();
+                if (items.Count == 1) { FillXml(Make(node, group.Key, Join(node.Path, group.Key)), items[0]); continue; }
+                var container = Make(node, group.Key, Join(node.Path, group.Key));
+                for (var i = 0; i < items.Count; i++) FillXml(Make(container, $"[{i}]", container.Path + $"[{i}]"), items[i]);
+            }
+        }
+
+        try
+        {
+            var trimmed = text.TrimStart();
+            if (trimmed.StartsWith('{') || trimmed.StartsWith('['))
+            {
+                using var document = JsonDocument.Parse(QuoteBarePlaceholders(text));
+                FillJson(root, document.RootElement);
+            }
+            else if (trimmed.StartsWith('<') && XDocument.Parse(text).Root is { } top) FillXml(Make(root, top.Name.LocalName, top.Name.LocalName), top);
+            else return null;
+        }
+        catch (Exception ex) when (ex is JsonException or XmlException) { return null; }
+        return root;
     }
 
     private static JsonViewNode Child(JsonViewNode parent, string name, string path)
@@ -100,14 +221,32 @@ public sealed partial class DataEditorViewModel
         return node;
     }
 
+    private static readonly Regex Segment = new(@"^(?<name>[^\[\]]*)(?<indexes>(?:\[\d+\])*)$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Puts a path in the tree. A name with an index (<c>Line[0]</c>) becomes a <c>Line</c> node with a <c>[0]</c> child, so the elements of an array or the
+    /// repeated elements of an XML response sit together; the paths of the nodes stay exactly the runner's paths (<c>Lines.Line[0].@sku</c>).
+    /// </summary>
     private static JsonViewNode Insert(JsonViewNode root, string path)
     {
         var node = root;
         var built = string.Empty;
         foreach (var part in path.Split('.', StringSplitOptions.RemoveEmptyEntries))
         {
-            built = built.Length == 0 ? part : built + "." + part;
-            node = Child(node, part, built);
+            var m = Segment.Match(part);
+            if (!m.Success) { built = built.Length == 0 ? part : built + "." + part; node = Child(node, part, built); continue; }
+            var name = m.Groups["name"].Value;
+            if (name.Length > 0 || m.Groups["indexes"].Length == 0)
+            {
+                built = built.Length == 0 ? name : built + "." + name;
+                node = Child(node, name, built);
+            }
+            foreach (System.Text.RegularExpressions.Capture index in m.Groups["indexes"].Captures)
+            {
+                if (index.Length == 0) continue;   // the group also "captures" nothing when the name has no index
+                built += index.Value;
+                node = Child(node, index.Value, built);
+            }
         }
         return node;
     }
@@ -148,6 +287,7 @@ public sealed partial class DataEditorViewModel
         var used = TemplateVariableNames(step);
         var prefix = step + ".";
         var wanted = tab == JsonTab.Template;
+        if (wanted && TemplateText(step) is { } templateText && TemplateStructure(step, templateText) is { } structure) return structure;
         var named = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var column in Columns.Where(c => c.Group == ColumnGroup.Request && !ReservedColumns.Contains(c.Title) && c.Title.Length > 0))
         {
@@ -220,7 +360,7 @@ public sealed partial class DataEditorViewModel
         OpenAddColumn();
         NewColumnKind = tab == JsonTab.Response ? ExpectedKind : RequestKind;
         NewColumnStep = step;
-        NewColumnName = node.Path;
+        NewColumnName = node.Variable.Length > 0 ? node.Variable : node.Path;
         NewColumnVerb = "eq";
         NewColumnCount = 1;
         NewColumnPlacement = PlaceAtEnd;
@@ -229,7 +369,8 @@ public sealed partial class DataEditorViewModel
     }
 
     /// <summary>The items under <paramref name="scope"/> that exist in the last response (or the template) but have no column yet.</summary>
-    public static IReadOnlyList<JsonViewNode> JsonExtras(JsonViewNode scope) => scope.Leaves().Where(l => l.Extra && l.Column is null).ToList();
+    public static IReadOnlyList<JsonViewNode> JsonExtras(JsonViewNode scope)
+        => scope.Leaves().Where(l => l.Extra && l.Column is null).GroupBy(l => l.Variable.Length > 0 ? l.Variable : l.Path, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).ToList();
 
     /// <summary>
     /// Adds the columns of every extra item under a node. Response items become <c>{eq}Step.path</c> expected columns whose cells are filled from the responses
@@ -248,6 +389,31 @@ public sealed partial class DataEditorViewModel
         var verbs = extras.Select(e => ("eq", e.Path)).ToList();
         LoadTestingTool.Reporting.ResponseNode? TreeFor(string dataId) => _jsonSamples.TryGetValue(dataId, out var sample) ? ResponseTree.ParseAny(sample.Body, out _) : null;
         return AddResponseBodyColumns(step, verbs, fill, currentDataId, TreeFor);
+    }
+
+    /// <summary>
+    /// The text the Raw toggle shows for one row: the stored response laid out for reading (Response tab), or the template with the row's values in place of the
+    /// <c>_variables_</c> (Template tab; a value that is a generator such as a random number stays as written).
+    /// </summary>
+    public string JsonRawText(JsonTab tab, string step, DataRowViewModel row)
+    {
+        if (step.Length == 0) return "Choose a step.";
+        if (tab == JsonTab.Response)
+        {
+            SampleFields(step);
+            return _jsonSamples.TryGetValue(row.CurrentDataId, out var sample)
+                ? ResponseText.Pretty(sample.Body)
+                : $"No stored response for {row.CurrentDataId}. Run the testcase with the request history on, then open this again.";
+        }
+        if (tab == JsonTab.Config) return "The raw view shows the response (Response tab) or the template with this row's values (Template tab).";
+        if (TemplateText(step) is not { } text) return "This step has no template file.";
+        var prefix = step + ".";
+        return Regex.Replace(text, LoadTestingTool.Execution.TemplateRenderer.PlaceholderPattern, m =>
+        {
+            var name = PlaceholderName(m.Value);
+            var column = Columns.FirstOrDefault(c => c.Group == ColumnGroup.Request && (string.Equals(c.Title, prefix + name, StringComparison.OrdinalIgnoreCase) || string.Equals(c.Title, name, StringComparison.OrdinalIgnoreCase)));
+            return column is null || column.CellIndex >= row.Cells.Count || string.IsNullOrEmpty(row.Cells[column.CellIndex]) ? m.Value : row.Cells[column.CellIndex];
+        });
     }
 
     /// <summary>The values of one column over some rows, one per line, for the clipboard.</summary>

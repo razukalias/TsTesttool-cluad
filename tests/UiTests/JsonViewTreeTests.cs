@@ -141,6 +141,81 @@ public class JsonViewXmlTests
         Assert.Contains(paths, p => p.StartsWith("CreateResponse.Lines.Line[0]") && p.EndsWith("@sku"));
 
         var template = editor.BuildJsonTree(JsonTab.Template, "CreateCustomer");
-        Assert.Equal(["email", "name", "note"], template.Leaves().Select(l => l.Name).OrderBy(n => n).ToArray());
+        Assert.Equal(["email", "name", "note"], template.Leaves().Select(l => l.Variable).OrderBy(n => n).ToArray());
+        var create = template.Children.Single(c => c.Name == "Create");
+        Assert.Equal(["Name", "Mail", "Extra"], create.Children.Select(c => c.Name).ToArray());   // the structure of the template
+        Assert.Equal("name", create.Children.Single(c => c.Name == "Name").Variable);
+        Assert.Equal("email", create.Children.Single(c => c.Name == "Mail").Children.Single(c => c.Name == "@a").Variable);   // an attribute is @a below its element
+        Assert.Equal(["note"], template.Leaves().Where(l => l.Extra).Select(l => l.Variable).ToArray());   // name and email have columns, note has not
+        Assert.Equal("CreateCustomer.name", template.Leaves().Single(l => l.Variable == "name").Column!.Title);
+
+        // repeated elements are one node with [0] and [1], and the paths are still the runner's
+        var lines = response.Children.Single(c => c.Name == "CreateResponse").Children.Single(c => c.Name == "Lines").Children.Single(c => c.Name == "Line");
+        Assert.Equal(["[0]", "[1]"], lines.Children.Select(c => c.Name).ToArray());
+        Assert.Equal("CreateResponse.Lines.Line[1]", lines.Children[1].Path);
+        Assert.Contains(lines.Children[0].Leaves(), l => l.Path == "CreateResponse.Lines.Line[0].@sku");
+    }
+
+    [Fact]
+    public void A_json_template_with_bare_placeholders_becomes_a_tree_with_arrays_and_fixed_text()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        var templates = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(path)!, "Templates");
+        Directory.CreateDirectory(templates);
+        File.WriteAllText(System.IO.Path.Combine(templates, "create.json"), """
+            {
+              "metadata": { "serie": "_serie_", "title": "Hello _first_ _last_" },
+              "counterparts": [
+                { "persOrgNumber": "_counterpart[0]_", "isPrimary": _isPrimary[0]_ },
+                { "persOrgNumber": "_counterpart[1]_", "isPrimary": _isPrimary[1]_ }
+              ],
+              "userId": "ttttt"
+            }
+            """);
+        var editor = new DataEditorViewModel(path, "Customers");
+        editor.StepFilter = "CreateCustomer";
+        var tree = editor.BuildJsonTree(JsonTab.Template, "CreateCustomer");
+
+        Assert.Equal(["metadata", "counterparts", "userId"], tree.Children.Select(c => c.Name).ToArray());
+        var counterparts = tree.Children.Single(c => c.Name == "counterparts");
+        Assert.Equal(["[0]", "[1]"], counterparts.Children.Select(c => c.Name).ToArray());
+        var first = counterparts.Children[0];
+        Assert.Equal("counterparts[0].persOrgNumber", first.Children.Single(c => c.Name == "persOrgNumber").Path);
+        Assert.Equal("counterpart[0]", first.Children.Single(c => c.Name == "persOrgNumber").Variable);
+        Assert.Equal("isPrimary[1]", counterparts.Children[1].Children.Single(c => c.Name == "isPrimary").Variable);   // a bare placeholder is a variable too
+        var title = tree.Children[0].Children.Single(c => c.Name == "title");
+        Assert.Equal(["first", "last"], title.Children.Select(c => c.Variable).ToArray());                         // two variables in one text
+        var user = tree.Children.Single(c => c.Name == "userId");
+        Assert.True(user.Constant); Assert.Equal("ttttt", user.Sample); Assert.Null(user.Column);
+        Assert.Equal(new[] { "first", "isPrimary[0]", "isPrimary[1]", "last", "counterpart[0]", "counterpart[1]", "serie" }.OrderBy(x => x), tree.Leaves().Where(l => !l.Constant).Select(l => l.Variable).OrderBy(x => x));
+        Assert.Equal(7, DataEditorViewModel.JsonExtras(tree).Count);   // none of them has a column yet
+    }
+
+    [Fact]
+    public void The_raw_text_is_the_stored_response_or_the_template_with_the_rows_values()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        Directory.CreateDirectory(dir.Combine("History"));
+        using (var book = new XLWorkbook())
+        {
+            var sheet = book.AddWorksheet("RequestHistory");
+            string[] headers = ["runid", "dataid", "stepname", "responsebody"];
+            for (var i = 0; i < headers.Length; i++) sheet.Cell(1, i + 1).Value = headers[i];
+            sheet.Cell(2, 1).Value = "r1"; sheet.Cell(2, 2).Value = "CUST001"; sheet.Cell(2, 3).Value = "CreateCustomer"; sheet.Cell(2, 4).Value = "{\"a\":1}";
+            book.SaveAs(System.IO.Path.Combine(dir.Combine("History"), "run1.xlsx"));
+        }
+        var templates = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(path)!, "Templates");
+        Directory.CreateDirectory(templates);
+        File.WriteAllText(System.IO.Path.Combine(templates, "create.json"), "{\"name\":\"_name_\",\"other\":\"_other_\"}");
+        var editor = new DataEditorViewModel(path, "Customers");
+        editor.StepFilter = "CreateCustomer";
+        var first = editor.VisibleRows[0];
+        Assert.Contains("\"a\": 1", editor.JsonRawText(JsonTab.Response, "CreateCustomer", first));          // laid out for reading
+        Assert.Contains("No stored response for CUST002", editor.JsonRawText(JsonTab.Response, "CreateCustomer", editor.VisibleRows[1]));
+        var template = editor.JsonRawText(JsonTab.Template, "CreateCustomer", first);
+        Assert.Contains("\"name\":\"Customer 1\"", template);   // the row's value in place of _name_
+        Assert.Contains("_other_", template);                      // no column: stays as written
     }
 }
