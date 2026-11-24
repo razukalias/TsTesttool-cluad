@@ -31,6 +31,7 @@ public sealed class JsonView : UserControl
     private readonly TextBlock _hint = new() { Foreground = Muted, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Tag = "json-hint" };
     private readonly StackPanel _actions = new() { Orientation = Orientation.Horizontal, Spacing = 4, Tag = "json-actions" };
     private readonly List<ToggleButton> _tabButtons = [];
+    private readonly ComboBox _fillChoice = new() { Tag = "json-fill-choice", ItemsSource = new[] { "Leave the cells empty", "Fill the row shown", "Fill every row from its own response" }, SelectedIndex = 1, MinWidth = 210 };
     private JsonTab _tab = JsonTab.Response;
     private JsonViewNode? _root;
     private JsonViewNode? _selected;
@@ -177,6 +178,7 @@ public sealed class JsonView : UserControl
         {
             _title.Text = Step.Length == 0 ? "Choose a step" : _root is { Children.Count: 0 } ? "Nothing to show for this step on this tab" : "Pick an item in the tree";
             _hint.Text = $"{_editor.VisibleRows.Count} rows shown";
+            AddExtrasAction(_root);
             AddAction("＋ Row", "Add a row to the testcase", () => _editor.AddRows(1), "json-add-row");
             return;
         }
@@ -184,8 +186,7 @@ public sealed class JsonView : UserControl
         _hint.Text = $"{_editor.VisibleRows.Count} rows shown";
         _rows.ItemsSource = _editor.VisibleRows.ToList();
 
-        if (node.Extra && node.Column is null)
-            AddAction("＋ Add column", "Create the column for this item", () => { _editor.AddJsonItemColumn(_tab, Step, node); _selectedPath = node.Path; }, "json-add-column");
+        AddExtrasAction(node);
         AddAction("＋ Row", "Add a row to the testcase", () => _editor.AddRows(1), "json-add-row");
         AddAction("⧉ Duplicate", "Duplicate the selected rows", () => { if (SelectedRows is { Count: > 0 } rows) _editor.DuplicateRows(rows); }, "json-duplicate");
         AddAction("✕ Delete", "Delete the selected rows (Undo brings them back)", () => { if (SelectedRows is { Count: > 0 } rows) _editor.RemoveRows(rows); }, "json-delete");
@@ -195,6 +196,21 @@ public sealed class JsonView : UserControl
             AddAction("Copy", "Copy the values of the selected rows (all rows shown when none is selected) (Ctrl+C)", Copy, "json-copy");
             AddAction("Paste", "Paste lines into the selected rows: one line goes to all of them, several go in order (Ctrl+V)", () => _ = PasteAsync(), "json-paste");
         }
+    }
+
+    /// <summary>"＋ Add N columns" for the extra items under a node (an item, a branch or the whole step), with the response window's fill choice.</summary>
+    private void AddExtrasAction(JsonViewNode? scope)
+    {
+        if (scope is null) return;
+        var extras = DataEditorViewModel.JsonExtras(scope);
+        if (extras.Count == 0 || _tab == JsonTab.Config) return;
+        if (_tab == JsonTab.Response) _actions.Children.Add(_fillChoice);
+        AddAction(extras.Count == 1 ? "＋ Add column" : $"＋ Add {extras.Count} columns", _tab == JsonTab.Response ? "Create the expected columns for the extra items, and fill their cells from the responses as chosen" : "Create the request columns for the template variables that have none", () =>
+        {
+            var fill = _fillChoice.SelectedIndex switch { 0 => ResponseFill.None, 2 => ResponseFill.AllRows, _ => ResponseFill.ThisRow };
+            var current = (_rows.SelectedItems?.OfType<DataRowViewModel>().FirstOrDefault() ?? _editor.VisibleRows.FirstOrDefault())?.CurrentDataId;
+            _editor.AddJsonExtras(_tab, Step, scope, fill, current);
+        }, "json-add-column");
     }
 
     private void AddAction(string text, string tip, Action action, string tag)

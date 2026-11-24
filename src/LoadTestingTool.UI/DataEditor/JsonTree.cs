@@ -228,6 +228,28 @@ public sealed partial class DataEditorViewModel
         AddColumnVisible = false;
     }
 
+    /// <summary>The items under <paramref name="scope"/> that exist in the last response (or the template) but have no column yet.</summary>
+    public static IReadOnlyList<JsonViewNode> JsonExtras(JsonViewNode scope) => scope.Leaves().Where(l => l.Extra && l.Column is null).ToList();
+
+    /// <summary>
+    /// Adds the columns of every extra item under a node. Response items become <c>{eq}Step.path</c> expected columns whose cells are filled from the responses
+    /// (none, the row shown, or every row from its own response), the same as the response window does; template variables become request columns.
+    /// Returns how many columns were added.
+    /// </summary>
+    public int AddJsonExtras(JsonTab tab, string step, JsonViewNode scope, ResponseFill fill, string? currentDataId)
+    {
+        var extras = JsonExtras(scope);
+        if (extras.Count == 0 || step.Length == 0 || tab == JsonTab.Config) return 0;
+        if (tab == JsonTab.Template)
+        {
+            foreach (var node in extras) AddJsonItemColumn(tab, step, node);
+            return extras.Count;
+        }
+        var verbs = extras.Select(e => ("eq", e.Path)).ToList();
+        LoadTestingTool.Reporting.ResponseNode? TreeFor(string dataId) => _jsonSamples.TryGetValue(dataId, out var sample) ? ResponseTree.ParseAny(sample.Body, out _) : null;
+        return AddResponseBodyColumns(step, verbs, fill, currentDataId, TreeFor);
+    }
+
     /// <summary>The values of one column over some rows, one per line, for the clipboard.</summary>
     public static string CopyColumnValues(IEnumerable<DataRowViewModel> rows, int cellIndex)
         => string.Join(Environment.NewLine, rows.Select(r => r.Cells[cellIndex] ?? string.Empty));

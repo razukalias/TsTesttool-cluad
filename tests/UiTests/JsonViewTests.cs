@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using ClosedXML.Excel;
 using LoadTestingTool.UI.DataEditor;
 using Xunit;
 
@@ -205,5 +206,45 @@ public class JsonViewTests
         var layer = Avalonia.Controls.Primitives.OverlayLayer.GetOverlayLayer(window)!;
         Assert.Contains(layer.GetVisualDescendants().OfType<Button>(), b => (string?)b.Tag == "cell-wizard-ok");
         Assert.Contains(layer.GetVisualDescendants().OfType<Control>(), c => (string?)c.Tag == "bug-bar");   // an expected cell: the known-bug bar is there too
+    }
+
+    [AvaloniaFact]
+    public void All_extra_fields_of_the_response_can_be_added_at_once_and_filled_from_the_responses()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        Directory.CreateDirectory(dir.Combine("History"));
+        using (var book = new XLWorkbook())
+        {
+            var sheet = book.AddWorksheet("RequestHistory");
+            string[] headers = ["runid", "dataid", "stepname", "responsebody"];
+            for (var i = 0; i < headers.Length; i++) sheet.Cell(1, i + 1).Value = headers[i];
+            sheet.Cell(2, 1).Value = "r1"; sheet.Cell(2, 2).Value = "CUST001"; sheet.Cell(2, 3).Value = "CreateCustomer";
+            sheet.Cell(2, 4).Value = "{\"name\":\"Customer 1\",\"phone\":\"123\",\"address\":{\"city\":\"Oslo\"}}";
+            sheet.Cell(3, 1).Value = "r1"; sheet.Cell(3, 2).Value = "CUST002"; sheet.Cell(3, 3).Value = "CreateCustomer";
+            sheet.Cell(3, 4).Value = "{\"name\":\"Customer 2\",\"phone\":\"456\",\"address\":{\"city\":\"Bergen\"}}";
+            book.SaveAs(System.IO.Path.Combine(dir.Combine("History"), "run1.xlsx"));
+        }
+        var window = DataEditorWindow.Open(path);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var editor = window.Shell.Current!;
+        editor.ViewModeIndex = 3;
+        Dispatcher.UIThread.RunJobs();
+        var view = window.GetVisualDescendants().OfType<JsonView>().Single();
+        Assert.Equal(["address.city", "phone"], DataEditorViewModel.JsonExtras(view.Root!).Select(n => n.Path).OrderBy(p => p).ToArray());
+
+        Tagged<ComboBox>(window, "json-fill-choice").SelectedIndex = 2;   // every row from its own response
+        var add = Tagged<Button>(window, "json-add-column");
+        Assert.Equal("＋ Add 2 columns", add.Content);
+        Click(add);
+
+        var phone = editor.Columns.Single(c => c.Title == "CreateCustomer.phone");
+        var city = editor.Columns.Single(c => c.Title == "CreateCustomer.address.city");
+        Assert.Equal(["123", "456", ""], editor.VisibleRows.Select(r => r.Cells[phone.CellIndex]).ToArray());   // CUST003 has no stored response
+        Assert.Equal("Bergen", editor.VisibleRows[1].Cells[city.CellIndex]);
+        Assert.Empty(DataEditorViewModel.JsonExtras(view.Root!));
+        editor.UndoCommand.Execute(null);                               // one undo step takes the columns back
+        Assert.DoesNotContain(editor.Columns, c => c.Title == "CreateCustomer.phone");
     }
 }
