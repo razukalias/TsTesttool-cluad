@@ -381,18 +381,47 @@ public sealed class JsonView : UserControl
         return panel;
     }
 
-    /// <summary>Clicking a result opens its detail: environment, state, what the run got and its message, and a way to the row in Table view.</summary>
+    /// <summary>The text of a result's detail: the item, row and environment, the state, what the assertion expected and got, and the message.</summary>
+    public string DetailText(DataRowViewModel row, JsonViewNode node, JsonCellResult cell)
+    {
+        var failure = FailureOf(row, node);
+        return $"{StepOf(node)}.{node.Path}  ·  Data ID {row.CurrentDataId}" + (cell.Environment.Length > 0 ? $"  ·  {cell.Environment}" : string.Empty)
+            + $"\n{cell.State}"
+            + (failure is not null ? $"\nCheck: {(string.IsNullOrEmpty(failure.Verb) ? "eq" : failure.Verb)}   expected: {failure.Expected}" : string.Empty)
+            + (cell.Actual.Length > 0 ? $"\nGot: {cell.Actual}" : string.Empty) + (cell.Message.Length > 0 ? $"\n\n{cell.Message}" : string.Empty);
+    }
+
+    private FailureDetail? FailureOf(DataRowViewModel row, JsonViewNode node) => node.Column is { CellIndex: >= 1 } column ? _editor.FailureAt(row, column.CellIndex) : null;
+
+    /// <summary>True when the value the run got can be written into the item's cell for this row.</summary>
+    public bool CanAssignActual(DataRowViewModel row, JsonViewNode node) => FailureOf(row, node) is { } failure && node.Column is { } column && _editor.CanAssign(row, column.CellIndex, failure);
+
+    /// <summary>Writes the value the run got into the item's cell for this row (an ordinary edit: Undo takes it back).</summary>
+    public bool AssignActual(DataRowViewModel row, JsonViewNode node)
+    {
+        if (!CanAssignActual(row, node) || node.Column is not { } column) return false;
+        var done = _editor.AssignActual(row, column.CellIndex, FailureOf(row, node)!);
+        if (done) Refresh();
+        return done;
+    }
+
+    /// <summary>Clicking a result opens its detail, with a way to take the value the run got and one to the row in Table view.</summary>
     private void Detail(Control chip, DataRowViewModel row, JsonViewNode node, JsonCellResult cell)
     {
         chip.Cursor = new Cursor(StandardCursorType.Hand);
         chip.Tag = "json-result-chip";
         chip.PointerPressed += (_, e) =>
         {
-            var text = $"{StepOf(node)}.{node.Path}  ·  Data ID {row.CurrentDataId}" + (cell.Environment.Length > 0 ? $"  ·  {cell.Environment}" : string.Empty)
-                + $"\n{cell.State}" + (cell.Actual.Length > 0 ? $"\nGot: {cell.Actual}" : string.Empty) + (cell.Message.Length > 0 ? $"\n\n{cell.Message}" : string.Empty);
-            var box = new TextBox { Text = text, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, MaxHeight = 260, Tag = "json-detail-text" };
-            var show = new Button { Content = "Show the row in Table view", Tag = "json-detail-table", Margin = new Thickness(0, 6, 0, 0) };
-            var flyout = new Flyout { Content = new StackPanel { Spacing = 4, Children = { box, show } } };
+            var box = new TextBox { Text = DetailText(row, node, cell), IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, MaxHeight = 260, Tag = "json-detail-text" };
+            var show = new Button { Content = "Show the row in Table view", Tag = "json-detail-table" };
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 6, 0, 0), Children = { show } };
+            var flyout = new Flyout { Content = new StackPanel { Spacing = 4, Children = { box, buttons } } };
+            if (CanAssignActual(row, node))
+            {
+                var assign = new Button { Content = "Assign the value the run got", Tag = "json-detail-assign" };
+                assign.Click += (_, _) => { flyout.Hide(); AssignActual(row, node); };
+                buttons.Children.Insert(0, assign);
+            }
             show.Click += (_, _) => { flyout.Hide(); _editor.SelectedRow = row; _editor.ViewModeIndex = 0; };
             flyout.ShowAt(chip);
             e.Handled = true;

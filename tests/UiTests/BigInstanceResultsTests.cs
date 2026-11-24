@@ -142,4 +142,66 @@ public class BigInstanceResultsTests
         }
         window.Close();
     }
+
+    private static (DataEditorWindow Window, DataEditorViewModel Editor) OpenWithRun(TempDir dir)
+    {
+        var (window, editor) = Open(dir, rows: 400);
+        var results = Path.Combine(Path.GetDirectoryName(editor.WorkbookPath)!, "Results");
+        WriteRun(results, 1, Enumerable.Range(1, 400), Fails, Envs);
+        editor.ApplyResults(RunResultsReader.ReadLatest(editor.ResultsFolder));
+        Dispatcher.UIThread.RunJobs();
+        return (window, editor);
+    }
+
+    private static IEnumerable<(DataRowViewModel Row, int Column, int Cell)> FailedCellsOf(DataEditorViewModel editor)
+        => editor.VisibleRows.SelectMany(row => Enumerable.Range(0, Paths.Length).Select(c => (row, c, Cell(editor, Paths[c])))).Where(t => editor.FailureAt(t.row, t.Item3) is not null);
+
+    [AvaloniaFact]
+    public void Known_bug_tags_on_many_cells_of_a_big_run_turn_exactly_those_failures_into_known_bugs()
+    {
+        using var dir = new TempDir();
+        var (window, editor) = OpenWithRun(dir);
+        var before = FailedCellsOf(editor).ToList();
+        var tagged = before.Where((_, i) => i % 3 == 0).ToList();                      // every third failed cell is tagged for the environment it failed in
+        foreach (var (row, c, cell) in tagged)
+        {
+            var env = Envs.First(e => Fails(int.Parse(row.CurrentDataId[4..]), e, c));
+            row.Cells[cell] = row.Cells[cell] + $" <bug: {env}; known issue>";
+        }
+        editor.RefreshFailedCells();
+        Dispatcher.UIThread.RunJobs();
+        var after = FailedCellsOf(editor).Select(t => (t.Row.CurrentDataId, t.Column)).ToHashSet();
+        Assert.Equal(before.Count - tagged.Count, after.Count);
+        Assert.All(tagged, t => Assert.DoesNotContain((t.Row.CurrentDataId, t.Column), after));
+        // a row whose failed cells are all tagged is a known bug, not a failure
+        foreach (var row in editor.VisibleRows)
+        {
+            var n = int.Parse(row.CurrentDataId[4..]);
+            var failing = Enumerable.Range(0, Paths.Length).Where(c => Envs.Any(e => Fails(n, e, c))).ToList();
+            if (failing.Count == 0) { Assert.Equal("PASS", row.ResultText); continue; }
+            var allTagged = failing.All(c => tagged.Any(t => t.Row == row && t.Column == c));
+            Assert.Equal(allTagged ? "BUG" : "FAIL", row.ResultText);
+        }
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Assign_actual_on_many_cells_of_a_big_run_clears_those_marks_and_Undo_brings_them_back()
+    {
+        using var dir = new TempDir();
+        var (window, editor) = OpenWithRun(dir);
+        var before = FailedCellsOf(editor).ToList();
+        var chosen = before.Take(60).ToList();
+        var original = chosen.ToDictionary(t => (t.Row.CurrentDataId, t.Cell), t => t.Row.Cells[t.Cell]);
+        foreach (var (row, _, cell) in chosen) Assert.True(editor.AssignActual(row, cell, editor.FailureAt(row, cell)!));
+        Assert.All(chosen, t => Assert.EndsWith("y", t.Row.Cells[t.Cell]));   // the verb written in the cell stays, the value is the one the run got
+        Assert.Equal(before.Count - chosen.Count, FailedCellsOf(editor).Count());
+        Assert.Equal(before.Count - chosen.Count, editor.FailedCells.Count == 0 ? before.Count - chosen.Count : editor.FailedCells.Count);
+
+        for (var i = 0; i < chosen.Count; i++) editor.UndoCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(before.Count, FailedCellsOf(editor).Count());
+        Assert.All(chosen, t => Assert.Equal(original[(t.Row.CurrentDataId, t.Cell)], editor.VisibleRows.First(r => r.CurrentDataId == t.Row.CurrentDataId).Cells[t.Cell]));   // Undo rebuilds the rows: look them up again
+        window.Close();
+    }
 }

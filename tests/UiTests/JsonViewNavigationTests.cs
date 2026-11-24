@@ -201,3 +201,46 @@ public class JsonViewRawEditTests
         Assert.True(window.GetVisualDescendants().OfType<TextBox>().First(t => (string?)t.Tag == "json-raw-text").IsReadOnly);
     }
 }
+
+public class JsonViewDetailTests
+{
+    [AvaloniaFact]
+    public void A_failed_result_describes_the_check_and_can_take_the_value_the_run_got()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 4);
+        FakeRun.Write(FakeRun.Folder(path), $"events_{FakeRun.RunId}.ndjson",
+            FakeRun.Request(1, "CUST001", "CreateCustomer", result: "FAIL", category: "Assertion"),
+            FakeRun.Assertion(1, "CUST001", "CreateCustomer", "name", "eq", "Customer 1", "Kund 1"));
+        var window = DataEditorWindow.Open(path);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var editor = window.Shell.Current!;
+        editor.ApplyResults(RunResultsReader.ReadLatest(editor.ResultsFolder));
+        editor.ViewModeIndex = 3;
+        Dispatcher.UIThread.RunJobs();
+        var view = window.GetVisualDescendants().OfType<JsonView>().Single();
+        view.Select("name");
+        Dispatcher.UIThread.RunJobs();
+
+        var node = view.Root!.Leaves().Single(l => l.Path == "name");
+        var row = editor.VisibleRows.First(r => r.CurrentDataId == "CUST001");
+        var cell = editor.JsonCellResults(row, "CreateCustomer", node).Single();
+        var text = view.DetailText(row, node, cell);
+        Assert.Contains("Check: eq   expected: Customer 1", text);
+        Assert.Contains("Got: Kund 1", text);
+        Assert.True(view.CanAssignActual(row, node));
+
+        Assert.True(view.AssignActual(row, node));
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("Kund 1", row.Cells[node.Column!.CellIndex]);
+        Assert.False(view.CanAssignActual(row, node));   // the cell holds the value the run got now
+        editor.UndoCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("Customer 1", editor.VisibleRows.First(r => r.CurrentDataId == "CUST001").Cells[node.Column.CellIndex]);
+
+        var passing = editor.VisibleRows.First(r => r.CurrentDataId == "CUST002");
+        Assert.False(view.CanAssignActual(passing, node));
+        window.Close();
+    }
+}
