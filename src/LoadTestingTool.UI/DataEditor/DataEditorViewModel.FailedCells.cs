@@ -33,15 +33,15 @@ public sealed partial class DataEditorViewModel
         }
     }
 
-    public bool ShowFailedCellsList => ShowFailedCells && ShowDataGrid;
-    public bool ShowTableGrid => ShowDataGrid && !ShowFailedCells;
+    public bool ShowFailedCellsList => ShowFailedCells && ShowDataGrid && !ShowJson;
+    public bool ShowTableGrid => ShowDataGrid && !ShowFailedCells && !ShowJson;
 
     protected override void OnPropertyChanged(PropertyChangedEventArgs e)
     {
         base.OnPropertyChanged(e);
         if (e.PropertyName is nameof(ShowAllColumns) or nameof(ShowFailedOnly) or nameof(ShowDifferingOnly) or nameof(ShowFailedColumns) or nameof(ShowBugColumns) or nameof(ShowFailedCells))
             base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowOptionsTitle)));
-        if (e.PropertyName == nameof(ShowDataGrid)) { base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowTableGrid))); base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowFailedCellsList))); }
+        if (e.PropertyName == nameof(ShowDataGrid)) { base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowTableGrid))); base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowFailedCellsList))); base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowJsonView))); }
     }
 
     partial void OnShowFailedCellsChanged(bool value) { if (value) RefreshFailedCells(); }
@@ -104,7 +104,7 @@ public sealed partial class DataEditorViewModel
         return _headerSpelling.TryGetValue(key, out var spelling) ? spelling : key;
     }
 
-    private int CellOfFailure(FailureDetail failure)
+    internal int CellOfFailure(FailureDetail failure)
     {
         if (!ReferenceEquals(_failureCellsFor, Columns))
         {

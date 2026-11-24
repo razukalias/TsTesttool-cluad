@@ -169,6 +169,7 @@ public partial class DataEditorWindow : Window
         RebuildStepColumns();
         RebuildSheetColumns();
         if (this.FindControl<Border>("RecordHost") is { } recordHost) recordHost.Child = new RecordView(_subscribed);
+        if (this.FindControl<Border>("JsonHost") is { } jsonHost) jsonHost.Child = new JsonView(_subscribed) { OpenWizard = OpenJsonCellWizard };
         if (this.FindControl<Border>("FailedCellsHost") is { } failedHost) failedHost.Child = new FailedCellsView(_subscribed) { OpenWizard = OpenFailedCellWizard };
     }
 

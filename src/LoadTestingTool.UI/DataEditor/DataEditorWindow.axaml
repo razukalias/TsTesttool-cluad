@@ -705,6 +705,7 @@
                     HorizontalGridLinesBrush="#1B2D44"
                     VerticalGridLinesBrush="#1B2D44" />
           <Border x:Name="FailedCellsHost" IsVisible="{Binding ShowFailedCellsList}" />
+          <Border x:Name="JsonHost" IsVisible="{Binding ShowJsonView}" />
           <DataGrid x:Name="Grid"
                     IsVisible="{Binding ShowTableGrid}"
                     ItemsSource="{Binding VisibleRows}"

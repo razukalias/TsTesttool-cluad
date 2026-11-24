@@ -21,6 +21,17 @@ public sealed partial class DataEditorWindow
         flyout = ShowLineWizard(editor, anchor, row, others, column.CellIndex, column.Title, expected, editor.WarningsFor(expected, dontRun), "row", extra);
     }
 
+    /// <summary>The ✦ of a line in the JSON view: the table's wizard and bug bar, writing to the line's cell and to the other selected rows.</summary>
+    private void OpenJsonCellWizard(DataRowViewModel row, IReadOnlyList<DataRowViewModel> others, GridColumn column, Control anchor)
+    {
+        if (_shell.Current is not { } editor) return;
+        var expected = column.Group == ColumnGroup.Response;
+        var dontRun = !expected && column.Title.Equals("dontrun", StringComparison.OrdinalIgnoreCase);
+        Flyout? flyout = null;
+        var extra = expected ? BugTagBar(editor, [row, .. others], column.CellIndex, () => flyout?.Hide()) : null;
+        flyout = ShowLineWizard(editor, anchor, row, others.Cast<ICellRow>().ToList(), column.CellIndex, column.Title, expected, editor.WarningsFor(expected, dontRun), "row", extra);
+    }
+
     /// <summary>The ✦ of an entry in the "Failed cells only" list: the same wizard and bug bar as on the table cell, writing to the same cell.</summary>
     private void OpenFailedCellWizard(FailedCell failed, Control anchor)
     {

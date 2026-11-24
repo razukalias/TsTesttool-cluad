@@ -15,7 +15,7 @@ public sealed partial class DataEditorViewModel
     public string RecordTitle => SelectedRow is null ? "Select a row in Table view to see it here." : $"Data ID {SelectedRow.CurrentDataId}" + (SelectedTestcase is { } t ? $" · {t.Name}" : string.Empty);
 
     [RelayCommand]
-    private void OpenRecordTab() { ShowSteps = false; ShowRecord = true; }
+    private void OpenRecordTab() { ShowJson = false; ShowSteps = false; ShowRecord = true; }
 
     partial void OnShowRecordChanged(bool value)
     {

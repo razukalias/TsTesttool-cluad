@@ -57,26 +57,26 @@ public sealed partial class DataEditorViewModel
     public bool ShowData => !ShowSteps && !ShowRecord;
 
     /// <summary>The choices of the view-mode droplist, in the order of <see cref="ViewModeIndex"/>.</summary>
-    public IReadOnlyList<string> ViewModes { get; } = ["▦  Table view", "⚙  Config edit mode", "☰  Record view"];
+    public IReadOnlyList<string> ViewModes { get; } = ["▦  Table view", "⚙  Config edit mode", "☰  Record view", "{ }  JSON view"];
 
-    /// <summary>0 = Table view, 1 = Config edit mode, 2 = Record view; setting it switches the mode.</summary>
+    /// <summary>0 = Table view, 1 = Config edit mode, 2 = Record view, 3 = JSON view; setting it switches the mode.</summary>
     public int ViewModeIndex
     {
-        get => ShowSteps ? 1 : ShowRecord ? 2 : 0;
+        get => ShowSteps ? 1 : ShowRecord ? 2 : ShowJson ? 3 : 0;
         set
         {
             if (value < 0 || value == ViewModeIndex) return;
-            if (value == 1) OpenStepsTab(); else if (value == 2) OpenRecordTab(); else OpenDataTab();
+            if (value == 1) OpenStepsTab(); else if (value == 2) OpenRecordTab(); else if (value == 3) OpenJsonTab(); else OpenDataTab();
             OnPropertyChanged();
         }
     }
     public string StepCountText => $"{StepRows.Count} {(StepRows.Count == 1 ? "step" : "steps")}";
 
     [RelayCommand]
-    private void OpenDataTab() { ShowRecord = false; ShowSteps = false; }
+    private void OpenDataTab() { ShowJson = false; ShowRecord = false; ShowSteps = false; }
 
     [RelayCommand]
-    private void OpenStepsTab() { ShowRecord = false; ShowSteps = true; }
+    private void OpenStepsTab() { ShowJson = false; ShowRecord = false; ShowSteps = true; }
 
     partial void OnShowStepsChanged(bool value)
     {
