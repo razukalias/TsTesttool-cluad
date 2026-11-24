@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Avalonia.Threading;
@@ -202,6 +203,44 @@ public class BigInstanceResultsTests
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(before.Count, FailedCellsOf(editor).Count());
         Assert.All(chosen, t => Assert.Equal(original[(t.Row.CurrentDataId, t.Cell)], editor.VisibleRows.First(r => r.CurrentDataId == t.Row.CurrentDataId).Cells[t.Cell]));   // Undo rebuilds the rows: look them up again
+        window.Close();
+    }
+}
+
+public class BigInstanceRecordTests
+{
+    [AvaloniaFact]
+    public void The_Record_view_row_switcher_marks_every_failed_row_of_a_big_run()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 400);
+        var results = Path.Combine(Path.GetDirectoryName(path)!, "Results");
+        bool Fails(int n, string env) => (n + Array.IndexOf(new[] { "dev", "test", "prod" }, env) * 3) % 7 == 0;
+        foreach (var env in new[] { "dev", "test", "prod" })
+        {
+            var runId = "20261124_220000_rec000001";
+            var folder = Path.Combine(results, "failed", "Run_1", "log");
+            Directory.CreateDirectory(folder);
+            File.WriteAllLines(Path.Combine(folder, $"events_{runId}_{env}.ndjson"), Enumerable.Range(1, 400).Select(n => System.Text.Json.JsonSerializer.Serialize(new
+            {
+                eventType = "request-completed", runId, testcaseIndex = 1, dataId = $"CUST{n:000}", stepName = "CreateCustomer", result = Fails(n, env) ? "FAIL" : "PASS",
+                httpStatus = 201, durationMs = 5, errorMessage = "", failureCategory = Fails(n, env) ? "Assertion" : "", environment = env
+            })));
+        }
+        var window = DataEditorWindow.Open(path);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var editor = window.Shell.Current!;
+        editor.ApplyResults(RunResultsReader.ReadLatest(editor.ResultsFolder));
+        editor.ViewModeIndex = 2;
+        editor.SelectedRow = editor.VisibleRows[0];
+        Dispatcher.UIThread.RunJobs();
+        var failed = Enumerable.Range(1, 400).Where(n => new[] { "dev", "test", "prod" }.Any(e => Fails(n, e))).ToList();
+        var buttons = window.GetVisualDescendants().OfType<Button>().Where(b => (string?)b.Tag == "row-switch").ToList();
+        Assert.Equal(400, buttons.Count);
+        var red = buttons.Select((b, i) => (b, i)).Where(t => t.b.Content is TextBlock { Foreground: Avalonia.Media.ISolidColorBrush { Color: var color } } && color == Avalonia.Media.Color.Parse("#FF7588")).Select(t => t.i + 1).ToList();
+        var expected = failed.Where(n => n != 1).ToList();   // the active row (1) is drawn as the primary button, not red
+        Assert.Equal(expected, red);
         window.Close();
     }
 }

@@ -243,4 +243,27 @@ public class JsonViewDetailTests
         Assert.False(view.CanAssignActual(passing, node));
         window.Close();
     }
+
+    [AvaloniaFact]
+    public void Show_the_response_from_a_result_switches_to_the_raw_text_of_that_row()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 3);
+        var window = DataEditorWindow.Open(path);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var editor = window.Shell.Current!;
+        editor.ViewModeIndex = 3;
+        Dispatcher.UIThread.RunJobs();
+        var view = window.GetVisualDescendants().OfType<JsonView>().Single();
+        var row = editor.VisibleRows[1];
+        view.UsePasted("{\"a\": 1}");   // gives the first row a response
+        view.ShowRawResponse(row);
+        Dispatcher.UIThread.RunJobs();
+        var toggle = window.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().First(t => (string?)t.Tag == "json-raw");
+        var picker = window.GetVisualDescendants().OfType<ComboBox>().First(c => (string?)c.Tag == "json-raw-row");
+        Assert.True(toggle.IsChecked);
+        Assert.Equal(row.CurrentDataId, picker.SelectedItem);
+        window.Close();
+    }
 }

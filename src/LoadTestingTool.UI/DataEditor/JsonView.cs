@@ -405,6 +405,18 @@ public sealed class JsonView : UserControl
         return done;
     }
 
+    /// <summary>Switches to the raw text of the response and picks this row's.</summary>
+    public void ShowRawResponse(DataRowViewModel row)
+    {
+        _rawToggle.IsChecked = true;
+        _editor.SelectedRow = row;
+        BuildRows();
+        _building = true;
+        try { _rawRow.SelectedItem = row.CurrentDataId; }
+        finally { _building = false; }
+        FillRaw();
+    }
+
     /// <summary>Clicking a result opens its detail, with a way to take the value the run got and one to the row in Table view.</summary>
     private void Detail(Control chip, DataRowViewModel row, JsonViewNode node, JsonCellResult cell)
     {
@@ -423,6 +435,12 @@ public sealed class JsonView : UserControl
                 buttons.Children.Insert(0, assign);
             }
             show.Click += (_, _) => { flyout.Hide(); _editor.SelectedRow = row; _editor.ViewModeIndex = 0; };
+            if (_tab == JsonTab.Response)
+            {
+                var raw = new Button { Content = "Show the response", Tag = "json-detail-raw" };
+                raw.Click += (_, _) => { flyout.Hide(); ShowRawResponse(row); };
+                buttons.Children.Add(raw);
+            }
             flyout.ShowAt(chip);
             e.Handled = true;
         };
