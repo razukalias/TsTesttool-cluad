@@ -52,3 +52,14 @@ public class WsdlImportWindowTests
         Assert.Contains("No SOAP operations", Find<TextBlock>(window, "wsdl-status").Text);
     }
 }
+
+public class UnquotedPlaceholderValidationTests
+{
+    [Fact]
+    public void Unquoted_indexed_placeholders_are_valid_in_a_json_template()
+    {
+        const string json = "{\"a\":\"_serie_\",\"list\":[{\"p\":\"_counterpart[0]_\",\"isPrimary\": _isPrimary[0]_},{\"isPrimary\": _isPrimary[1]_}],\"n\": _count_}";
+        TemplateEditorWindow.ValidateContent(json, "JSON");
+        Assert.ThrowsAny<System.Text.Json.JsonException>(() => TemplateEditorWindow.ValidateContent("{\"a\": }", "JSON"));
+    }
+}

@@ -188,7 +188,7 @@ internal sealed class TemplateEditorWindow : Window
     internal static void ValidateContent(string content, string format)
     {
         if (string.IsNullOrWhiteSpace(content)) throw new InvalidDataException("Template content cannot be empty.");
-        foreach (Match match in Regex.Matches(content, @"_([\p{L}\p{N}._-]+)_"))
+        foreach (Match match in Regex.Matches(content, @"_([\p{L}\p{N}._\-\[\]]+)_"))
             if (match.Groups[1].Value.Contains('<') || match.Groups[1].Value.Contains('>')) throw new InvalidDataException("Template variables must use _variable_ syntax.");
         if (format.Equals("JSON", StringComparison.OrdinalIgnoreCase)) using (JsonDocument.Parse(NormalizeRuntimeVariables(content))) { }
         else if (format.Equals("XML", StringComparison.OrdinalIgnoreCase)) XDocument.Parse(content, LoadOptions.PreserveWhitespace);
@@ -212,5 +212,5 @@ internal sealed class TemplateEditorWindow : Window
         _ => "_value_"
     };
 
-    private static string NormalizeRuntimeVariables(string content) => Regex.Replace(content, "(?<![\\\"\\w])_[\\p{L}\\p{N}._-]+_(?![\\\"\\w])", "0");
+    private static string NormalizeRuntimeVariables(string content) => Regex.Replace(content, "(?<![\\\"\\w])" + LoadTestingTool.Execution.TemplateRenderer.PlaceholderPattern + "(?![\\\"\\w])", "0");
 }
