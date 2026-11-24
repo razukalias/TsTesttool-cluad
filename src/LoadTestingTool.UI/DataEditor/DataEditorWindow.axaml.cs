@@ -428,14 +428,22 @@ public partial class DataEditorWindow : Window
 
     private void OnSaveClick(object? sender, RoutedEventArgs e) => Save();
 
-    private async void OnRerunClick(object? sender, RoutedEventArgs e)
+    internal RerunWindow? OpenRerunWindow => _rerunWindow;
+    private RerunWindow? _rerunWindow;
+
+    internal void OnRerunClick(object? sender, RoutedEventArgs e)
     {
+        if (_rerunWindow is not null) { _rerunWindow.Activate(); return; }   // one at a time; the editor stays usable while it is open
         if (_shell.Current is not { } editor) return;
         if (editor.SelectedTestcase is not { } testcase) { editor.ShowProblem("Select a testcase to re-run first."); return; }
         if (editor.RerunContextProvider?.Invoke() is not { } context) { editor.ShowProblem("Re-running from history is only available when the editor is opened from the dashboard."); return; }
-        var dialog = new RerunWindow(testcase, context);
-        await dialog.ShowDialog(this);
-        if (dialog.Result is { } chosen) await editor.StartRerunAsync(chosen.Request, chosen.Label);
+        var dialog = _rerunWindow = new RerunWindow(testcase, context);
+        dialog.Closed += async (_, _) =>
+        {
+            _rerunWindow = null;
+            if (dialog.Result is { } chosen) await editor.StartRerunAsync(chosen.Request, chosen.Label);
+        };
+        dialog.Show(this);   // not modal: the main window can be used (and the results looked at) while this is open
     }
 
     private void OnBackupsClick(object? sender, RoutedEventArgs e)

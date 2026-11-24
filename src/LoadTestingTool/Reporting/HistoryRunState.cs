@@ -123,13 +123,20 @@ public sealed record RunHistoryRow(string RunId, DateTimeOffset StartedAt, strin
 /// <summary>Lists the runs and data rows found in an instance's history, for choosing what to re-run.</summary>
 public static class RunHistoryIndex
 {
-    public static IReadOnlyList<RunHistoryRow> Scan(string historyFolder, int maxFiles = 400)
+    public static IReadOnlyList<RunHistoryRow> Scan(string historyFolder, int maxFiles = 400) => ScanPage(historyFolder, 0, maxFiles).Rows;
+
+    /// <summary>
+    /// One page of the history: the <paramref name="take"/> newest history workbooks after the first <paramref name="skip"/> (newest first), so a dialog can show the
+    /// latest runs at once and read older ones only when asked. <c>Files</c> is how many workbooks the page held (fewer than <paramref name="take"/> means there are no older ones).
+    /// </summary>
+    public static (IReadOnlyList<RunHistoryRow> Rows, int Files) ScanPage(string historyFolder, int skip, int take)
     {
         var rows = new List<RunHistoryRow>();
-        if (!Directory.Exists(historyFolder)) return rows;
+        if (!Directory.Exists(historyFolder)) return (rows, 0);
         var seen = new HashSet<(string, string)>();
-        foreach (var file in new DirectoryInfo(historyFolder).EnumerateFiles("*.xlsx", SearchOption.AllDirectories)
-                     .Where(f => !f.Name.StartsWith("~$", StringComparison.Ordinal)).OrderByDescending(f => f.LastWriteTimeUtc).Take(maxFiles))
+        var page = new DirectoryInfo(historyFolder).EnumerateFiles("*.xlsx", SearchOption.AllDirectories)
+                     .Where(f => !f.Name.StartsWith("~$", StringComparison.Ordinal)).OrderByDescending(f => f.LastWriteTimeUtc).Skip(skip).Take(take).ToList();
+        foreach (var file in page)
         {
             try
             {
@@ -159,7 +166,7 @@ public static class RunHistoryIndex
             }
             catch (Exception) { /* unreadable history files are skipped */ }
         }
-        return rows.OrderByDescending(r => r.StartedAt).ThenBy(r => r.TestcaseIndex).ThenBy(r => r.DataId).ThenBy(r => r.Iteration).ToList();
+        return (rows.OrderByDescending(r => r.StartedAt).ThenBy(r => r.TestcaseIndex).ThenBy(r => r.DataId).ThenBy(r => r.Iteration).ToList(), page.Count);
     }
 
     /// <summary>The runs found, newest first.</summary>

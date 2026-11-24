@@ -16,13 +16,32 @@ public sealed class RerunWindow : Window
     private readonly RerunContext _context;
     private readonly ComboBox _runs = new() { MinWidth = 420 };
     private readonly CheckBox _failedOnly = new() { Content = "Failed rows only", IsChecked = true };
-    private readonly StackPanel _rows = new() { Spacing = 2 };
+    private readonly ListBox _rows = new() { Height = 200, Background = Brushes.Transparent, SelectionMode = SelectionMode.Single, Tag = "rerun-rows" };   // virtualized: only the lines in view are built
+    private readonly TextBlock _count = new() { FontSize = 12, Opacity = 0.8 };
+    private readonly Button _more = new() { Content = "Load older runs", IsVisible = false, MinHeight = 30, Tag = "rerun-more" };
+    private readonly List<RunHistoryRow> _scanned = [];
+    private int _filesScanned;
+    private List<RowChoice> _choices = [];
+
+    /// <summary>History workbooks read per page; the newest are read first and older ones only on request.</summary>
+    public const int PageSize = 40;
+
+    /// <summary>True once the first page of the history has been read (it is read in the background so the window opens at once).</summary>
+    public bool IsLoaded { get; private set; }
+
+    private sealed class RowChoice : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
+    {
+        public RowChoice(RunHistoryRow row) { Row = row; Text = $"{row.DataId}   iteration {row.Iteration}{(row.Environment.Length > 0 ? "   " + row.Environment : string.Empty)}   {row.Result}"; }
+        public RunHistoryRow Row { get; }
+        public string Text { get; }
+        private bool _isChecked;
+        public bool IsChecked { get => _isChecked; set => SetProperty(ref _isChecked, value); }
+    }
     private readonly StackPanel _steps = new() { Spacing = 2 };
     private readonly StackPanel _environments = new() { Spacing = 2 };
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.85 };
     private readonly Button _run = new() { Content = "Re-run", Classes = { "primary" }, MinHeight = 34, MinWidth = 96 };
     private IReadOnlyList<RunHistoryRow> _history = [];
-    private readonly List<(CheckBox Box, RunHistoryRow Row)> _rowBoxes = [];
     private readonly List<(CheckBox Use, ComboBox Data, string Step)> _stepBoxes = [];
     private readonly List<CheckBox> _environmentBoxes = [];
 
@@ -43,8 +62,19 @@ public sealed class RerunWindow : Window
         _runs.SelectionChanged += (_, _) => ShowRows();
         _failedOnly.IsCheckedChanged += (_, _) => ShowRows();
 
-        Section("Earlier run", out var runsPanel, _runs);
-        Section("Rows", out var rowsPanel, _failedOnly, new ScrollViewer { MaxHeight = 170, Content = _rows });
+        Section("Earlier run", out var runsPanel, _runs, _more);
+        var all = new Button { Content = "Tick all", MinHeight = 28, Tag = "rerun-all" };
+        var none = new Button { Content = "Tick none", MinHeight = 28, Tag = "rerun-none" };
+        all.Click += (_, _) => SetAll(true);
+        none.Click += (_, _) => SetAll(false);
+        _more.Click += async (_, _) => { _more.IsEnabled = false; _status.Text = "Reading older history…"; await LoadPageAsync(); };
+        _rows.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<RowChoice>((choice, _) =>
+        {
+            var box = new CheckBox { FontFamily = new FontFamily("Consolas"), Content = choice?.Text };
+            if (choice is not null) box.Bind(CheckBox.IsCheckedProperty, new Avalonia.Data.Binding(nameof(RowChoice.IsChecked)) { Mode = Avalonia.Data.BindingMode.TwoWay });
+            return box;
+        });
+        Section("Rows", out var rowsPanel, _failedOnly, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { all, none, _count } }, _rows);
         Section("Steps and data", out var stepsPanel, new TextBlock { Text = "Old data = the values (random numbers, GUIDs, dates, extracted responses) that run used. Fresh = made new.", Opacity = 0.7, FontSize = 12, TextWrapping = TextWrapping.Wrap }, _steps);
         Section("Environments", out var envPanel, _environments);
         Content = new Grid
@@ -71,9 +101,25 @@ public sealed class RerunWindow : Window
         foreach (var child in children) panel.Children.Add(child);
     }
 
-    private void Load()
+    private async void Load()
     {
-        _history = RunHistoryIndex.Scan(_context.HistoryFolder).Where(r => r.TestcaseIndex == _testcase.Index).ToList();
+        _run.IsEnabled = false;
+        _status.Text = "Reading the history…";
+        await LoadPageAsync();
+        IsLoaded = true;
+    }
+
+    /// <summary>Reads the next page of history workbooks off the UI thread and refreshes the run list.</summary>
+    private async Task LoadPageAsync()
+    {
+        var folder = _context.HistoryFolder; var skip = _filesScanned;
+        var (rows, files) = await Task.Run(() => RunHistoryIndex.ScanPage(folder, skip, PageSize));
+        _filesScanned += files;
+        _scanned.AddRange(rows);
+        _history = _scanned.Where(r => r.TestcaseIndex == _testcase.Index).ToList();
+        _more.IsVisible = files >= PageSize;
+        _more.IsEnabled = true;
+        var keep = SelectedRunId;
         var runs = RunHistoryIndex.Runs(_history);
         _runs.ItemsSource = runs.Select(r => new ComboBoxItem
         {
@@ -82,13 +128,18 @@ public sealed class RerunWindow : Window
         }).ToList();
         if (runs.Count == 0)
         {
-            _status.Text = "No earlier run of this testcase was found in the history. Run it first (history must be on), then come back.";
+            _status.Text = _more.IsVisible
+                ? $"No run of this testcase in the {_filesScanned} newest history files. Use \"Load older runs\" to look further back."
+                : "No earlier run of this testcase was found in the history. Run it first (history must be on), then come back.";
             _run.IsEnabled = false;
             return;
         }
-        // newest run that has failed rows, else the newest run
-        var pick = runs.ToList().FindIndex(r => r.Failed > 0);
-        _runs.SelectedIndex = pick >= 0 ? pick : 0;
+        _run.IsEnabled = true;
+        // keep the run picked before; else the newest run that has failed rows, else the newest run
+        var index = keep is null ? -1 : runs.ToList().FindIndex(r => r.RunId == keep);
+        if (index < 0) index = runs.ToList().FindIndex(r => r.Failed > 0);
+        _runs.SelectedIndex = index >= 0 ? index : 0;
+        if (_more.IsVisible) _status.Text = $"Showing runs from the {_filesScanned} newest history files; \"Load older runs\" reads {PageSize} more.";
     }
 
     private void BuildStepsAndEnvironments()
@@ -113,28 +164,30 @@ public sealed class RerunWindow : Window
 
     private void ShowRows()
     {
-        _rows.Children.Clear(); _rowBoxes.Clear();
-        if (SelectedRunId is not { } runId) return;
-        var rows = RerunPlanner.RowsOf(_history, runId, _testcase.Index);
-        foreach (var row in rows)
+        _choices = [];
+        if (SelectedRunId is { } runId)
         {
-            var box = new CheckBox
+            var failedOnly = _failedOnly.IsChecked.GetValueOrDefault();
+            foreach (var row in RerunPlanner.RowsOf(_history, runId, _testcase.Index))
             {
-                IsChecked = !_failedOnly.IsChecked.GetValueOrDefault() || row.Failed,
-                IsEnabled = true,
-                Content = $"{row.DataId}   iteration {row.Iteration}{(row.Environment.Length > 0 ? "   " + row.Environment : string.Empty)}   {row.Result}",
-                FontFamily = new FontFamily("Consolas")
-            };
-            _rowBoxes.Add((box, row));
-            _rows.Children.Add(box);
+                var choice = new RowChoice(row) { IsChecked = !failedOnly || row.Failed };
+                choice.PropertyChanged += (_, _) => UpdateCount();
+                _choices.Add(choice);
+            }
+            _status.Text = "Every iteration and environment of a ticked data row runs again; the runner picks rows by data id.";
         }
-        _status.Text = "Every iteration and environment of a ticked data row runs again; the runner picks rows by data id.";
+        _rows.ItemsSource = _choices;
+        UpdateCount();
     }
+
+    private void SetAll(bool on) { foreach (var choice in _choices) choice.IsChecked = on; }
+
+    private void UpdateCount() => _count.Text = $"{_choices.Count(c => c.IsChecked)} of {_choices.Count} ticked";
 
     private void Accept()
     {
         if (SelectedRunId is not { } runId) return;
-        var rows = _rowBoxes.Where(b => b.Box.IsChecked == true).Select(b => b.Row).ToList();
+        var rows = _choices.Where(c => c.IsChecked).Select(c => c.Row).ToList();
         if (rows.Count == 0) { _status.Text = "Tick at least one row to re-run."; return; }
         var steps = _stepBoxes.Where(s => s.Use.IsChecked == true).ToDictionary(s => s.Step, s => s.Data.SelectedIndex == 0);
         if (steps.Count == 0) { _status.Text = "Tick at least one step to run."; return; }
