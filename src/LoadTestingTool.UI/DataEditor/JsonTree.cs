@@ -67,6 +67,8 @@ public sealed partial class DataEditorViewModel
 
     private string _jsonSamplesStep = string.Empty;
     private Dictionary<string, ResponseSample> _jsonSamples = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Responses the user pasted or typed (step, data id): kept while the editor is open and used in place of the stored one.</summary>
+    private readonly Dictionary<(string Step, string DataId), ResponseSample> _pastedSamples = new();
 
     /// <summary>The steps of the selected testcase (or the instance) the JSON view can show.</summary>
     public IReadOnlyList<string> JsonSteps() => StepFilterOptions.Where(s => s != AllSteps).ToList();
@@ -77,6 +79,8 @@ public sealed partial class DataEditorViewModel
         {
             _jsonSamplesStep = step;
             _jsonSamples = ResponseSamples.LatestPerDataId(HistoryFolderPath, step, 20);
+            foreach (var ((pastedStep, dataId), sample) in _pastedSamples)
+                if (pastedStep.Equals(step, StringComparison.OrdinalIgnoreCase)) _jsonSamples[dataId] = sample;
         }
         var seen = new Dictionary<string, ResponseField>(StringComparer.OrdinalIgnoreCase);
         foreach (var sample in _jsonSamples.Values.Take(6))
@@ -95,7 +99,9 @@ public sealed partial class DataEditorViewModel
         if (string.IsNullOrWhiteSpace(text)) return "The clipboard has no text.";
         if (ResponseTree.ParseAny(text, out var note) is null) return note.Length > 0 ? note : "The text is neither JSON nor XML.";
         SampleFields(step);
-        _jsonSamples[dataId] = new ResponseSample(text, "pasted", dataId, "pasted");
+        var pasted = new ResponseSample(text, "pasted", dataId, "pasted");
+        _pastedSamples[(step.ToLowerInvariant(), dataId.ToLowerInvariant())] = pasted;
+        _jsonSamples[dataId] = pasted;
         return string.Empty;
     }
 

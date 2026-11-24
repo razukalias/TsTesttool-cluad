@@ -33,7 +33,7 @@ public sealed class JsonView : UserControl
     private readonly List<ToggleButton> _tabButtons = [];
     private readonly ToggleButton _rawToggle = new() { Content = "‹/›  Raw", Tag = "json-raw", Padding = new Thickness(8, 3), MinHeight = 28 };
     private readonly ComboBox _rawRow = new() { Tag = "json-raw-row", MinWidth = 150, MinHeight = 28 };
-    private readonly TextBox _rawText = new() { Tag = "json-raw-text", IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontSize = 12, BorderThickness = new Thickness(0) };
+    private readonly TextBox _rawText = new() { Tag = "json-raw-text", IsReadOnly = false, AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontSize = 12, BorderThickness = new Thickness(0) };
     private readonly DockPanel _rawPanel = new() { Tag = "json-raw-panel", IsVisible = false };
     private readonly ComboBox _fillChoice = new() { Tag = "json-fill-choice", ItemsSource = new[] { "Leave the cells empty", "Fill the row shown", "Fill every row from its own response" }, SelectedIndex = 1, MinWidth = 210 };
     private JsonTab _tab = JsonTab.Response;
@@ -101,7 +101,7 @@ public sealed class JsonView : UserControl
         DockPanel.SetDock(_rawRow, Dock.Top);
         _rawPanel.Children.Add(_rawRow);
         _rawPanel.Children.Add(_rawText);
-        _rawToggle.Click += (_, _) => UpdateRaw();
+        _rawToggle.Click += (_, _) => BuildRows();
         _rawRow.SelectionChanged += (_, _) => { if (!_building) FillRaw(); };
         var right = new Border { BorderBrush = Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(8), Margin = new Thickness(6, 0, 14, 14), Child = new DockPanel { Children = { header, _rows, _rawPanel } } };
 
@@ -220,6 +220,7 @@ public sealed class JsonView : UserControl
     {
         var raw = _rawToggle.IsChecked == true && _tab != JsonTab.Config;
         _rawPanel.IsVisible = raw;
+        _rawText.IsReadOnly = _tab != JsonTab.Response;   // only a response can be typed: the template text shows the row's values and is not a source
         _rows.IsVisible = !raw;
         if (!raw) return;
         var ids = _editor.VisibleRows.Select(r => r.CurrentDataId).ToList();
@@ -248,6 +249,8 @@ public sealed class JsonView : UserControl
         _rawToggle.IsVisible = _tab != JsonTab.Config;
         if (_tab == JsonTab.Response && CurrentStep.Length > 0)
             AddAction("Paste JSON…", "Use the JSON or XML on the clipboard as the response of the selected row: its fields show here as extra items, ready to become columns", () => _ = PasteResponseAsync(), "json-paste-response");
+        if (_rawToggle.IsChecked == true && _tab == JsonTab.Response && CurrentStep.Length > 0)
+            AddAction("Use this text", "Take the text below as the response of the row picked above (JSON or XML): its fields show as items, ready to become columns", () => UseRawText(), "json-raw-apply");
         UpdateRaw();
         var node = _selected;
         _rows.ItemsSource = null;
@@ -425,6 +428,16 @@ public sealed class JsonView : UserControl
     }
 
     private bool _syncing;
+
+    /// <summary>The edited raw text becomes the response of the row picked in the raw view.</summary>
+    public void UseRawText()
+    {
+        var dataId = _rawRow.SelectedItem as string ?? string.Empty;
+        var problem = _editor.UsePastedResponse(CurrentStep, dataId, _rawText.Text ?? string.Empty);
+        if (problem.Length > 0) { _hint.Text = problem; return; }
+        Refresh();
+        _hint.Text = $"The edited text is now the response of {dataId}; nothing is saved until you add columns and Save";
+    }
 
     private async Task PasteResponseAsync()
     {

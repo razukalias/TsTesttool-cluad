@@ -162,3 +162,42 @@ public class JsonViewAllStepsTests
         Assert.Equal("CreateCustomer", leaf.StepOf());
     }
 }
+
+public class JsonViewRawEditTests
+{
+    [AvaloniaFact]
+    public void Edited_raw_text_becomes_the_response_and_survives_a_rebuild()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 2);
+        var window = DataEditorWindow.Open(path);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var editor = window.Shell.Current!;
+        editor.ViewModeIndex = 3;
+        Dispatcher.UIThread.RunJobs();
+        var view = window.GetVisualDescendants().OfType<JsonView>().Single();
+        var toggle = window.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().First(t => (string?)t.Tag == "json-raw");
+        toggle.IsChecked = true;
+        toggle.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Dispatcher.UIThread.RunJobs();
+        var text = window.GetVisualDescendants().OfType<TextBox>().First(t => (string?)t.Tag == "json-raw-text");
+        Assert.False(text.IsReadOnly);
+        Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => (string?)b.Tag == "json-raw-apply");
+
+        text.Text = "{\"typed\": {\"value\": 7}}";
+        view.UseRawText();
+        Dispatcher.UIThread.RunJobs();
+        Assert.Contains(view.Root!.Leaves(), l => l.Extra && l.Path == "typed.value");
+
+        view.ShowTab(JsonTab.Template);
+        view.ShowTab(JsonTab.Response);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Contains(view.Root!.Leaves(), l => l.Extra && l.Path == "typed.value");   // kept for the row
+
+        toggle.IsChecked = true;
+        view.ShowTab(JsonTab.Template);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(window.GetVisualDescendants().OfType<TextBox>().First(t => (string?)t.Tag == "json-raw-text").IsReadOnly);
+    }
+}
