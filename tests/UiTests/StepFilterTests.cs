@@ -32,7 +32,7 @@ public class StepFilterTests
         var all = vm.Columns.Count;
 
         vm.StepFilter = "CreateCustomer";
-        Assert.All(vm.Columns, c => Assert.Contains("CreateCustomer.", c.Title));
+        Assert.All(vm.Columns.Where(c => c.Title.Contains('.')), c => Assert.Contains("CreateCustomer.", c.Title));   // columns of a step; shared ones (no dot) stay
         Assert.True(vm.Columns.Count < all);
 
         vm.StepFilter = DataEditorViewModel.AllSteps;
@@ -74,5 +74,39 @@ public class StepFilterTests
 
         Assert.Equal(0, changes);                               // the list was left alone
         Assert.Equal(DataEditorViewModel.AllSteps, vm.StepFilter);
+    }
+
+    [Fact]
+    public void Shared_columns_stay_in_the_grid_when_one_step_is_chosen()
+    {
+        using var dir = new TempDir();
+        var path = WithSecondStepColumns(dir);
+        using (var workbook = new XLWorkbook(path))
+        {
+            var request = workbook.Worksheet("request");
+            var col = request.LastColumnUsed()!.ColumnNumber() + 1;
+            request.Cell(1, col).Value = "region"; request.Cell(2, col).Value = "north";
+            workbook.Save();
+        }
+        var vm = new DataEditorViewModel(path);
+        vm.StepFilter = "CreateCustomer";
+        Assert.Contains(vm.Columns, c => c.Title == "CreateCustomer.name");
+        Assert.Contains(vm.Columns, c => c.Title == "region");               // shared: belongs to every step
+        Assert.DoesNotContain(vm.Columns, c => c.Title.StartsWith("OtherStep."));
+    }
+
+    [Fact]
+    public void Choosing_a_testcase_or_the_instance_puts_the_step_box_back_to_all_steps()
+    {
+        using var dir = new TempDir();
+        var vm = new DataEditorViewModel(WithSecondStepColumns(dir));
+        vm.StepFilter = "CreateCustomer";
+        vm.ShowWholeInstance();
+        Assert.Equal(DataEditorViewModel.AllSteps, vm.StepFilter);
+
+        vm.StepFilter = "CreateCustomer";
+        vm.SelectedTestcase = vm.Testcases[0];
+        Assert.Equal(DataEditorViewModel.AllSteps, vm.StepFilter);
+        Assert.Contains(vm.Columns, c => c.Title.StartsWith("OtherStep."));
     }
 }

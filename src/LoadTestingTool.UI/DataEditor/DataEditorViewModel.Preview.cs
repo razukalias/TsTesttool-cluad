@@ -45,7 +45,9 @@ public sealed partial class DataEditorViewModel
 
     /// <summary>The variables a template of this step can use: the request-sheet columns named "Step.variable", without the step name. Read when the list opens, so new columns show up.</summary>
     private Func<IReadOnlyList<string>> StepVariables(string step) => () => _document.Request.Headers
-        .Where(h => h.StartsWith(step + ".", StringComparison.OrdinalIgnoreCase)).Select(h => h[(step.Length + 1)..]).ToList();
+        .Where(h => h.StartsWith(step + ".", StringComparison.OrdinalIgnoreCase)).Select(h => h[(step.Length + 1)..])
+        .Concat(_document.Request.Headers.Where(h => h.Length > 0 && !h.Contains('.') && !ReservedColumns.Contains(h) && !LegacyColumns.IsLegacy(h)))   // shared variables: every step can use them
+        .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
     /// <summary>Called by the template editor after it wrote a file: points the step at it if the name changed, and refreshes the preview.</summary>
     private Action<string> SaveTemplateChoice(StepRowViewModel step) => relative =>

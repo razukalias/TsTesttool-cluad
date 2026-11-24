@@ -103,6 +103,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
     {
         if (value is not null) ShowInstance = false;
         if (_loading) return;
+        ResetStepFilter();   // choosing a testcase (or the instance) shows all its steps again
         BuildRows();
     }
 
@@ -140,6 +141,13 @@ public sealed partial class DataEditorViewModel : ObservableObject
     {
         if (_loading || _refreshingStepOptions) return;
         BuildRows();
+    }
+
+    private void ResetStepFilter()
+    {
+        _refreshingStepOptions = true;
+        try { StepFilter = AllSteps; }
+        finally { _refreshingStepOptions = false; }
     }
 
     /// <summary>Rebuilds the dropdown from the selected testcase's steps, keeping the chosen step when it still exists.</summary>
@@ -303,7 +311,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             if (ReservedColumns.Contains(header)) continue;
             var prefix = RequestStepPrefix(header);
             var relevant = FilteringByStep
-                ? string.Equals(prefix, StepFilter, StringComparison.OrdinalIgnoreCase)
+                ? prefix is null || string.Equals(prefix, StepFilter, StringComparison.OrdinalIgnoreCase)   // shared variables (no step) belong to every step
                 : ShowAllColumns || prefix is null || steps.Contains(prefix) || pairs.Any(p => !string.IsNullOrWhiteSpace(p.Request.GetAt(i)));
             if (relevant && KeepColumn(header, p => p.Request.GetAt(i), pairs)) columns.Add(new GridColumn(header, ColumnGroup.Request, cell++, i));
         }
@@ -315,7 +323,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             if (ReservedColumns.Contains(header)) continue;
             var prefix = ResponseStepPrefix(header);
             var relevant = FilteringByStep
-                ? string.Equals(prefix, StepFilter, StringComparison.OrdinalIgnoreCase)
+                ? prefix is null || string.Equals(prefix, StepFilter, StringComparison.OrdinalIgnoreCase)   // shared variables (no step) belong to every step
                 : ShowAllColumns || prefix is null || steps.Contains(prefix) || pairs.Any(p => p.Response is { } r && !string.IsNullOrWhiteSpace(r.GetAt(i)));
             if (relevant && KeepColumn(DisplayResponseHeader(header), p => p.Response?.GetAt(i) ?? string.Empty, pairs)) columns.Add(new GridColumn(DisplayResponseHeader(header), ColumnGroup.Response, cell++, i));
         }
