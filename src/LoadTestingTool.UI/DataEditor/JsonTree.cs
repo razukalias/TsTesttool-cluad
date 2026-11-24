@@ -39,6 +39,10 @@ public sealed class JsonViewNode
     public int Bugs { get; set; }
     public bool EnvDiffers { get; set; }
     public bool IsLeaf => Children.Count == 0;
+    /// <summary>Set on the top node of a step when the view shows all steps; the items below belong to that step.</summary>
+    public string StepName { get; set; } = string.Empty;
+    /// <summary>The step an item belongs to in the all-steps tree (empty in the one-step tree).</summary>
+    public string StepOf() { for (var n = this; n is not null; n = n.Parent) if (n.StepName.Length > 0) return n.StepName; return string.Empty; }
 
     public IEnumerable<JsonViewNode> Leaves() => IsLeaf ? [this] : Children.SelectMany(c => c.Leaves());
     public bool HasStatus => Passed + Failed + Errors + Bugs > 0;
@@ -57,7 +61,7 @@ public sealed partial class DataEditorViewModel
     {
         ShowSteps = false; ShowRecord = false;
         ForgetJsonSamples();
-        if (StepFilter is null or AllSteps && JsonSteps().FirstOrDefault() is { } first) StepFilter = first;   // the view works on one step at a time
+        if (StepFilter is null or AllSteps && JsonSteps().FirstOrDefault() is { } first) StepFilter = first;   // opens on the first step; "All steps" is one pick away
         ShowJson = true;
     }
 

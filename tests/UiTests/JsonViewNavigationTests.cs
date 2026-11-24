@@ -132,3 +132,33 @@ public class JsonViewPasteTests
         Assert.Equal(before, view.Root!.Leaves().Count());
     }
 }
+
+public class JsonViewAllStepsTests
+{
+    [AvaloniaFact]
+    public void All_steps_shows_one_branch_per_step_and_an_item_works_on_its_own_step()
+    {
+        using var dir = new TempDir();
+        var path = Samples.CreateLarge(dir, rows: 2);
+        var window = DataEditorWindow.Open(path);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        var editor = window.Shell.Current!;
+        editor.ViewModeIndex = 3;
+        Dispatcher.UIThread.RunJobs();
+        var view = window.GetVisualDescendants().OfType<JsonView>().Single();
+        var combo = window.GetVisualDescendants().OfType<ComboBox>().First(c => (string?)c.Tag == "json-step");
+        Assert.Equal("All steps", combo.Items.Cast<string>().First());
+
+        editor.StepFilter = DataEditorViewModel.AllSteps;
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("All steps", combo.SelectedItem);
+        var tops = view.Root!.Children;
+        Assert.True(tops.Count >= 1);
+        Assert.All(tops, t => Assert.Equal(t.Name, t.StepName));
+        Assert.All(tops.SelectMany(t => t.Leaves()), l => Assert.Equal(l.StepOf(), l.StepOf().Length > 0 ? l.StepOf() : string.Empty));
+        Assert.Contains(tops, t => t.Name == "CreateCustomer");
+        var leaf = tops.First(t => t.Name == "CreateCustomer").Leaves().First();
+        Assert.Equal("CreateCustomer", leaf.StepOf());
+    }
+}

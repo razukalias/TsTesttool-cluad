@@ -53,14 +53,14 @@ public sealed class JsonView : UserControl
         foreach (var (tab, text) in new[] { (JsonTab.Response, "Response"), (JsonTab.Template, "Request › Template"), (JsonTab.Config, "Request › Config") })
         {
             var button = new ToggleButton { Content = text, Tag = "json-tab-" + tab.ToString().ToLowerInvariant(), IsChecked = tab == _tab, Padding = new Thickness(12, 5) };
-            button.Click += (_, _) => { _tab = tab; foreach (var b in _tabButtons) b.IsChecked = ReferenceEquals(b, button); _selected = null; _selectedPath = string.Empty; Refresh(); };
+            button.Click += (_, _) => { _tab = tab; foreach (var b in _tabButtons) b.IsChecked = ReferenceEquals(b, button); _selected = null; _selectedPath = string.Empty; _selectedStep = string.Empty; Refresh(); };
             _tabButtons.Add(button);
             _tabs.Children.Add(button);
         }
         _step.SelectionChanged += (_, _) =>
         {
             if (_building || _step.SelectedItem is not string step || string.Equals(step, _editor.StepFilter, StringComparison.OrdinalIgnoreCase)) return;
-            _selected = null; _selectedPath = string.Empty;
+            _selected = null; _selectedPath = string.Empty; _selectedStep = string.Empty;
             _editor.StepFilter = step;
         };
 
@@ -76,6 +76,7 @@ public sealed class JsonView : UserControl
             if (_building) return;
             _selected = _tree.SelectedItem as JsonViewNode;
             _selectedPath = _selected?.Path ?? string.Empty;
+            _selectedStep = _selected?.StepOf() ?? string.Empty;
             BuildRows();
         };
         var left = new Border { BorderBrush = Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(4), Margin = new Thickness(14, 0, 6, 14), Child = new ScrollViewer { Content = _tree } };
@@ -123,7 +124,7 @@ public sealed class JsonView : UserControl
     public JsonTab Tab => _tab;
 
     /// <summary>Shows a tab and rebuilds (for tests and for the window).</summary>
-    public void ShowTab(JsonTab tab) { _tab = tab; foreach (var b in _tabButtons) b.IsChecked = (string?)b.Tag == "json-tab-" + tab.ToString().ToLowerInvariant(); _selected = null; _selectedPath = string.Empty; Refresh(); }
+    public void ShowTab(JsonTab tab) { _tab = tab; foreach (var b in _tabButtons) b.IsChecked = (string?)b.Tag == "json-tab-" + tab.ToString().ToLowerInvariant(); _selected = null; _selectedPath = string.Empty; _selectedStep = string.Empty; Refresh(); }
 
     public JsonViewNode? Root => _root;
 
@@ -141,6 +142,14 @@ public sealed class JsonView : UserControl
         Dispatcher.UIThread.Post(() => { _refreshQueued = false; Refresh(); });
     }
 
+    private string _selectedStep = string.Empty;
+
+    /// <summary>The step of the item (the step chosen, or the step the item sits under in the all-steps tree).</summary>
+    private string StepOf(JsonViewNode? node) => node?.StepOf() is { Length: > 0 } s ? s : Step;
+
+    /// <summary>The step that actions without an item (raw text, paste) work on: the selected item's step, else the chosen step, else the first.</summary>
+    private string CurrentStep => _selected is not null && StepOf(_selected).Length > 0 ? StepOf(_selected) : Step.Length > 0 ? Step : _editor.JsonSteps().FirstOrDefault() ?? string.Empty;
+
     private string Step => _editor.StepFilter is { } s && s != DataEditorViewModel.AllSteps ? s : string.Empty;
 
     private void Refresh()
@@ -148,13 +157,28 @@ public sealed class JsonView : UserControl
         _building = true;
         try
         {
-            var steps = _editor.JsonSteps();
+            var steps = new List<string> { DataEditorViewModel.AllSteps };
+            steps.AddRange(_editor.JsonSteps());
             if (!_step.ItemsSource?.Cast<string>().SequenceEqual(steps) ?? true) _step.ItemsSource = steps;
-            _step.SelectedItem = steps.FirstOrDefault(s => s.Equals(Step, StringComparison.OrdinalIgnoreCase));
-            _root = _editor.BuildJsonTree(_tab, Step);
-            if (_tab == JsonTab.Response) _editor.TallyJsonTree(_root, Step);
+            _step.SelectedItem = steps.FirstOrDefault(s => s.Equals(Step.Length == 0 ? DataEditorViewModel.AllSteps : Step, StringComparison.OrdinalIgnoreCase));
+            if (Step.Length > 0)
+            {
+                _root = _editor.BuildJsonTree(_tab, Step);
+                if (_tab == JsonTab.Response) _editor.TallyJsonTree(_root, Step);
+            }
+            else
+            {
+                _root = new JsonViewNode { Name = "(all steps)" };
+                foreach (var step in _editor.JsonSteps())
+                {
+                    var top = _editor.BuildJsonTree(_tab, step);
+                    top.StepName = step;
+                    if (_tab == JsonTab.Response) _editor.TallyJsonTree(top, step);
+                    if (top.Children.Count > 0) _root.Children.Add(top);
+                }
+            }
             _tree.ItemsSource = _root.Children.ToList();
-            _selected = _selectedPath.Length == 0 ? null : _root.Leaves().Concat(Descendants(_root)).FirstOrDefault(n => n.Path.Equals(_selectedPath, StringComparison.OrdinalIgnoreCase));
+            _selected = _selectedPath.Length == 0 && _selectedStep.Length == 0 ? null : Descendants(_root).FirstOrDefault(n => n.Path.Equals(_selectedPath, StringComparison.OrdinalIgnoreCase) && n.StepOf().Equals(_selectedStep, StringComparison.OrdinalIgnoreCase) && (_selectedPath.Length > 0 || n.StepName.Length > 0));
             _tree.SelectedItem = _selected;
         }
         finally { _building = false; }
@@ -214,7 +238,7 @@ public sealed class JsonView : UserControl
     private void FillRaw()
     {
         var row = _editor.VisibleRows.FirstOrDefault(r => r.CurrentDataId == _rawRow.SelectedItem as string);
-        _rawText.Text = row is null ? "No rows shown." : _editor.JsonRawText(_tab, Step, row);
+        _rawText.Text = row is null ? "No rows shown." : _editor.JsonRawText(_tab, CurrentStep, row);
     }
 
     private void BuildRows()
@@ -222,20 +246,20 @@ public sealed class JsonView : UserControl
         _actions.Children.Clear();
         _actions.Children.Add(_rawToggle);
         _rawToggle.IsVisible = _tab != JsonTab.Config;
-        if (_tab == JsonTab.Response && Step.Length > 0)
+        if (_tab == JsonTab.Response && CurrentStep.Length > 0)
             AddAction("Paste JSON…", "Use the JSON or XML on the clipboard as the response of the selected row: its fields show here as extra items, ready to become columns", () => _ = PasteResponseAsync(), "json-paste-response");
         UpdateRaw();
         var node = _selected;
         _rows.ItemsSource = null;
         if (node is null)
         {
-            _title.Text = Step.Length == 0 ? "Choose a step" : _root is { Children.Count: 0 } ? "Nothing to show for this step on this tab" : "Pick an item in the tree";
+            _title.Text = _root is { Children.Count: 0 } && Step.Length == 0 ? "No step has items on this tab" : _root is { Children.Count: 0 } ? "Nothing to show for this step on this tab" : "Pick an item in the tree";
             _hint.Text = $"{_editor.VisibleRows.Count} rows shown";
             AddExtrasAction(_root);
             AddAction("＋ Row", "Add a row to the testcase", () => _editor.AddRows(1), "json-add-row");
             return;
         }
-        _title.Text = (_tab == JsonTab.Response ? Step + "." : string.Empty) + node.Path + (node.Variable.Length > 0 && !node.Variable.Equals(node.Name, StringComparison.OrdinalIgnoreCase) ? " ← " + node.Variable : string.Empty);
+        _title.Text = (_tab == JsonTab.Response || node.StepOf().Length > 0 ? StepOf(node) + (node.Path.Length > 0 ? "." : string.Empty) : string.Empty) + node.Path + (node.Variable.Length > 0 && !node.Variable.Equals(node.Name, StringComparison.OrdinalIgnoreCase) ? " ← " + node.Variable : string.Empty);
         _hint.Text = node.Constant ? "Fixed text in the template, no variable to fill: " + node.Sample : $"{_editor.VisibleRows.Count} rows shown";
         if (node.Constant) { AddExtrasAction(_root); return; }
         _rows.ItemsSource = _editor.VisibleRows.ToList();
@@ -264,7 +288,8 @@ public sealed class JsonView : UserControl
         {
             var fill = _fillChoice.SelectedIndex switch { 0 => ResponseFill.None, 2 => ResponseFill.AllRows, _ => ResponseFill.ThisRow };
             var current = (_rows.SelectedItems?.OfType<DataRowViewModel>().FirstOrDefault() ?? _editor.VisibleRows.FirstOrDefault())?.CurrentDataId;
-            _editor.AddJsonExtras(_tab, Step, scope, fill, current);
+            if (scope.StepOf().Length == 0 && Step.Length == 0) foreach (var top in scope.Children) _editor.AddJsonExtras(_tab, top.StepName, top, fill, current);   // all steps: one step after the other
+            else _editor.AddJsonExtras(_tab, StepOf(scope), scope, fill, current);
         }, "json-add-column");
     }
 
@@ -329,12 +354,12 @@ public sealed class JsonView : UserControl
         TextBlock Chip(string text, string state) => new() { Text = text, Foreground = Brush.Parse(DataRowViewModel.ColorOf(state)), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         if (!node.IsLeaf)
         {
-            var results = node.Leaves().Where(l => l.Column is not null).SelectMany(l => _editor.JsonCellResults(row, Step, l)).ToList();
+            var results = node.Leaves().Where(l => l.Column is not null).SelectMany(l => _editor.JsonCellResults(row, StepOf(l), l)).ToList();
             foreach (var state in new[] { "PASS", "FAIL", "ERROR", "BUG" })
                 if (results.Count(r => r.State == state) is > 0 and var n) panel.Children.Add(Chip($"{DataRowViewModel.SymbolOf(state)} {n}", state));
             return panel;
         }
-        var cells = _editor.JsonCellResults(row, Step, node);
+        var cells = _editor.JsonCellResults(row, StepOf(node), node);
         if (cells.Count == 0) { panel.Children.Add(new TextBlock { Text = "—", Foreground = Brush.Parse("#5E7590") }); return panel; }
         var agree = cells.Select(c => (c.State, c.Actual)).Distinct().Count() == 1;
         string Text(JsonCellResult c) => $"{DataRowViewModel.SymbolOf(c.State)}{(c.State is "FAIL" or "BUG" && c.Actual.Length > 0 ? " got " + (c.Actual.Length > 30 ? c.Actual[..30] + "…" : c.Actual) : string.Empty)}";
@@ -360,7 +385,7 @@ public sealed class JsonView : UserControl
         chip.Tag = "json-result-chip";
         chip.PointerPressed += (_, e) =>
         {
-            var text = $"{Step}.{node.Path}  ·  Data ID {row.CurrentDataId}" + (cell.Environment.Length > 0 ? $"  ·  {cell.Environment}" : string.Empty)
+            var text = $"{StepOf(node)}.{node.Path}  ·  Data ID {row.CurrentDataId}" + (cell.Environment.Length > 0 ? $"  ·  {cell.Environment}" : string.Empty)
                 + $"\n{cell.State}" + (cell.Actual.Length > 0 ? $"\nGot: {cell.Actual}" : string.Empty) + (cell.Message.Length > 0 ? $"\n\n{cell.Message}" : string.Empty);
             var box = new TextBox { Text = text, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, MaxHeight = 260, Tag = "json-detail-text" };
             var show = new Button { Content = "Show the row in Table view", Tag = "json-detail-table", Margin = new Thickness(0, 6, 0, 0) };
@@ -411,7 +436,7 @@ public sealed class JsonView : UserControl
     public void UsePasted(string text)
     {
         var row = _editor.SelectedRow ?? _editor.VisibleRows.FirstOrDefault();
-        var problem = _editor.UsePastedResponse(Step, row?.CurrentDataId ?? string.Empty, text);
+        var problem = _editor.UsePastedResponse(CurrentStep, row?.CurrentDataId ?? string.Empty, text);
         Refresh();
         if (problem.Length > 0) _hint.Text = problem;
         else _hint.Text = $"Pasted response used for {row!.CurrentDataId}; nothing is saved until you add columns and Save";
@@ -440,6 +465,7 @@ public sealed class JsonView : UserControl
         var next = flat[Math.Clamp(index + delta, 0, flat.Count - 1)];
         _selected = next;
         _selectedPath = next.Path;
+        _selectedStep = next.StepOf();
         _building = true;
         try { _tree.SelectedItem = next; }
         finally { _building = false; }
