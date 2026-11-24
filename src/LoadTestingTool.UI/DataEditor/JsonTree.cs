@@ -80,6 +80,21 @@ public sealed partial class DataEditorViewModel
         return seen.Values;
     }
 
+    /// <summary>
+    /// Takes pasted JSON or XML as the response of one row of the step, so its fields show up as extra items (and "Add columns" can make the columns and fill the
+    /// cells from it). Nothing is written to the workbook. Returns an empty string when it worked, otherwise what is wrong with the text.
+    /// </summary>
+    public string UsePastedResponse(string step, string dataId, string text)
+    {
+        if (step.Length == 0) return "Choose a step first.";
+        if (dataId.Length == 0) return "There is no row to attach the response to.";
+        if (string.IsNullOrWhiteSpace(text)) return "The clipboard has no text.";
+        if (ResponseTree.ParseAny(text, out var note) is null) return note.Length > 0 ? note : "The text is neither JSON nor XML.";
+        SampleFields(step);
+        _jsonSamples[dataId] = new ResponseSample(text, "pasted", dataId, "pasted");
+        return string.Empty;
+    }
+
     /// <summary>Forget what the JSON view read from the history (after a run, or when the view opens).</summary>
     public void ForgetJsonSamples() { _jsonSamplesStep = string.Empty; _jsonSamples = new(StringComparer.OrdinalIgnoreCase); }
 

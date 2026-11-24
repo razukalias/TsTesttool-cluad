@@ -82,6 +82,16 @@ public sealed class JsonView : UserControl
 
         _rows.ItemTemplate = new FuncDataTemplate<DataRowViewModel>((row, _) => RowLine(row));
         _rows.KeyDown += OnKeyDown;
+        _tree.KeyDown += OnTreeKeyDown;
+        _rows.SelectionChanged += (_, _) =>
+        {
+            if (_building || _syncing) return;
+            if (_rows.SelectedItems?.OfType<DataRowViewModel>().OrderBy(r => _editor.VisibleRows.IndexOf(r)).FirstOrDefault() is { } first && !ReferenceEquals(_editor.SelectedRow, first))
+            {
+                _syncing = true;
+                try { _editor.SelectedRow = first; } finally { _syncing = false; }
+            }
+        };
         var header = new DockPanel { Margin = new Thickness(0, 0, 0, 6), LastChildFill = false };
         header.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _title, _hint } });
         DockPanel.SetDock(_actions, Dock.Right);
@@ -103,6 +113,7 @@ public sealed class JsonView : UserControl
         editor.VisibleRows.CollectionChanged += (_, _) => QueueRefresh();
         editor.PropertyChanged += (_, e) =>
         {
+            if (e.PropertyName == nameof(DataEditorViewModel.SelectedRow)) { SyncSelectedRow(); return; }
             if (e.PropertyName is nameof(DataEditorViewModel.ShowJson) or nameof(DataEditorViewModel.StepFilter) or nameof(DataEditorViewModel.RunSummaryText)) QueueRefresh();
         };
         Refresh();
@@ -211,6 +222,8 @@ public sealed class JsonView : UserControl
         _actions.Children.Clear();
         _actions.Children.Add(_rawToggle);
         _rawToggle.IsVisible = _tab != JsonTab.Config;
+        if (_tab == JsonTab.Response && Step.Length > 0)
+            AddAction("Paste JSON…", "Use the JSON or XML on the clipboard as the response of the selected row: its fields show here as extra items, ready to become columns", () => _ = PasteResponseAsync(), "json-paste-response");
         UpdateRaw();
         var node = _selected;
         _rows.ItemsSource = null;
@@ -226,6 +239,7 @@ public sealed class JsonView : UserControl
         _hint.Text = node.Constant ? "Fixed text in the template, no variable to fill: " + node.Sample : $"{_editor.VisibleRows.Count} rows shown";
         if (node.Constant) { AddExtrasAction(_root); return; }
         _rows.ItemsSource = _editor.VisibleRows.ToList();
+        SyncSelectedRow();
 
         AddExtrasAction(node);
         AddAction("＋ Row", "Add a row to the testcase", () => _editor.AddRows(1), "json-add-row");
@@ -324,18 +338,37 @@ public sealed class JsonView : UserControl
         if (cells.Count == 0) { panel.Children.Add(new TextBlock { Text = "—", Foreground = Brush.Parse("#5E7590") }); return panel; }
         var agree = cells.Select(c => (c.State, c.Actual)).Distinct().Count() == 1;
         string Text(JsonCellResult c) => $"{DataRowViewModel.SymbolOf(c.State)}{(c.State is "FAIL" or "BUG" && c.Actual.Length > 0 ? " got " + (c.Actual.Length > 30 ? c.Actual[..30] + "…" : c.Actual) : string.Empty)}";
-        if (agree) { var chip = Chip(Text(cells[0]), cells[0].State); ToolTip.SetTip(chip, cells[0].Message); panel.Children.Add(chip); }
+        if (agree) { var chip = Chip(Text(cells[0]), cells[0].State); ToolTip.SetTip(chip, cells[0].Message); Detail(chip, row, node, cells[0]); panel.Children.Add(chip); }
         else
         {
             foreach (var cell in cells)
             {
                 var chip = Chip($"{cell.Environment} {Text(cell)}", cell.State);
                 ToolTip.SetTip(chip, cell.Message.Length > 0 ? cell.Message : cell.State);
+                Detail(chip, row, node, cell);
                 panel.Children.Add(chip);
             }
             panel.Children.Add(new TextBlock { Text = "▲", Foreground = Brush.Parse("#F6C76B"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
         }
         return panel;
+    }
+
+    /// <summary>Clicking a result opens its detail: environment, state, what the run got and its message, and a way to the row in Table view.</summary>
+    private void Detail(Control chip, DataRowViewModel row, JsonViewNode node, JsonCellResult cell)
+    {
+        chip.Cursor = new Cursor(StandardCursorType.Hand);
+        chip.Tag = "json-result-chip";
+        chip.PointerPressed += (_, e) =>
+        {
+            var text = $"{Step}.{node.Path}  ·  Data ID {row.CurrentDataId}" + (cell.Environment.Length > 0 ? $"  ·  {cell.Environment}" : string.Empty)
+                + $"\n{cell.State}" + (cell.Actual.Length > 0 ? $"\nGot: {cell.Actual}" : string.Empty) + (cell.Message.Length > 0 ? $"\n\n{cell.Message}" : string.Empty);
+            var box = new TextBox { Text = text, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, MaxHeight = 260, Tag = "json-detail-text" };
+            var show = new Button { Content = "Show the row in Table view", Tag = "json-detail-table", Margin = new Thickness(0, 6, 0, 0) };
+            var flyout = new Flyout { Content = new StackPanel { Spacing = 4, Children = { box, show } } };
+            show.Click += (_, _) => { flyout.Hide(); _editor.SelectedRow = row; _editor.ViewModeIndex = 0; };
+            flyout.ShowAt(chip);
+            e.Handled = true;
+        };
     }
 
     // ---- row operations ---------------------------------------------------------------------------
@@ -366,8 +399,62 @@ public sealed class JsonView : UserControl
         BuildRows();
     }
 
+    private bool _syncing;
+
+    private async Task PasteResponseAsync()
+    {
+        var text = TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard ? await clipboard.GetTextAsync() : null;
+        UsePasted(text ?? string.Empty);
+    }
+
+    /// <summary>Uses the text as the response of the selected row (the first row shown when none is selected) and shows what it brought.</summary>
+    public void UsePasted(string text)
+    {
+        var row = _editor.SelectedRow ?? _editor.VisibleRows.FirstOrDefault();
+        var problem = _editor.UsePastedResponse(Step, row?.CurrentDataId ?? string.Empty, text);
+        Refresh();
+        if (problem.Length > 0) _hint.Text = problem;
+        else _hint.Text = $"Pasted response used for {row!.CurrentDataId}; nothing is saved until you add columns and Save";
+    }
+
+    /// <summary>The row the table has selected is the row selected here, and the other way round.</summary>
+    private void SyncSelectedRow()
+    {
+        if (_syncing || _editor.SelectedRow is not { } row || _rows.ItemsSource is null) return;
+        if (_rows.SelectedItems?.Count == 1 && ReferenceEquals(_rows.SelectedItem, row)) return;
+        if (_rows.SelectedItems?.Contains(row) == true && _rows.SelectedItems.Count > 1) return;
+        _syncing = true;
+        try { _rows.SelectedItem = row; }
+        finally { _syncing = false; }
+    }
+
+    /// <summary>The items in the order the tree shows them.</summary>
+    public List<JsonViewNode> Flat() => _root is null ? [] : Descendants(_root).ToList();
+
+    /// <summary>Moves the selection to the previous (-1) or next (+1) item of the tree.</summary>
+    public void MoveItem(int delta)
+    {
+        var flat = Flat();
+        if (flat.Count == 0) return;
+        var index = _selected is null ? -1 : flat.FindIndex(n => ReferenceEquals(n, _selected) || n.Path.Equals(_selected.Path, StringComparison.OrdinalIgnoreCase));
+        var next = flat[Math.Clamp(index + delta, 0, flat.Count - 1)];
+        _selected = next;
+        _selectedPath = next.Path;
+        _building = true;
+        try { _tree.SelectedItem = next; }
+        finally { _building = false; }
+        BuildRows();
+    }
+
+    private void OnTreeKeyDown(object? sender, KeyEventArgs e)
+    {
+        var ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);
+        if (ctrl && e.Key is Key.Up or Key.Down) { MoveItem(e.Key == Key.Up ? -1 : 1); e.Handled = true; }
+    }
+
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key is Key.Up or Key.Down && e.Source is not TextBox) { MoveItem(e.Key == Key.Up ? -1 : 1); e.Handled = true; return; }
         if (e.Source is TextBox) return;   // typing in a value keeps its own shortcuts
         var ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);
         if (ctrl && e.Key == Key.C) { Copy(); e.Handled = true; }
