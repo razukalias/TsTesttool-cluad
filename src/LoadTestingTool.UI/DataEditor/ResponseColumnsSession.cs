@@ -78,7 +78,7 @@ public sealed class ResponseColumnsSession
     {
         if (_trees.TryGetValue(dataId, out var cached)) return cached;
         var body = BodyFor(dataId);
-        var tree = body is null ? null : ResponseTree.Parse(body, out _);
+        var tree = body is null ? null : ResponseTree.ParseAny(body, out _);
         _trees[dataId] = tree;
         return tree;
     }
@@ -115,7 +115,7 @@ public sealed class ResponseColumnsSession
         }
         else
         {
-            ResponseTree.Parse(BodyFor(CurrentRow)!, out var parseNote);
+            ResponseTree.ParseAny(BodyFor(CurrentRow)!, out var parseNote);
             Note = parseNote ?? string.Empty;
             Source = _overrides.ContainsKey(CurrentRow) ? "pasted or file response" : $"last run ({_stored[CurrentRow].Source})";
         }

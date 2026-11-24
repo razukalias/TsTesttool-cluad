@@ -91,8 +91,9 @@ public sealed class StepTypeSection : UserControl
                     new Spec("Inline", "Query", Kind.Multi, Hint: "Used when no template is set."), new Spec("Variables", "Variables", Kind.Json));
                 break;
             case "wcf":
+                _body.Children.Add(WsdlButton());
                 AddAll(new Spec("SoapAction", "SOAP action", Kind.Text, Hint: "e.g. http://tempuri.org/IOrders/GetOrder"), new Spec("SoapVersion", "SOAP version", Kind.Combo, ["1.1", "1.2"]),
-                    new Spec("Username", "User name", Kind.Text, Hint: "Optional. Adds a WS-Security UsernameToken."), new Spec("Password", "Password", Kind.Text),
+                    new Spec("Username", "User name", Kind.Text, Hint: "Optional. Adds a WS-Security UsernameToken. Can use _column_ placeholders."), new Spec("Password", "Password", Kind.Text, Hint: "Can be a _column_ placeholder; masked in logs and results."),
                     new Spec("HeaderXml", "Extra header XML", Kind.Multi, Hint: "Optional. Put inside the SOAP header."));
                 break;
             case "sql":
@@ -220,6 +221,35 @@ public sealed class StepTypeSection : UserControl
         }
         else _config[spec.Key] = text;
         Save();
+    }
+
+    private Control WsdlButton()
+    {
+        var button = new Button { Content = "Import from WSDL…", Tag = "wsdl-import" };
+        ToolTip.SetTip(button, "Read a WSDL (URL or file) and fill this step from one of its operations: the request template, SOAP action, version and address");
+        button.Click += (_, _) =>
+            new WsdlImportWindow("Import a WCF step from a WSDL", "Use this operation", false, (_, chosen) => ApplyWsdl(chosen[0])).Show(TopLevel.GetTopLevel(this) as Window ?? throw new InvalidOperationException());
+        return button;
+    }
+
+    /// <summary>Fills the step from a WSDL operation: the request template becomes a new file in Templates, the address, SOAP action and version are set.</summary>
+    public void ApplyWsdl(LoadTestingTool.Editing.WsdlOperation operation)
+    {
+        if (_step.Editor is { } editor)
+        {
+            var folder = editor.TemplatesFolder;
+            Directory.CreateDirectory(folder);
+            var stem = string.Concat(operation.Name.Where(c => char.IsLetterOrDigit(c) || c is '_' or '-')); if (stem.Length == 0) stem = "Soap";
+            var relative = stem + ".xml"; var n = 1;
+            while (File.Exists(TemplateEditorWindow.ResolveInside(folder, relative))) relative = $"{stem}_{++n}.xml";
+            File.WriteAllText(TemplateEditorWindow.ResolveInside(folder, relative), operation.Template);
+            _step.Write("templetsource", relative);
+        }
+        if (operation.Endpoint.Length > 0) _step.Write("targeturl", operation.Endpoint);
+        if (operation.SoapAction.Length > 0) _config["SoapAction"] = operation.SoapAction; else _config.Remove("SoapAction");
+        _config["SoapVersion"] = operation.SoapVersion;
+        Save();
+        Rebuild();
     }
 
     private void Save()

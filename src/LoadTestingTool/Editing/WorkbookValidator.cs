@@ -53,6 +53,8 @@ public static class WorkbookValidator
                 Add(problems, ProblemSeverity.Error, table, row, $"{type.WireName()} steps need a template (templetsource).");
             if (!type.IsHttpLike() && type is not StepType.ActionManual && !type.IsControl() && Text(row, "stepconfig").Length == 0)
                 Add(problems, ProblemSeverity.Error, table, row, $"{type.WireName()} steps need a StepConfig.");
+            if (type == StepType.Wcf && Text(row, "verb") is { Length: > 0 } verb && !verb.Equals("POST", StringComparison.OrdinalIgnoreCase))
+                Add(problems, ProblemSeverity.Warning, table, row, $"wcf steps always send POST (SOAP); the verb '{verb}' is ignored.");
             CheckControlStep(problems, table, row, type);
 
             foreach (var name in BooleanColumns)

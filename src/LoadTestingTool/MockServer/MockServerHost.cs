@@ -153,7 +153,11 @@ public sealed class MockServerHost : IDisposable
         }
         var body = await ReadBody(http);
         var query = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var key in http.QueryString.AllKeys) if (key is not null) query[key] = http.QueryString[key] ?? "";
+        foreach (var key in http.QueryString.AllKeys)
+        {
+            if (key is not null) query[key] = http.QueryString[key] ?? "";
+            else foreach (var flag in (http.QueryString[null] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)) query[flag] = "";   // ?wsdl has no "="
+        }
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var key in http.Headers.AllKeys) if (key is not null) headers[key] = http.Headers[key] ?? "";
         var request = new MockRequest(http.HttpMethod, path, query, headers, body);

@@ -220,6 +220,32 @@ public class NewColumnWizardTests
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void An_xml_response_shows_as_a_tree_and_the_raw_toggle_shows_it_indented()
+    {
+        using var dir = new TempDir();
+        var (window, _) = Open(dir);
+        var pane = window.ResponsePane;
+        pane.UseText("<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><R status=\"ok\"><Id>7</Id></R></s:Body></s:Envelope>");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(pane.Session!.Tree!.Xml);
+        Assert.Equal(["R"], pane.Session.Tree.Children.Select(c => c.Name).ToArray());   // the envelope is read from its body
+        pane.Session.Choose("R.Id", new NodeChoice(NodeMode.AsOne));
+        pane.Session.Recompute();
+        Assert.Equal("R.Id", pane.Session.Results.Single().Header.Path);
+
+        var toggle = window.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().First(b => Equals(b.Tag, "response-raw"));
+        toggle.IsChecked = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var raw = window.GetVisualDescendants().OfType<TextBox>().First(t => Equals(t.Tag, "response-raw-text"));
+        Assert.True(raw.IsVisible);
+        Assert.Contains("<Id>7</Id>", raw.Text);
+        Assert.Contains("\n", raw.Text);
+        toggle.IsChecked = false;
+        Assert.False(raw.IsVisible);
+        window.Close();
+    }
+
     private static T? TopLevelContent<T>(Window window) where T : Control
         => Avalonia.Controls.Primitives.OverlayLayer.GetOverlayLayer(window)?.GetVisualDescendants().OfType<T>().FirstOrDefault()
            ?? window.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.Popup>().Select(p => p.Child).OfType<Control>().SelectMany(c => c.GetVisualDescendants().OfType<T>().Concat(c is T t ? [t] : [])).FirstOrDefault();

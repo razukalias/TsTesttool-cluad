@@ -38,6 +38,16 @@ public sealed class ResponseColumnsPane : Grid
     private readonly RadioButton _fillAll = new() { Content = "Fill every row from its own response", GroupName = "fill", Tag = "fill-all" };
     private readonly List<Action> _refreshers = [];
     private bool _loading;
+    private readonly ToggleButton _showRaw = new() { Content = "‹/›  Raw response", Tag = "response-raw" };
+    private readonly TextBox _raw = new() { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, FontFamily = new FontFamily("Consolas,Menlo,monospace"), FontSize = 12, Tag = "response-raw-text", BorderThickness = new Thickness(0) };
+
+    /// <summary>The Tree / Raw switch: the raw response is the text as the server sent it, indented (XML or JSON), read-only.</summary>
+    private void ShowRawOrTree()
+    {
+        var raw = _showRaw.IsChecked == true;
+        _raw.IsVisible = raw; _tree.IsVisible = !raw;
+        _raw.Text = raw && Session?.BodyFor(Session.CurrentRow) is { } body ? ResponseText.Pretty(body) : string.Empty;
+    }
 
     public ResponseColumnsSession? Session { get; private set; }
     private readonly DataEditorViewModel _editor;
@@ -65,10 +75,11 @@ public sealed class ResponseColumnsPane : Grid
         next.Click += (_, _) => { Session?.Move(+1); ShowRow(); };
         paste.Click += async (_, _) => await PasteAsync();
         file.Click += async (_, _) => await PickFileAsync();
+        _showRaw.IsCheckedChanged += (_, _) => ShowRawOrTree();
         var bar = new WrapPanel
         {
             Margin = new Thickness(0, 6, 0, 6),
-            Children = { Pad(Labeled("Step", _step)), Pad(Labeled("Row", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { back, _row, next } })), Pad(Labeled("Response", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { paste, file } })), Pad(Labeled("Verb for new headers", _defaultVerb)) },
+            Children = { Pad(Labeled("Step", _step)), Pad(Labeled("Row", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { back, _row, next } })), Pad(Labeled("Response", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { paste, file } })), Pad(Labeled("Verb for new headers", _defaultVerb)), Pad(Labeled("View", _showRaw)) },
         };
         SetRow(bar, 0); SetColumnSpan(bar, 3);
         Children.Add(bar);
@@ -80,7 +91,8 @@ public sealed class ResponseColumnsPane : Grid
         var treeStyle = new Style(x => x.OfType<TreeViewItem>());
         treeStyle.Setters.Add(new Setter(TreeViewItem.IsExpandedProperty, new Binding("Depth") { Converter = new FuncValueConverter<int, bool>(depth => depth < 1), Mode = BindingMode.OneTime }));
         _tree.Styles.Add(treeStyle);
-        var left = new Border { BorderBrush = Brush.Parse("#26364A"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(4), Child = _tree };
+        _raw.IsVisible = false;
+        var left = new Border { BorderBrush = Brush.Parse("#26364A"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(4), Child = new Grid { Children = { _tree, _raw } } };
         SetRow(left, 2); SetColumn(left, 0);
         Children.Add(left);
         var splitter = new GridSplitter { Width = 6, Background = Brushes.Transparent };
@@ -139,6 +151,7 @@ public sealed class ResponseColumnsPane : Grid
         finally { _loading = false; }
         _refreshers.Clear();
         _tree.ItemsSource = s.Tree is null ? null : new[] { s.Tree };
+        if (_showRaw.IsChecked == true) ShowRawOrTree();
         _source.Text = s.Source.Length == 0 ? string.Empty : $"Response of row {s.CurrentRow}: {s.Source}";
         RefreshResults();
     }
@@ -206,6 +219,7 @@ public sealed class ResponseColumnsPane : Grid
         else
         {
             var asOne = chosen?.Mode == NodeMode.AsOne;
+            if (!node.Xml)   // the runner counts the elements of a JSON array or object; an XML element has no count
             menu.Items.Add(Item(asOne ? "Remove the count header" : $"Take as one header (count of {node.Count} {(node.Kind == ResponseNodeKind.Array ? "elements" : "properties")})", () => Set(asOne ? null : new NodeChoice(NodeMode.AsOne))));
             var flatten = new MenuItem { Header = node.Kind == ResponseNodeKind.Array ? "Flatten this array (first element of every array)" : "Flatten this object (first element of every array)" };
             for (var i = 0; i < Depths.Length; i++) { var depth = DepthValues[i]; flatten.Items.Add(Item(Depths[i], () => Set(new NodeChoice(NodeMode.Flatten, depth)))); }

@@ -262,4 +262,72 @@ public class WcfPasswordLoggingTests : IDisposable
         Assert.Contains("***", result.RequestBody);
         Assert.Contains("hunter2", host.Snapshot().Single().RequestBody);
     }
+
+    [Fact]
+    public async Task ThePasswordCanComeFromAColumnAndNeitherTheLogNorTheHistoryHoldsIt()
+    {
+        var config = new MockServerConfig { Port = MockServerHost.FreePort(), Routes = [new MockRoute { Method = "POST", Path = "/s", Response = new MockResponse { ContentType = "text/xml", Body = "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><R><Id>1</Id></R></s:Body></s:Envelope>" } }] };
+        using var host = new MockServerHost(config); host.Start();
+        Directory.CreateDirectory(_dir.Combine("Templates"));
+        File.WriteAllText(Path.Combine(_dir.Combine("Templates"), "a.xml"), "<Go/>");
+        var path = Workbooks.CreateSmall(_dir, (c, request, response) =>
+        {
+            c.Cell(1, 9).Value = "stepconfig";
+            c.Cell(2, 4).Value = "WCF"; c.Cell(2, 5).Value = "a.xml"; c.Cell(2, 6).Value = $"http://127.0.0.1:{config.Port}/s";
+            c.Cell(2, 9).Value = "{\"Username\":\"svc\",\"Password\":\"_pw_\",\"SoapAction\":\"urn:Get_Order_Details\"}";
+            request.Cell(1, 6).Value = "pw"; request.Cell(2, 6).Value = "p\"w\\1";
+        });
+        var model = new WorkbookReader().Read(path);
+        var logs = new List<string>();
+        var runner = new TestRunner(new HttpClient(), new AssertionEngine(), Path.Combine(Path.GetDirectoryName(path)!, "Templates"), 30);
+        var run = new RunResult { RunId = "r", StartedAt = DateTimeOffset.Now };
+        await runner.RunAsync(model.Testcases[0], model, run, CancellationToken.None, selectedDataIds: new HashSet<string> { "D1" }, executionMode: "sequential");
+        var result = run.Testcases.SelectMany(t => t.Requests).Single();
+        Assert.True(string.IsNullOrEmpty(result.ErrorMessage), result.ErrorMessage);
+        Assert.Contains("p&quot;w\\1", host.Snapshot().Single().RequestBody);   // the server got the column's value (XML-escaped in the token)
+        Assert.DoesNotContain("p\"w", result.RequestBody);
+        Assert.Contains("_pw_", result.StepConfig);                          // the history keeps the placeholder, not the value
+        Assert.DoesNotContain("p\\\"w", result.StepConfig);
+        Assert.Contains("Get_Order_Details", result.StepConfig);              // text that only looks like a placeholder is left alone
+    }
+}
+
+public class StepConfigPlaceholderTests
+{
+    private static readonly Dictionary<string, string> Vars = new(StringComparer.OrdinalIgnoreCase) { ["pw"] = "a\"b\\c", ["user"] = "svc" };
+
+    [Fact]
+    public void JsonSettingsGetTheValueEscapedAndUnknownNamesStay()
+    {
+        var filled = StepConfig.Fill("{\"Password\":\"_pw_\",\"Username\":\"_user_\",\"SoapAction\":\"urn:Get_Order_Details\"}", Vars);
+        using var document = System.Text.Json.JsonDocument.Parse(filled);
+        Assert.Equal("a\"b\\c", document.RootElement.GetProperty("Password").GetString());
+        Assert.Equal("svc", document.RootElement.GetProperty("Username").GetString());
+        Assert.Equal("urn:Get_Order_Details", document.RootElement.GetProperty("SoapAction").GetString());
+    }
+
+    [Fact]
+    public void KeyValueSettingsGetTheValueAsItIs()
+        => Assert.Equal("Username=svc;Password=a\"b\\c", StepConfig.Fill("Username=_user_;Password=_pw_", Vars));
+
+    [Theory]
+    [InlineData("{\"Username\":\"u\",\"Password\":\"hunter2\"}", "{\"Username\":\"u\",\"Password\":\"***\"}")]
+    [InlineData("{\"Password\":\"_pw_\"}", "{\"Password\":\"_pw_\"}")]
+    [InlineData("Username=u;Password=hunter2;Timeout=5", "Username=u;Password=***;Timeout=5")]
+    [InlineData("{\"ApiKey\":\"abc\",\"Other\":\"x\"}", "{\"ApiKey\":\"***\",\"Other\":\"x\"}")]
+    public void SecretSettingsAreMaskedForLogsAndHistoryButPlaceholdersStayReadable(string config, string expected)
+        => Assert.Equal(expected, StepConfig.Mask(config));
+
+    [Fact]
+    public void ReadingSettingsInsideAScopeUsesTheVariables()
+    {
+        var step = new RequestStep { StepName = "S", StepType = StepType.Wcf, StepConfig = "{\"Username\":\"_user_\",\"Password\":\"_pw_\"}" };
+        using (StepConfig.UseVariables(Vars))
+        {
+            var options = StepConfig.Read<WcfStepOptions>(step);
+            Assert.Equal("svc", options.Username);
+            Assert.Equal("a\"b\\c", options.Password);
+        }
+        Assert.Equal("_user_", StepConfig.Read<WcfStepOptions>(step).Username);   // outside the scope nothing is filled
+    }
 }

@@ -20,10 +20,9 @@ public class ResponseSamplesTests
 
     [Theory]
     [InlineData("")]
-    [InlineData("<xml><a>1</a></xml>")]
     [InlineData("{\"cut\":")]
     [InlineData("[omitted]")]
-    public void Text_that_is_not_json_gives_no_fields(string text) => Assert.Empty(ResponseSamples.Flatten(text));
+    public void Text_that_is_neither_json_nor_xml_gives_no_fields(string text) => Assert.Empty(ResponseSamples.Flatten(text));
 
     [Fact]
     public void Long_arrays_are_limited_and_the_field_count_is_capped()

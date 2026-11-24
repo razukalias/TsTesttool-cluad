@@ -20,6 +20,12 @@ public static class ResponseSamples
     {
         var fields = new List<ResponseField>();
         if (string.IsNullOrWhiteSpace(json)) return fields;
+        if (json.TrimStart().StartsWith('<'))
+        {
+            // XML (SOAP): the same paths the runner reads, from the tree
+            if (ResponseTree.ParseXml(json, out _) is { } xml) WalkXml(xml, fields);
+            return fields;
+        }
         try
         {
             using var document = JsonDocument.Parse(json, new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
@@ -27,6 +33,13 @@ public static class ResponseSamples
         }
         catch (JsonException) { /* not JSON (XML, plain text, a truncated body): no fields */ }
         return fields;
+    }
+
+    private static void WalkXml(ResponseNode node, List<ResponseField> fields)
+    {
+        if (fields.Count >= MaxFields) return;
+        if (node.IsLeaf && node.Path.Length > 0) fields.Add(new ResponseField(node.Path, node.Value));
+        foreach (var child in node.Kind == ResponseNodeKind.Array ? node.Children.Take(MaxArrayItems) : node.Children) WalkXml(child, fields);
     }
 
     private static void Walk(JsonElement element, string path, List<ResponseField> fields)

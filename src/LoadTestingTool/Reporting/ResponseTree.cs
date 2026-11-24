@@ -1,5 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Xml;
+using System.Xml.Linq;
+using LoadTestingTool.Execution;
 
 namespace LoadTestingTool.Reporting;
 
@@ -23,6 +26,8 @@ public sealed class ResponseNode
     /// <summary>An array has more elements than the tree keeps.</summary>
     public bool Cut => Kind == ResponseNodeKind.Array && Count > Children.Count;
     public bool IsLeaf => Kind == ResponseNodeKind.Value;
+    /// <summary>The node comes from an XML (SOAP) response. A leaf element with attributes keeps them as children (<c>Price.@currency</c>).</summary>
+    public bool Xml { get; init; }
 }
 
 public enum NodeMode { AsOne, Flatten }
@@ -46,6 +51,80 @@ public static class ResponseTree
     private const int MaxNodes = 20_000;
     public const string CountSegment = "#count";
 
+    /// <summary>The tree of a response whatever it is: XML when it starts with &lt;, JSON otherwise.</summary>
+    public static ResponseNode? ParseAny(string body, out string? note)
+        => body.TrimStart().StartsWith('<') ? ParseXml(body, out note) : Parse(body, out note);
+
+    /// <summary>
+    /// The tree of an XML response with the paths the runner addresses it by: a SOAP envelope is read from its body (<c>GetOrderResponse.Status</c>, <c>Fault.faultstring</c>,
+    /// <c>Header.&lt;element&gt;</c>), repeated elements are indexed (<c>Line[0]</c>), attributes are <c>.@name</c>. Built from the same rules as the runner's own reading.
+    /// </summary>
+    public static ResponseNode? ParseXml(string xml, out string? note)
+    {
+        note = null;
+        if (string.IsNullOrWhiteSpace(xml)) { note = "The response is empty."; return null; }
+        XDocument document;
+        try { document = XDocument.Parse(xml); }
+        catch (XmlException) { note = "The response looks like XML but could not be read."; return null; }
+        if (document.Root is null) return null;
+        var nodes = 0;
+        var root = new ResponseNode { Kind = ResponseNodeKind.Object, Xml = true };
+        var top = new List<(XElement Element, string Path)>();
+        if (document.Root.Name.LocalName == "Envelope" && document.Root.Name.NamespaceName is SoapEnvelope.Ns11 or SoapEnvelope.Ns12
+            && document.Root.Elements().FirstOrDefault(e => e.Name.LocalName == "Body") is { } body)
+        {
+            foreach (var header in document.Root.Elements().Where(e => e.Name.LocalName == "Header").SelectMany(e => e.Elements()))
+                top.Add((header, "Header." + header.Name.LocalName));
+            foreach (var child in body.Elements()) top.Add((child, child.Name.LocalName));
+        }
+        else top.Add((document.Root, document.Root.Name.LocalName));
+
+        var headerElements = top.Count(t => t.Path.StartsWith("Header.", StringComparison.Ordinal));
+        var headerParent = headerElements > 0
+            ? new ResponseNode { Name = "Header", Path = "Header", Kind = ResponseNodeKind.Object, Count = headerElements, Depth = 1, Parent = root, Xml = true } : null;
+        if (headerParent is not null) root.Children.Add(headerParent);
+        foreach (var (element, path) in top)
+        {
+            if (nodes >= MaxNodes) { note = $"A large response: only the first {MaxNodes:N0} nodes are shown."; break; }
+            var parent = headerParent is not null && path.StartsWith("Header.", StringComparison.Ordinal) ? headerParent : root;
+            parent.Children.Add(BuildXml(element, element.Name.LocalName, path, parent.Depth + 1, parent, ref nodes));
+        }
+        return root;
+    }
+
+    private static ResponseNode BuildXml(XElement element, string name, string path, int depth, ResponseNode? parent, ref int nodes)
+    {
+        nodes++;
+        var attributes = element.Attributes().Where(a => !a.IsNamespaceDeclaration).ToList();
+        var groups = element.Elements().GroupBy(x => x.Name.LocalName).ToList();
+        if (groups.Count == 0)
+        {
+            var leaf = new ResponseNode { Name = name, Path = path, Kind = ResponseNodeKind.Value, Value = element.Value, Count = attributes.Count, Depth = depth, Parent = parent, Xml = true };
+            AddAttributes(leaf, attributes, path, depth, ref nodes);
+            return leaf;
+        }
+        var node = new ResponseNode { Name = name, Path = path, Kind = ResponseNodeKind.Object, Count = attributes.Count + groups.Count, Depth = depth, Parent = parent, Xml = true };
+        AddAttributes(node, attributes, path, depth, ref nodes);
+        foreach (var group in groups)
+        {
+            if (nodes >= MaxNodes) break;
+            var list = group.ToList();
+            if (list.Count == 1) { node.Children.Add(BuildXml(list[0], group.Key, $"{path}.{group.Key}", depth + 1, node, ref nodes)); continue; }
+            var array = new ResponseNode { Name = group.Key, Path = $"{path}.{group.Key}", Kind = ResponseNodeKind.Array, Count = list.Count, Depth = depth + 1, Parent = node, Xml = true };
+            for (var i = 0; i < list.Count && i < MaxElements && nodes < MaxNodes; i++)
+                array.Children.Add(BuildXml(list[i], $"[{i}]", $"{path}.{group.Key}[{i}]", depth + 2, array, ref nodes));
+            node.Children.Add(array);
+        }
+        return node;
+    }
+
+    private static void AddAttributes(ResponseNode owner, List<XAttribute> attributes, string path, int depth, ref int nodes)
+    {
+        foreach (var attribute in attributes)
+            owner.Children.Add(new ResponseNode { Name = "@" + attribute.Name.LocalName, Path = $"{path}.@{attribute.Name.LocalName}", Kind = ResponseNodeKind.Value, Value = attribute.Value, Depth = depth + 1, Parent = owner, Xml = true });
+        nodes += attributes.Count;
+    }
+
     public static ResponseNode? Parse(string json, out string? note)
     {
         note = null;
@@ -58,7 +137,7 @@ public static class ResponseTree
             if (nodes >= MaxNodes) note = $"A large response: only the first {MaxNodes:N0} nodes are shown.";
             return root;
         }
-        catch (JsonException) { note = "The response is not JSON (XML and plain text have no tree)."; return null; }
+        catch (JsonException) { note = "The response is not JSON or XML, so it has no tree."; return null; }
     }
 
     private static ResponseNode Build(JsonElement element, string name, string path, int depth, ResponseNode? parent, ref int nodes)
@@ -140,7 +219,11 @@ public static class ResponseTree
             foreach (var child in children)
             {
                 if (choices.TryGetValue(child.Path, out var own)) { Emit(child, own); continue; }
-                if (child.IsLeaf) Add(new GeneratedHeader(child.Path, child.Value, GeneratedKind.Value, child.Path));
+                if (child.IsLeaf)
+                {
+                    Add(new GeneratedHeader(child.Path, child.Value, GeneratedKind.Value, child.Path));
+                    foreach (var attribute in child.Children) if (!choices.ContainsKey(attribute.Path)) Add(new GeneratedHeader(attribute.Path, attribute.Value, GeneratedKind.Value, attribute.Path));   // XML: Price.@currency
+                }
                 else if (levelsLeft <= 1 || child.Depth >= MaxDepth) { if (child.Count > 0) deep++; }
                 else Flatten(child, choice, levelsLeft - 1);
             }
@@ -151,7 +234,7 @@ public static class ResponseTree
             if (choices.TryGetValue(node.Path, out var choice))
             {
                 Emit(node, choice);
-                if (choice.Mode == NodeMode.Flatten || node.IsLeaf) return;   // a flatten already handled what is below; a count leaves chosen descendants to be found
+                if (choice.Mode == NodeMode.Flatten || (node.IsLeaf && node.Children.Count == 0)) return;   // a flatten already handled what is below; a count leaves chosen descendants to be found
             }
             foreach (var child in node.Children) Visit(child);
         }
@@ -171,5 +254,21 @@ public static class ResponseTree
             return Find(root, basePath) is { IsLeaf: false } container ? container.Count.ToString(CultureInfo.InvariantCulture) : null;
         }
         return Find(root, path) is { IsLeaf: true } leaf && leaf.Path == path ? leaf.Value : null;
+    }
+}
+
+/// <summary>The text of a response laid out for reading: indented XML or JSON, anything else as it is.</summary>
+public static class ResponseText
+{
+    public static string Pretty(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return string.Empty;
+        try
+        {
+            if (body.TrimStart().StartsWith('<')) return XDocument.Parse(body).ToString();
+            using var document = JsonDocument.Parse(body, new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+            return JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
+        }
+        catch (Exception ex) when (ex is XmlException or JsonException) { return body; }
     }
 }

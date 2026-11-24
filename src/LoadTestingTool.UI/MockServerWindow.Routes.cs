@@ -84,9 +84,19 @@ public sealed partial class MockServerWindow
             });
             _selected = _config.Routes.Count - 1; MarkChanged();
         });
+        var wsdl = Small("WSDL…", "Import a WSDL: a route per operation (answered with a sample reply) and a ?wsdl route that serves it", () =>
+        {
+            var window = new WsdlImportWindow("Import a WSDL into the mock", "Add routes", true, (loaded, operations) =>
+            {
+                var routes = LoadTestingTool.MockServer.WsdlMock.Routes(loaded.Info, loaded.Text, operations.Select(o => o.Name).ToList());
+                if (routes.Count == 0) return;
+                _config.Routes.AddRange(routes); _selected = _config.Routes.Count; MarkChanged();
+            });
+            window.Show(this);
+        });
         var up = Small("▲", "Move up: routes are tried from the top", () => Move(-1));
         var down = Small("▼", "Move down", () => Move(1));
-        var tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(0, 0, 0, 6), Children = { add, graphQl, soap, copy, remove, up, down } };
+        var tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(0, 0, 0, 6), Children = { add, graphQl, soap, wsdl, copy, remove, up, down } };
         _routeList.SelectionChanged += (_, _) => { if (_refreshing || _routeList.SelectedIndex < 0) return; _selected = _routeList.SelectedIndex; LoadSelected(); };
         var left = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 8, 12, 0), Children = { tools, _routeList } };
         DockPanel.SetDock(tools, Dock.Top);

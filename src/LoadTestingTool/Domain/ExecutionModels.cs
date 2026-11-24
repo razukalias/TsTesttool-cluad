@@ -215,9 +215,50 @@ public static class ExecutionStageParser
 
 public static class StepConfig
 {
+    private static readonly AsyncLocal<IReadOnlyDictionary<string, string>?> CurrentVariables = new();
+
+    /// <summary>
+    /// While the scope is open, the settings of a step may hold <c>_column_</c> placeholders (for example <c>"Password": "_pw_"</c>): they are filled from the row's variables
+    /// when the settings are read. Only names that are variables are replaced, so text such as <c>Get_Order_Details</c> is left alone. The logs print the settings as written,
+    /// with the placeholder, never the value.
+    /// </summary>
+    public static IDisposable UseVariables(IReadOnlyDictionary<string, string> variables)
+    {
+        var previous = CurrentVariables.Value;
+        CurrentVariables.Value = variables;
+        return new Scope(() => CurrentVariables.Value = previous);
+    }
+
+    private sealed class Scope(Action restore) : IDisposable { public void Dispose() => restore(); }
+
+    /// <summary>Replaces <c>_name_</c> by the variable's value (escaped for JSON when the settings are JSON); unknown names stay as they are.</summary>
+    public static string Fill(string config, IReadOnlyDictionary<string, string>? variables)
+    {
+        if (variables is null || variables.Count == 0 || config.IndexOf('_') < 0) return config;
+        var json = config.TrimStart().StartsWith('{');
+        return System.Text.RegularExpressions.Regex.Replace(config, LoadTestingTool.Execution.TemplateRenderer.PlaceholderPattern, match =>
+        {
+            var name = match.Value.Trim('_', '*');
+            if (!variables.TryGetValue(name, out var value)) return match.Value;
+            return json ? JsonEncodedText.Encode(value, System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping).ToString() : value;
+        });
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex SecretJson = new("(?<key>\"(?:password|pwd|passwd|secret|token|apikey|api_key|clientsecret)\"\\s*:\\s*\")(?<value>[^\"]*)(?<end>\")", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    private static readonly System.Text.RegularExpressions.Regex SecretPairs = new("(?<key>\\b(?:password|pwd|passwd|secret|token|apikey|api_key|clientsecret)\\s*=\\s*)(?<value>[^;]*)", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>The settings for a log or the history: the value of a password, secret or token setting becomes ***, unless it is a <c>_column_</c> placeholder (which shows nothing secret).</summary>
+    public static string Mask(string? config)
+    {
+        if (string.IsNullOrEmpty(config)) return config ?? string.Empty;
+        string Keep(System.Text.RegularExpressions.Match m, string replacement) => System.Text.RegularExpressions.Regex.IsMatch(m.Groups["value"].Value, "^_" + "(?:\\*[^_]+\\*|[^_]+)" + "_$") ? m.Value : replacement;
+        config = SecretJson.Replace(config, m => Keep(m, m.Groups["key"].Value + "***" + m.Groups["end"].Value));
+        return SecretPairs.Replace(config, m => Keep(m, m.Groups["key"].Value + "***"));
+    }
+
     public static JsonDocument Parse(RequestStep step)
     {
-        var configText = LoadTestingTool.Execution.GeneratedTokens.Resolve(step.StepConfig);   // random numbers, GUIDs and dates are made now
+        var configText = Fill(LoadTestingTool.Execution.GeneratedTokens.Resolve(step.StepConfig), CurrentVariables.Value);   // random numbers, GUIDs and dates are made now; _column_ values are filled
         var raw = string.IsNullOrWhiteSpace(configText) ? "{}" : configText.Trim();
         if (!raw.StartsWith("{"))
         {

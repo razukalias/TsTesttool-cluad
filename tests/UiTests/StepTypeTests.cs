@@ -139,7 +139,7 @@ public class StepTypeTests
         var box = section.GetVisualDescendants().OfType<TextBox>().First(t => t.Text == "urn:old");
         box.Text = "urn:new";
         Leave(box);
-        var user = section.GetVisualDescendants().OfType<TextBox>().First(t => t.Watermark == "Optional. Adds a WS-Security UsernameToken.");
+        var user = section.GetVisualDescendants().OfType<TextBox>().First(t => t.Watermark is { } w && w.StartsWith("Optional. Adds a WS-Security UsernameToken."));
         user.Text = "svc";
         Leave(user);
         var json = JsonNode.Parse(shell.Current!.FocusedStep!.Value("stepconfig"))!.AsObject();

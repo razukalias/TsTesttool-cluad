@@ -449,7 +449,7 @@ public sealed class TestRunner
     {
         var started = DateTimeOffset.Now;
         var environmentKey = string.IsNullOrWhiteSpace(environment) ? "default" : environment;
-        var request = new RequestResult { RunId = run.RunId, RequestId = $"MANUAL-{SafeManualId(environmentKey)}-{Guid.NewGuid():N}", TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, EndedAt = started, Verb = step.StepType.WireName(), StepConfig = GeneratedTokens.Resolve(step.StepConfig), HttpStatus = 200, Environment = environment, ManualAction = true, WaitExpression = step.WaitExpression };
+        var request = new RequestResult { RunId = run.RunId, RequestId = $"MANUAL-{SafeManualId(environmentKey)}-{Guid.NewGuid():N}", TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, EndedAt = started, Verb = step.StepType.WireName(), StepConfig = StepConfig.Mask(GeneratedTokens.Resolve(step.StepConfig)), HttpStatus = 200, Environment = environment, ManualAction = true, WaitExpression = step.WaitExpression };
         request.ManualInfo = manualInfo;
         var timeoutMinutes = waitDriven
             ? (step.TimeoutSeconds > 0 ? Math.Max(1, (int)Math.Ceiling(step.TimeoutSeconds / 60d)) : Math.Max(1, step.ManualTimeoutMinutes))
@@ -546,7 +546,7 @@ public sealed class TestRunner
             EndedAt = now,
             Verb = step.StepType.WireName(),
             TemplateSource = step.TemplateSource,
-            StepConfig = GeneratedTokens.Resolve(step.StepConfig),
+            StepConfig = StepConfig.Mask(GeneratedTokens.Resolve(step.StepConfig)),
             HttpStatus = 0,
             ErrorMessage = message,
             FailureCategory = "RuntimeReference",
@@ -558,10 +558,11 @@ public sealed class TestRunner
 
     private async Task<RequestResult> ExecuteRequestAsync(RunResult run, TestcaseDefinition testcase, string dataId, RequestStep step, Dictionary<string, string> variables, IReadOnlySet<string> redactedVariables, IReadOnlyList<AssertionDefinition> definitions, IReadOnlyDictionary<string, string> requestReferences, int sequence, int thread, int iteration, Dictionary<string, string> correlation, Dictionary<string, CorrelationRecord> correlationSources, LoadTestingTool.Domain.ExecutionContext executionContext, CancellationToken cancellationToken, string environment)
     {
+        using var configVariables = StepConfig.UseVariables(variables);   // the step's settings may hold _column_ placeholders
         if (!step.StepType.IsHttpLike()) return await ExecuteNonHttpAsync(run, testcase, dataId, step, variables, redactedVariables, definitions, requestReferences, sequence, thread, iteration, correlation, correlationSources, executionContext, cancellationToken, environment);
         var started = DateTimeOffset.Now; var sw = Stopwatch.StartNew(); var requestId = $"REQ-{Interlocked.Increment(ref _sequence):D8}"; var templatePath = Path.Combine(_templatesFolder, step.TemplateSource);
         _logger.Info($"Request starting. RequestId={requestId}; testcase={testcase.TestcaseIndex}; dataid={dataId}; stepName={step.StepName}; thread={thread}; iteration={iteration}; verb={step.Verb}; url={step.TargetUrl}; template={templatePath}; ignoreempty={step.IgnoreEmpty}");
-        var result = new RequestResult { RunId = run.RunId, RequestId = requestId, TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, WaitMs = step.WaitMs, WaitExpression = step.WaitExpression, Verb = step.Verb, TargetUrl = GeneratedTokens.ToDisplay(step.TargetUrl), TemplateSource = step.TemplateSource, StepConfig = GeneratedTokens.Resolve(step.StepConfig), ContentType = ResolveContentType(step), RequestHeaders = string.Join("; ", step.Headers.Select(h => $"{h.Key}={h.Value}")), Variables = new Dictionary<string, string>(variables, StringComparer.OrdinalIgnoreCase), RedactedVariables = redactedVariables, Environment = environment };
+        var result = new RequestResult { RunId = run.RunId, RequestId = requestId, TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, WaitMs = step.WaitMs, WaitExpression = step.WaitExpression, Verb = step.Verb, TargetUrl = GeneratedTokens.ToDisplay(step.TargetUrl), TemplateSource = step.TemplateSource, StepConfig = StepConfig.Mask(GeneratedTokens.Resolve(step.StepConfig)), ContentType = ResolveContentType(step), RequestHeaders = string.Join("; ", step.Headers.Select(h => $"{h.Key}={h.Value}")), Variables = new Dictionary<string, string>(variables, StringComparer.OrdinalIgnoreCase), RedactedVariables = redactedVariables, Environment = environment };
         try
         {
             foreach (var runtimeVariable in executionContext.Snapshot())
@@ -677,7 +678,7 @@ public sealed class TestRunner
     {
         var started = DateTimeOffset.Now; var requestId = $"STEP-{Interlocked.Increment(ref _sequence):D8}";
         var templatePath = string.IsNullOrWhiteSpace(step.TemplateSource) ? string.Empty : Path.Combine(_templatesFolder, step.TemplateSource);
-        var result = new RequestResult { RunId = run.RunId, RequestId = requestId, TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, WaitMs = step.WaitMs, WaitExpression = step.WaitExpression, Verb = step.StepType.WireName(), TargetUrl = GeneratedTokens.ToDisplay(step.TargetUrl), TemplateSource = step.TemplateSource, StepConfig = GeneratedTokens.Resolve(step.StepConfig), ContentType = step.ContentType, Variables = new Dictionary<string, string>(variables, StringComparer.OrdinalIgnoreCase), RedactedVariables = redactedVariables, Environment = environment };
+        var result = new RequestResult { RunId = run.RunId, RequestId = requestId, TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, WaitMs = step.WaitMs, WaitExpression = step.WaitExpression, Verb = step.StepType.WireName(), TargetUrl = GeneratedTokens.ToDisplay(step.TargetUrl), TemplateSource = step.TemplateSource, StepConfig = StepConfig.Mask(GeneratedTokens.Resolve(step.StepConfig)), ContentType = step.ContentType, Variables = new Dictionary<string, string>(variables, StringComparer.OrdinalIgnoreCase), RedactedVariables = redactedVariables, Environment = environment };
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -685,7 +686,7 @@ public sealed class TestRunner
             var templateText = string.Empty;
             var originalTemplate = string.Empty;
             result.TargetUrl = context.ResolveUrl(step.TargetUrl);
-            _logger.Info($"STEP TEMPLATE LOAD [{requestId}] testcase={testcase.TestcaseIndex}; testcaseName={testcase.Testcase}; dataid={dataId}; stepName={step.StepName}; stepType={step.StepType.WireName()}; environment={environment}; template={templatePath}; templateExists={(!string.IsNullOrWhiteSpace(templatePath) && File.Exists(templatePath))}; configuredTargetUrl={step.TargetUrl}; resolvedTargetUrl={result.TargetUrl}; ignoreempty={step.IgnoreEmpty}; stepConfig={step.StepConfig}");
+            _logger.Info($"STEP TEMPLATE LOAD [{requestId}] testcase={testcase.TestcaseIndex}; testcaseName={testcase.Testcase}; dataid={dataId}; stepName={step.StepName}; stepType={step.StepType.WireName()}; environment={environment}; template={templatePath}; templateExists={(!string.IsNullOrWhiteSpace(templatePath) && File.Exists(templatePath))}; configuredTargetUrl={step.TargetUrl}; resolvedTargetUrl={result.TargetUrl}; ignoreempty={step.IgnoreEmpty}; stepConfig={StepConfig.Mask(step.StepConfig)}");
             foreach (var runtimeVariable in context.Snapshot())
                 if (runtimeVariable.Value is string runtimeText)
                     variables[runtimeVariable.Key] = runtimeText;
@@ -701,7 +702,7 @@ public sealed class TestRunner
             result.RequestBody = InternalLogger.RedactVariableValues(execution.RequestText, redactedVariables, variables); result.ResponseBody = execution.ResponseText; result.HttpStatus = execution.StatusCode == 0 && execution.Succeeded ? 200 : execution.StatusCode; result.ErrorMessage = execution.ErrorMessage;
             PublishResponseValues(step.StepName, result.ResponseBody, "json", correlation); correlation[$"{step.StepName}.statusCode"] = result.HttpStatus.ToString(System.Globalization.CultureInfo.InvariantCulture); PublishResponseHeaders(step.StepName, execution.ResponseHeaders, correlation); result.ResponseHeaders = string.Join("\n", execution.ResponseHeaders.Select(h => $"{h.Key}={h.Value}"));
             var shownBody = InternalLogger.RedactVariableValues(string.IsNullOrEmpty(execution.LogBody) ? templateText : execution.LogBody, redactedVariables, variables);
-            _logger.Info($"STEP REQUEST [{requestId}]\nTYPE: {step.StepType.WireName()}\nSTEP: {step.StepName}\nENVIRONMENT: {environment}\nTARGET: {result.TargetUrl}\nMETHOD: {execution.LogMethod}\nTEMPLATE: {step.TemplateSource}\nHEADERS:\n{string.Join("; ", step.Headers.Select(h => $"{h.Key}={h.Value}"))}\nDETAILS:\n{FormatDetails(execution.LogDetails, step.StepConfig)}\nBODY:\n{shownBody}");
+            _logger.Info($"STEP REQUEST [{requestId}]\nTYPE: {step.StepType.WireName()}\nSTEP: {step.StepName}\nENVIRONMENT: {environment}\nTARGET: {result.TargetUrl}\nMETHOD: {execution.LogMethod}\nTEMPLATE: {step.TemplateSource}\nHEADERS:\n{string.Join("; ", step.Headers.Select(h => $"{h.Key}={h.Value}"))}\nDETAILS:\n{FormatDetails(execution.LogDetails, StepConfig.Mask(step.StepConfig))}\nBODY:\n{shownBody}");
             _logger.Info($"STEP RESPONSE [{requestId}]\nSTATUS: {result.HttpStatus}\nHEADERS:\n\nBODY:\n{execution.ResponseText}{OptionalErrorLine(execution.ErrorMessage)}");
             if (!execution.Succeeded || !string.IsNullOrWhiteSpace(execution.ErrorMessage))
                 _logger.Error($"STEP EXECUTION FAILURE [{requestId}] testcase={testcase.TestcaseIndex}; testcaseName={testcase.Testcase}; dataid={dataId}; stepName={step.StepName}; stepType={step.StepType.WireName()}; template={templatePath}; templateExists={(!string.IsNullOrWhiteSpace(templatePath) && File.Exists(templatePath))}; targetUrl={step.TargetUrl}; status={result.HttpStatus}; error={execution.ErrorMessage}");
@@ -736,7 +737,7 @@ public sealed class TestRunner
                 StepType.Script => FailureCategories.Script,
                 _ => FailureCategories.Infrastructure
             }, cancellationToken);
-            _logger.Error($"STEP FAILED [{requestId}] testcase={testcase.TestcaseIndex}; testcaseName={testcase.Testcase}; dataid={dataId}; stepName={step.StepName}; stepType={step.StepType.WireName()}; template={templatePath}; templateExists={(!string.IsNullOrWhiteSpace(templatePath) && File.Exists(templatePath))}; targetUrl={step.TargetUrl}; verb={step.Verb}; contentType={step.ContentType}; stepConfig={step.StepConfig}; requestPayload={result.RequestBody}; responsePayload={result.ResponseBody}; status={result.HttpStatus}", ex);
+            _logger.Error($"STEP FAILED [{requestId}] testcase={testcase.TestcaseIndex}; testcaseName={testcase.Testcase}; dataid={dataId}; stepName={step.StepName}; stepType={step.StepType.WireName()}; template={templatePath}; templateExists={(!string.IsNullOrWhiteSpace(templatePath) && File.Exists(templatePath))}; targetUrl={step.TargetUrl}; verb={step.Verb}; contentType={step.ContentType}; stepConfig={StepConfig.Mask(step.StepConfig)}; requestPayload={result.RequestBody}; responsePayload={result.ResponseBody}; status={result.HttpStatus}", ex);
         }
         finally
         {
