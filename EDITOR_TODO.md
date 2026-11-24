@@ -1018,3 +1018,13 @@ Then (after the CI system is chosen):
 - [ ] **4. Pipeline ergonomics:** Linux/Docker build and publish next to `publish.ps1`; documented exit codes; `--fail-on errors|failures|bugs`; run timeout; paths that do not depend on the current directory; sample pipelines (GitHub Actions / Azure DevOps) that upload Results as artifacts.
 - [ ] **5. Later:** compare with the previous run and fail only on new failures; retry a failed step/row; webhook notifications (Slack/Teams); text export of an instance so workbooks diff in git.
 Open questions for the user: which CI system (GitHub Actions / Azure DevOps / GitLab / Jenkins) and Windows or Linux agent; where secrets live (pipeline variables or a vault); what fails the pipeline (any failed test, errors only, or a threshold).
+
+## Authentication (noted 2026-11-24, not started)
+Today (checked in the code): the only built-in authentication is **Windows integrated security** – HTTP steps use `HttpClientHandler { UseDefaultCredentials = true }` (Program.cs) and SQL profiles default to `UseIntegratedSecurity = true` (ExecutionModels.cs). Everything else is done by hand (e.g. an `Authorization: Bearer _token_` header from a data column, or a login step whose output variable feeds later steps).
+To add:
+- [ ] Per-instance / per-environment auth setting for HTTP steps: none, Windows integrated (current), Basic (user/password), Bearer token, API key (header or query), client certificate (file + password).
+- [ ] OAuth2 / OIDC token step: client-credentials and password flows, token cached and refreshed, available to later steps as a variable.
+- [ ] SQL: SQL login (user/password) next to Windows integrated security, picked per profile and environment.
+- [ ] Secrets for all of the above come from `${ENV_NAME}` / vault (see CI/CD item 2), never stored in the workbook; masked in logs and history.
+- [ ] Windows integrated auth does not work on a Linux CI agent – needs an alternative (token or Basic) when the pipeline runs there.
+- [ ] Editor: an Authentication section in the environment / step form, and a validator warning when a step needs auth that is not configured.
