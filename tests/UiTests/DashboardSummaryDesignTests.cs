@@ -33,7 +33,7 @@ public class DashboardSummaryDesignTests
             {
                 var env = envs[i % 3]; var res = i % 7 == 0 ? "FAIL" : "PASS"; var tc = i % 2 == 0 ? "OrderBlank" : "OrderAsserted";
                 sel.Requests.Add(new LoadTestingTool.UI.DashboardRequest("GetOrder", "HTTP", tc, "B" + (i % 5 + 1), env, res, 40 + i * 7, res == "FAIL" ? "Assertion" : "None", res == "FAIL" ? "orderid expected O1 got O2" : ""));
-                sel.Assertions.Add(new LoadTestingTool.UI.AssertionInfo { Testcase = tc, Result = res });
+                sel.Assertions.Add(new LoadTestingTool.UI.AssertionInfo { Testcase = tc, Environment = env, DataId = "B" + (i % 5 + 1), StepName = "GetOrder", ResponsePath = "orderid", AssertionVerb = "equals", ExpectedValue = "O1", ActualValue = res == "PASS" ? "O1" : "O2", Result = res });
             }
             sel.Status = "Failed"; sel.StartedAt = DateTimeOffset.Now.AddSeconds(-83); sel.CompletedAt = DateTimeOffset.Now;
             sel.CompletedRequests = 40; sel.AverageMs = 171.4; sel.P95Ms = 310; sel.RequestsPerSecond = 0.5;
@@ -51,6 +51,15 @@ public class DashboardSummaryDesignTests
             Assert.Contains("Environment", overview); Assert.Contains("Started", overview);
             var summary = Texts(3);
             Assert.Contains("Testcases", summary); Assert.Contains("Skipped (dontrun)", summary); Assert.Contains("Unexpected error", summary); Assert.Contains("Passed", summary); Assert.Contains("Failed", summary);
+            var assertions = Texts(4);
+            Assert.Contains("Known bugs", assertions); Assert.Contains("Expected", assertions); Assert.Contains("Actual", assertions); Assert.Contains("orderid equals", assertions);
+            editor.CaptureRenderedFrame()!.Save(System.IO.Path.Combine(shots, "dashboard-assertions.png"));
+            var environments = Texts(6);
+            Assert.Contains("Compared", environments); Assert.Contains("Differ", environments);
+            editor.CaptureRenderedFrame()!.Save(System.IO.Path.Combine(shots, "dashboard-environments.png"));
+            var artifacts = Texts(7);
+            Assert.Contains("Locations", artifacts.Replace("LOCATIONS", "Locations")); Assert.Contains("Workbook", artifacts);
+            editor.CaptureRenderedFrame()!.Save(System.IO.Path.Combine(shots, "dashboard-artifacts.png"));
             editor.Close();
         } finally { Directory.SetCurrentDirectory(prev); }
     }

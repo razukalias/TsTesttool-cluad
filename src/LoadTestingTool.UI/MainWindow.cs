@@ -209,11 +209,30 @@ public sealed partial class MainWindow : Window
         check.IsCheckedChanged += (_, _) => assertion.Selected = check.IsChecked == true;
         var type = string.IsNullOrWhiteSpace(assertion.AssertionType) ? AssertionSemanticsUi.Type(assertion.AssertionVerb, assertion.ActualValue, assertion.FailureMessage) : assertion.AssertionType;
         var meaning = string.IsNullOrWhiteSpace(assertion.AssertionMeaning) ? AssertionSemanticsUi.Meaning(assertion.AssertionVerb, assertion.ActualValue, assertion.FailureMessage) : assertion.AssertionMeaning;
-        var text = DashboardStyle.Text($"[{assertion.Environment}] {assertion.Testcase} / Data {assertion.DataId}\n{assertion.StepName} / {assertion.ResponsePath} {assertion.AssertionVerb}\nType: {type}\nMeaning: {meaning}\nExpected: {assertion.ExpectedValue}\nActual: {assertion.ActualValue}", 12);
-        text.TextWrapping = TextWrapping.Wrap;
-        var content = new StackPanel { Spacing = 6, Children = { DashboardStyle.Badge(assertion.Result == "PASS" ? "Passed" : assertion.Result == "KNOWN_BUG" ? "Known bug" : "Failed"), text } };
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("30,*") };
-        row.Children.Add(check); Grid.SetColumn(content, 1); row.Children.Add(content);
+        var accent = assertion.Result == "PASS" ? DashboardStyle.Green : assertion.Result == "KNOWN_BUG" ? DashboardStyle.Brush("#F6C76B") : DashboardStyle.Red;
+        var head = new WrapPanel { Children =
+        {
+            DashboardStyle.Badge(assertion.Result == "PASS" ? "Passed" : assertion.Result == "KNOWN_BUG" ? "Known bug" : "Failed"),
+            DashboardStyle.Text($"  [{assertion.Environment}]  {assertion.Testcase} / Data {assertion.DataId}", 12, true)
+        }};
+        var where = DashboardStyle.Text($"{assertion.StepName} / {assertion.ResponsePath} {assertion.AssertionVerb}", 11, false, DashboardStyle.Muted); where.TextWrapping = TextWrapping.Wrap;
+        var facts = new Grid { ColumnDefinitions = new ColumnDefinitions("72,*"), Margin = new Thickness(0, 4, 0, 0) };
+        void Fact(string label, string value, IBrush? color = null)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            facts.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            var name = DashboardStyle.Text(label, 11, false, DashboardStyle.Muted); name.Margin = new Thickness(0, 2); name.VerticalAlignment = VerticalAlignment.Top;
+            var text = DashboardStyle.Text(value, 12, false, color); text.TextWrapping = TextWrapping.Wrap; text.Margin = new Thickness(0, 2); text.VerticalAlignment = VerticalAlignment.Top;
+            Grid.SetRow(name, facts.RowDefinitions.Count - 1); Grid.SetRow(text, facts.RowDefinitions.Count - 1); Grid.SetColumn(text, 1);
+            facts.Children.Add(name); facts.Children.Add(text);
+        }
+        Fact("Type", type); Fact("Meaning", meaning);
+        Fact("Expected", assertion.ExpectedValue, DashboardStyle.Green);
+        Fact("Actual", assertion.ActualValue, assertion.Result == "PASS" ? DashboardStyle.Green : assertion.Result == "KNOWN_BUG" ? DashboardStyle.Brush("#F6C76B") : DashboardStyle.Red);
+        var content = new StackPanel { Spacing = 2, Children = { head, where, facts } };
+        var strip = new Border { Background = accent, CornerRadius = new CornerRadius(2), Margin = new Thickness(0, 0, 8, 0) };
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("4,30,*") };
+        row.Children.Add(strip); Grid.SetColumn(check, 1); row.Children.Add(check); Grid.SetColumn(content, 2); row.Children.Add(content);
         var card = DashboardStyle.Card(row, new Thickness(10)); card.Margin = new Thickness(0, 0, 0, 8); return card;
     }
 
@@ -231,6 +250,11 @@ public sealed partial class MainWindow : Window
         var assertionSignature = string.Join("|", selectedEnvironment, _failedOnly.IsChecked, _assertionSearch.Text, _assertionExclude.Text, string.Join(",", _assertionTestcaseFilter.Selected), string.Join(",", _assertionStepFilter.Selected), string.Join(",", _assertionResultFilter.Selected), string.Join(",", _assertionVerbFilter.Selected), _selectedInstance?.Name);
         if (assertionSignature != _assertionFilterSignature) { _assertionFilterSignature = assertionSignature; _assertionPager.Reset(); }
         var pageValues = _assertionPager.Slice(values);
+        _assertionSummary.Children.Clear();
+        _assertionSummary.Children.Add(DashboardStyle.Tile("Shown", values.Count.ToString("N0"), DashboardStyle.Blue, width: double.NaN));
+        _assertionSummary.Children.Add(DashboardStyle.Tile("Passed", values.Count(a => a.Result == "PASS").ToString("N0"), DashboardStyle.Green, width: double.NaN));
+        _assertionSummary.Children.Add(DashboardStyle.Tile("Failed", values.Count(a => a.Result == "FAIL").ToString("N0"), values.Any(a => a.Result == "FAIL") ? DashboardStyle.Red : null, width: double.NaN));
+        _assertionSummary.Children.Add(DashboardStyle.Tile("Known bugs", values.Count(a => a.Result == "KNOWN_BUG").ToString("N0"), values.Any(a => a.Result == "KNOWN_BUG") ? DashboardStyle.Brush("#F6C76B") : null, width: double.NaN));
         _assertionItems.Children.Clear();
         foreach (var assertion in pageValues) _assertionItems.Children.Add(CreateAssertionRow(assertion));
         _assertionBar?.Update();
@@ -238,6 +262,7 @@ public sealed partial class MainWindow : Window
         UiLog($"Assertion list refreshed. instance={_selectedInstance?.Name ?? "<none>"}; environment={selectedEnvironment ?? "<none>"}; failedOnly={_failedOnly.IsChecked == true}; page={_assertionPager.Page}; pageSize={_assertionPager.PageSize}; visible={values.Count}; total={_selectedInstance?.Assertions.Count ?? 0}");
     }
     private readonly StackPanel _assertionChips = new();
+    private readonly UniformGrid _assertionSummary = new() { Columns = 4 };
 
     private static IEnumerable<(string, Action)> FilterChipsOf(IEnumerable<MultiFilter> filters, params (string Text, TextBox Box)[] boxes)
     {

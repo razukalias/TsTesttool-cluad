@@ -54,17 +54,24 @@ public sealed partial class MainWindow
         }
         else
         {
+            var tiles = new Avalonia.Controls.Primitives.UniformGrid { Columns = 5, Margin = new Avalonia.Thickness(0, 4, 0, 0) };
+            tiles.Children.Add(DashboardStyle.Tile("Compared", report.Compared.Count.ToString("N0"), DashboardStyle.Blue, width: double.NaN));
+            tiles.Children.Add(DashboardStyle.Tile("Match", report.Matching.ToString("N0"), DashboardStyle.Green, width: double.NaN));
+            tiles.Children.Add(DashboardStyle.Tile("All passed", report.PassedEverywhere.ToString("N0"), width: double.NaN));
+            tiles.Children.Add(DashboardStyle.Tile("All failed", report.FailedEverywhere.ToString("N0"), report.FailedEverywhere > 0 ? DashboardStyle.Red : null, width: double.NaN));
+            tiles.Children.Add(DashboardStyle.Tile("Differ", report.Differing.Count.ToString("N0"), report.Differing.Count > 0 ? DashboardStyle.Brush("#FFB36B") : null, width: double.NaN));
+            Add(tiles);
             var summary = DashboardStyle.Text($"{report.Compared.Count} steps compared across {string.Join(", ", report.Environments)}: {report.Matching} match ({report.PassedEverywhere} passed everywhere, {report.FailedEverywhere} failed everywhere with the same error), {report.Differing.Count} differ.", 12);
             summary.TextWrapping = Avalonia.Media.TextWrapping.Wrap; summary.Margin = new Avalonia.Thickness(0, 0, 0, 8); summary.Tag = "environment-summary";
             Add(summary);
             if (report.Differing.Count > 0)
             {
-                Add(DashboardStyle.Text("Differ between environments", 13, true));
+                Add(DashboardStyle.Section("Differ between environments"));
                 foreach (var step in report.Differing) Add(CreateStepComparisonCard(step));
             }
             if (report.ValueDifferences.Count > 0)
             {
-                _environmentCompareItems.Children.Add(new TextBlock { Text = $"Response values that differ between environments ({report.ValueDifferences.Count})", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Avalonia.Thickness(0, 10, 0, 6) });
+                _environmentCompareItems.Children.Add(DashboardStyle.Section($"Response values that differ ({report.ValueDifferences.Count})", "between environments"));
                 foreach (var difference in report.ValueDifferences.Take(100)) Add(CreateValueDifferenceCard(difference));
                 if (report.ValueDifferences.Count > 100) Add(DashboardStyle.Text($"+ {report.ValueDifferences.Count - 100} more", 11, false, DashboardStyle.Muted));
             }

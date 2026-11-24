@@ -281,7 +281,7 @@ public sealed partial class MainWindow
         var assertionFilterBar = new WrapPanel { Children = { _environmentFilter, _assertionTestcaseFilter, _assertionStepFilter, _assertionResultFilter, _assertionVerbFilter, _assertionSearch, _assertionExclude } };
         foreach (var control in assertionFilterBar.Children) control.Margin = new Thickness(0, 0, 8, 6);
         _assertionSearch.Watermark = "Show: assertion text, term1 & term2…"; _assertionSearch.Width = 230; _assertionSearch.Tag = "assertion-include";
-        var filters = new StackPanel { Spacing = 6, Children = { _failedOnly, assertionFilterBar, _assertionChips, assertionActions } };
+        var filters = new StackPanel { Spacing = 6, Children = { _assertionSummary, _failedOnly, assertionFilterBar, _assertionChips, assertionActions } };
         var filtersHost = DetailTextSize.Wrap(filters); DockPanel.SetDock(filtersHost, Dock.Top); assertionPanel.Children.Add(filtersHost);
         // the bar is added before the list: the last child of a DockPanel fills the rest, so the list must be last (the bar docks to the bottom)
         var assertionPaging = CreatePaginationBar(false);
@@ -296,8 +296,8 @@ public sealed partial class MainWindow
             new TabItem { Header = "Run Summary", Content = Scroll(_runSummaryPanel, wrap: true) },
             new TabItem { Header = "Assertions", Content = assertionPanel },
             _bugsTab,
-            new TabItem { Header = "Environments", Content = Scroll(_environmentCompareItems) },
-            new TabItem { Header = "Artifacts", Content = Scroll(_artifactPanel) }
+            new TabItem { Header = "Environments", Content = Scroll(_environmentCompareItems, wrap: true) },
+            new TabItem { Header = "Artifacts", Content = Scroll(_artifactPanel, wrap: true) }
         };
         _overviewPanel.Children.Insert(0, new WrapPanel { Children = { _overviewFilter, DashboardStyle.Action("Copy overview", () => _ = CopyOverviewAsync()) } });
         Content = _detailTabs;
@@ -481,8 +481,8 @@ public sealed partial class MainWindow
     private static Control KeyValue(string label, string value)
     {
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("105,*") };
-        grid.Children.Add(DashboardStyle.Text(label, 12, false, DashboardStyle.Muted));
-        var text = DashboardStyle.Text(value, 12); text.TextWrapping = TextWrapping.Wrap; ToolTip.SetTip(text, value);
+        var name = DashboardStyle.Text(label, 12, false, DashboardStyle.Muted); name.VerticalAlignment = VerticalAlignment.Top; grid.Children.Add(name);
+        var text = DashboardStyle.Text(value, 12); text.VerticalAlignment = VerticalAlignment.Top; text.TextWrapping = TextWrapping.Wrap; ToolTip.SetTip(text, value);
         Grid.SetColumn(text, 1); grid.Children.Add(text); return grid;
     }
 
@@ -1245,15 +1245,13 @@ public sealed partial class MainWindow
     {
         _artifactPanel.Children.Clear(); var item = _selectedInstance;
         if (item is null) return;
-        _artifactPanel.Children.Add(DashboardStyle.Text("Workbooks and run artifacts", 16, true));
-        if (_hostWindow is not { IsVisible: true })
-        {
-            _artifactPanel.Children.Add(DashboardStyle.Action("Edit data", OpenDataEditor, "primary"));
-        }
-        _artifactPanel.Children.Add(DashboardStyle.Action("Open latest result workbook", OpenLatestResultWorkbook));
-        _artifactPanel.Children.Add(LegacyAssertionTools());
-        _artifactPanel.Children.Add(DashboardStyle.Action("Open Templates folder", OpenTemplatesFolder));
-        _artifactPanel.Children.Add(DashboardStyle.Action("Open Results folder", () =>
+        _artifactPanel.Children.Add(DashboardStyle.Text("Workbooks and run artifacts", 17, true));
+        _artifactPanel.Children.Add(DashboardStyle.Section("Open"));
+        var openButtons = new WrapPanel();
+        if (_hostWindow is not { IsVisible: true }) openButtons.Children.Add(DashboardStyle.Action("Edit data", OpenDataEditor, "primary"));
+        openButtons.Children.Add(DashboardStyle.Action("Open latest result workbook", OpenLatestResultWorkbook));
+        openButtons.Children.Add(DashboardStyle.Action("Open Templates folder", OpenTemplatesFolder));
+        openButtons.Children.Add(DashboardStyle.Action("Open Results folder", () =>
         {
             if (!item.GenerateResults && !Directory.Exists(item.ResultsFolder))
             {
@@ -1262,12 +1260,13 @@ public sealed partial class MainWindow
             }
             OpenFolder(item.ResultsFolder, "results folder");
         }));
-        _artifactPanel.Children.Add(KeyValue("Workbook", item.WorkbookPath));
-        _artifactPanel.Children.Add(KeyValue("Results", item.ResultsFolder));
-        _artifactPanel.Children.Add(KeyValue("Current run", item.CurrentRunFolder));
+        _artifactPanel.Children.Add(openButtons);
+        _artifactPanel.Children.Add(LegacyAssertionTools());
+        _artifactPanel.Children.Add(DashboardStyle.Section("Locations"));
+        _artifactPanel.Children.Add(DashboardStyle.Card(new StackPanel { Spacing = 6, Children = { KeyValue("Workbook", item.WorkbookPath), KeyValue("Results", item.ResultsFolder), KeyValue("Current run", item.CurrentRunFolder) } }, new Thickness(12, 10)));
         if (ActiveScope(item) is { } scope)
         {
-            _artifactPanel.Children.Add(DashboardStyle.Text($"Files of {ScopeText(scope)} in the last run", 13, true));
+            _artifactPanel.Children.Add(DashboardStyle.Section($"Files of {ScopeText(scope)}", "in the last run"));
             var files = new List<string>();
             try
             {
