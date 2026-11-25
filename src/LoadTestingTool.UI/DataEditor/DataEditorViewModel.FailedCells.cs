@@ -25,6 +25,7 @@ public sealed partial class DataEditorViewModel
             var on = new List<string>();
             if (ShowAllColumns) on.Add("Every column");
             if (ShowFailedOnly) on.Add("Failed rows");
+            if (ShowPassedOnly) on.Add("Passed rows");
             if (ShowDifferingOnly) on.Add("Differing rows");
             if (ShowFailedColumns) on.Add("Failed columns");
             if (ShowBugColumns) on.Add("Bug columns");
@@ -41,7 +42,7 @@ public sealed partial class DataEditorViewModel
     protected override void OnPropertyChanged(PropertyChangedEventArgs e)
     {
         base.OnPropertyChanged(e);
-        if (e.PropertyName is nameof(ShowAllColumns) or nameof(ShowFailedOnly) or nameof(ShowDifferingOnly) or nameof(ShowFailedColumns) or nameof(ShowBugColumns) or nameof(ShowFailedCells))
+        if (e.PropertyName is nameof(ShowAllColumns) or nameof(ShowFailedOnly) or nameof(ShowPassedOnly) or nameof(ShowDifferingOnly) or nameof(ShowFailedColumns) or nameof(ShowBugColumns) or nameof(ShowFailedCells))
             base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowOptionsTitle)));
         if (e.PropertyName == nameof(ShowDataGrid)) { base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowTableGrid))); base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowFailedCellsList))); base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowJsonView))); }
     }

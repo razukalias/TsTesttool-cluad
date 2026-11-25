@@ -118,4 +118,41 @@ public class CellMarkTests
         Assert.NotNull(editor.FailureAt(row, Cell(editor, "id")));
         window.Close();
     }
+
+    [AvaloniaFact]
+    public void Passed_rows_only_keeps_the_rows_that_passed_and_switches_failed_rows_only_off()
+    {
+        using var dir = new TempDir();
+        var (window, editor) = OpenWithRun(dir, Event("request-completed", "dev", "CUST002", "", "", "PASS", ""), Event("assertion-completed", "dev", "CUST002", "id", "eq", "PASS", "C2", expected: "C2"));
+        editor.ShowPassedOnly = true;
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(["CUST002"], editor.VisibleRows.Select(r => r.CurrentDataId).ToList());   // CUST001 failed, CUST003 did not run
+        Assert.Contains("Passed rows", editor.ShowOptionsTitle);
+        editor.ShowFailedOnly = true;
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(editor.ShowPassedOnly);
+        Assert.Equal(["CUST001"], editor.VisibleRows.Select(r => r.CurrentDataId).ToList());
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void An_extra_column_becomes_a_real_expected_column_filled_with_the_run_values_and_undo_takes_it_back()
+    {
+        using var dir = new TempDir();
+        var (window, editor) = OpenWithRun(dir);
+        var grid = window.FindControl<DataGrid>("Grid")!;
+        Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => (string?)b.Tag == "extra-add");
+        editor.AddExtraColumn("CreateCustomer.tags");
+        Dispatcher.UIThread.RunJobs();
+        var cell = Cell(editor, "tags");
+        Assert.Equal("vip", editor.VisibleRows.First(r => r.CurrentDataId == "CUST001").Cells[cell]);
+        Assert.Equal("", editor.VisibleRows.First(r => r.CurrentDataId == "CUST002").Cells[cell] ?? "");   // the run did not return it there
+        Assert.Empty(editor.ExtraColumnKeys);
+        Assert.True(!grid.Columns.Any(c => c.Tag is "extra"), "the extra column is still in the grid");
+        Assert.Contains(editor.Columns, c => c.Group == ColumnGroup.Response && c.Title.EndsWith("CreateCustomer.tags"));
+        editor.UndoCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(!editor.Columns.Any(c => c.Title.EndsWith("CreateCustomer.tags")), "undo left the column: " + string.Join(",", editor.Columns.Select(c => c.Title)));
+        window.Close();
+    }
 }

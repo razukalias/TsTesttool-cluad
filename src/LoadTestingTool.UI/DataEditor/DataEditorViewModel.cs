@@ -95,7 +95,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
     public string SaveStatusColor => IsDirty ? "#F6C76B" : "#39D39B";
     public bool HasNoProblems => ErrorCount == 0 && WarningCount == 0;
     public string ProblemSummary => HasNoProblems ? "No problems" : $"{ErrorCount} {(ErrorCount == 1 ? "error" : "errors")}, {WarningCount} {(WarningCount == 1 ? "warning" : "warnings")}";
-    public string RowCountText => FilterText.Length == 0 && RowNumberFilter.Trim().Length == 0 && ColumnFilters.Count == 0 && !ShowFailedOnly && !ShowDifferingOnly ? $"{VisibleRows.Count} {(VisibleRows.Count == 1 ? "row" : "rows")}" : $"{VisibleRows.Count} of {_allRows.Count} rows";
+    public string RowCountText => FilterText.Length == 0 && RowNumberFilter.Trim().Length == 0 && ColumnFilters.Count == 0 && !ShowFailedOnly && !ShowPassedOnly && !ShowDifferingOnly ? $"{VisibleRows.Count} {(VisibleRows.Count == 1 ? "row" : "rows")}" : $"{VisibleRows.Count} of {_allRows.Count} rows";
 
     // ---- Selection and filtering ---------------------------------------------------------
 
@@ -279,6 +279,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
             var row = _allRows[n];
             if (numbers.Count > 0 && !numbers.Contains(n + 1)) continue;
             if (ShowFailedOnly && !RowFailed(row)) continue;
+            if (ShowPassedOnly && !RowPassed(row)) continue;
             if (ShowDifferingOnly && !row.EnvDiffers) continue;
             if (!PassesColumnFilters(row)) continue;
             if (text.Length == 0 || row.Cells.Any(c => c.Contains(text, StringComparison.OrdinalIgnoreCase)))

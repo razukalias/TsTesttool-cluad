@@ -169,7 +169,7 @@ public class ToolbarLayoutTests
     }
 
     [AvaloniaFact]
-    public void The_show_droplist_titles_the_options_that_are_on_and_holds_the_eight_checkboxes()
+    public void The_show_droplist_titles_the_options_that_are_on_and_holds_the_nine_checkboxes()
     {
         using var dir = new TempDir();
         var (window, shell) = Open(dir);
@@ -185,7 +185,7 @@ public class ToolbarLayoutTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal("Show: default ▾", button.Content);
         var panel = Assert.IsType<StackPanel>(Assert.IsType<Flyout>(button.Flyout).Content);
-        Assert.Equal(new[] { "Show every column", "Failed rows only", "Rows that differ between environments", "Failed columns only", "Bug columns only", "Passed columns only", "Missing columns only", "Failed cells only" }, panel.Children.OfType<CheckBox>().Select(c => c.Content as string).ToArray());
+        Assert.Equal(new[] { "Show every column", "Failed rows only", "Passed rows only", "Rows that differ between environments", "Failed columns only", "Bug columns only", "Passed columns only", "Missing columns only", "Failed cells only" }, panel.Children.OfType<CheckBox>().Select(c => c.Content as string).ToArray());
         window.Close();
     }
 }

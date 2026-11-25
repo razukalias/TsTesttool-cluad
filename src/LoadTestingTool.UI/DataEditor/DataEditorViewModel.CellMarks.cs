@@ -95,4 +95,36 @@ public sealed partial class DataEditorViewModel
     public string ExtraDetail(DataRowViewModel row, string key)
         => row.Outcome is { } outcome && outcome.Extras.TryGetValue(key, out var marks)
             ? string.Join("\n", marks.Select(m => (m.Environment.Length > 0 ? m.Environment + ": " : string.Empty) + m.Value)) : string.Empty;
+
+    /// <summary>
+    /// Makes an extra column a real expected-value column of the response sheet ({eq}Step.path) and fills every row with the value the run got
+    /// (rows whose environments disagree are left blank). Undo takes it all back.
+    /// </summary>
+    public void AddExtraColumn(string key)
+    {
+        if (SelectedTestcase is not { } testcase) return;
+        var step = testcase.Steps.OrderByDescending(s => s.Length).FirstOrDefault(s => key.StartsWith(s + ".", StringComparison.OrdinalIgnoreCase));
+        if (step is null) { ShowStatus($"{key} does not belong to a step of this testcase.", isError: true); return; }
+        var path = key[(step.Length + 1)..];
+        if (_document.Response.Headers.Any(h => SamePath(h, step, path))) { ShowStatus($"The response sheet already has a column for {key}.", isError: true); return; }
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var different = 0;
+        foreach (var row in _allRows)
+        {
+            if (row.Outcome is not { } outcome || !outcome.Extras.TryGetValue(key, out var marks)) continue;
+            var distinct = marks.Select(m => m.Value).Distinct().ToList();
+            if (distinct.Count == 1) values[row.CurrentDataId] = distinct[0]; else different++;
+        }
+        var header = $"{{eq}}{step}.{path}";
+        Record($"add column {header} from the run");
+        _document.Response.EnsureColumn(header);
+        MarkChanged();
+        BuildRows();
+        var cell = Columns.FirstOrDefault(c => c.Group == ColumnGroup.Response && string.Equals(StripVerb(c.Title), key, StringComparison.OrdinalIgnoreCase))?.CellIndex ?? -1;
+        var filled = 0;
+        if (cell >= 1)
+            foreach (var row in _allRows)
+                if (values.TryGetValue(row.CurrentDataId, out var value) && cell < row.Cells.Count && ApplyCell(row, cell, value) == CellResult.Changed) filled++;
+        ShowStatus($"Added {header} to the response sheet and filled {filled} row(s) with the value the run got{(different > 0 ? $"; {different} row(s) got different values in different environments and were left blank" : string.Empty)}. Undo takes it back.", isError: false);
+    }
 }

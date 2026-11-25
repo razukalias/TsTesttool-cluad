@@ -476,6 +476,14 @@ public partial class DataEditorWindow : Window
 
     private void OnExtraColumnsChanged(object? sender, EventArgs e) => SyncExtraColumns();
 
+    private static Button AddExtraButton(DataEditorViewModel editor, string key)
+    {
+        var button = new Button { Content = "+ Add as column", Tag = "extra-add", FontSize = 10.5, Padding = new Avalonia.Thickness(6, 1), MinHeight = 0, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch };
+        ToolTip.SetTip(button, "Add this field to the response sheet as an expected-value column (equals) and fill every row with the value the run got. Undo takes it back");
+        button.Click += (_, e) => { e.Handled = true; editor.AddExtraColumn(key); };
+        return button;
+    }
+
     /// <summary>The response fields that came back with a value but have no column in the workbook, as read-only columns after the environment column.</summary>
     private void SyncExtraColumns()
     {
@@ -496,7 +504,8 @@ public partial class DataEditorWindow : Window
             Children =
             {
                 new TextBlock { Text = "EXTRA", FontSize = 9.5, FontWeight = FontWeight.Bold, Foreground = new SolidColorBrush(Color.Parse("#F6C76B")) },
-                new TextBlock { Text = key, FontSize = 12.5, FontWeight = FontWeight.SemiBold }
+                new TextBlock { Text = key, FontSize = 12.5, FontWeight = FontWeight.SemiBold },
+                AddExtraButton(editor, key)
             }
         },
         MinWidth = Math.Clamp(key.Length * 8 + 30, 150, 320), MaxWidth = 360, Width = DataGridLength.Auto, CanUserSort = false,

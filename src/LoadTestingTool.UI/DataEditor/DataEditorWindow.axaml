@@ -450,6 +450,7 @@
                       <StackPanel Spacing="8" MinWidth="220">
                       <CheckBox Content="Show every column" IsChecked="{Binding ShowAllColumns, Mode=TwoWay}" />
                       <CheckBox Content="Failed rows only" IsChecked="{Binding ShowFailedOnly, Mode=TwoWay}" IsEnabled="{Binding HasResults}" />
+                      <CheckBox Content="Passed rows only" IsChecked="{Binding ShowPassedOnly, Mode=TwoWay}" IsEnabled="{Binding HasResults}" ToolTip.Tip="Show only the rows that ran and passed in the latest run (known bugs count as passed). Switches Failed rows only off" />
                       <CheckBox Content="Rows that differ between environments" Tag="differing-rows" IsChecked="{Binding ShowDifferingOnly, Mode=TwoWay}" IsEnabled="{Binding HasEnvColumn}" ToolTip.Tip="Keep the rows whose result is not the same in every environment of the latest run" />
                       <CheckBox Content="Failed columns only" IsChecked="{Binding ShowFailedColumns, Mode=TwoWay}" IsEnabled="{Binding HasResults}" ToolTip.Tip="Show only the expected-value columns that have a failed cell in the rows shown. Combine with Failed rows only to see just what went wrong" />
                       <CheckBox Content="Bug columns only" IsChecked="{Binding ShowBugColumns, Mode=TwoWay}" ToolTip.Tip="Show only the expected-value columns that carry a known-bug tag (&lt;bug: …&gt;) in the rows shown. Combine with Failed columns only to see both" />

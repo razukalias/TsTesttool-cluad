@@ -112,7 +112,7 @@ public sealed partial class DataEditorViewModel
         RefreshEnvironmentOptions();
         AssignOutcomes();
         UpdateTestcaseResults();
-        if (ShowFailedOnly || ShowDifferingOnly || EnvironmentPicked) ApplyFilter(); // otherwise the rows stay as they are, so selection and scroll position survive a refresh
+        if (ShowFailedOnly || ShowPassedOnly || ShowDifferingOnly || EnvironmentPicked) ApplyFilter(); // otherwise the rows stay as they are, so selection and scroll position survive a refresh
         RefreshRowFailures();
         if (ShowFailedCells) RefreshFailedCells();
         if (ColumnFilterOn) RefreshFailedColumns();
@@ -163,7 +163,14 @@ public sealed partial class DataEditorViewModel
         }
     }
 
-    partial void OnShowFailedOnlyChanged(bool value) => ApplyFilter();
+    partial void OnShowFailedOnlyChanged(bool value) { if (value && ShowPassedOnly) ShowPassedOnly = false; ApplyFilter(); }
+
+    /// <summary>"Passed rows only": the table keeps the rows that ran and passed in the latest run (known bugs count as passed); the opposite of Failed rows only, so the two switch each other off.</summary>
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty] private bool _showPassedOnly;
+
+    partial void OnShowPassedOnlyChanged(bool value) { if (value && ShowFailedOnly) ShowFailedOnly = false; ApplyFilter(); }
+
+    private bool RowPassed(DataRowViewModel row) => row.Outcome is { Requests: > 0 } && !RowFailed(row);
 
     partial void OnSelectedRowChanged(DataRowViewModel? value) { RefreshRowFailures(); RefreshPreview(); if (ShowRecord) BuildRecord(); if (FindVisible && FindScope == ScopeCurrentRow) UpdateMatches(); }
 
