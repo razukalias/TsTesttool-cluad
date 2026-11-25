@@ -1063,3 +1063,7 @@ To add:
 - Test `ParallelIsolationTests`: 6 copies of one workbook (rows and columns of request and response sheets shuffled differently, every cell value unique), 3 environments, 40 rows, 2 chained steps; instances, environments and rows all in parallel (100 rows at once) against an echo server with random delays so replies arrive out of order.
 - Result: 1440 requests, 11520 assertions, 0 mixed values. Every request body, response body, environment, chained value (`<From_response_…>`) and assertion actual/expected belongs to its own row and cell. A control test proves the check reports a swapped cell.
 - Not covered: Threads > 1 and Iterations > 1 per row, `--run-all` as separate processes (each has its own memory, so no sharing expected), SQL/file/script steps.
+
+## Hidden characters
+- Done: text verbs (eq, ne, contains, notcontains, startswith, endswith, in) ignore zero-width/BOM/soft-hyphen/control characters, treat non-breaking space as space and ignore edge spaces, on both expected and actual (`AssertionEngine.CleanText`). `regex` patterns are left as written. Reported expected/actual values stay raw.
+- Not done: editor mark for cells that contain hidden characters (option 1); a setting to turn the cleaning off.

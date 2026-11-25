@@ -167,7 +167,29 @@ public sealed class AssertionEngine
     }
 
     /// <summary>The comparison behind every {verb}: used by assertions and by the conditions of If and While steps.</summary>
-    public static bool Test(string op, string? actual, string expected, bool exists, string? original = null) => op switch
+    public static bool Test(string op, string? actual, string expected, bool exists, string? original = null)
+    {
+        // Text comparisons ignore hidden characters (zero-width, BOM, soft hyphen, control codes), treat a non-breaking space as a space and ignore spaces at both ends.
+        if (op is "eq" or "ne" or "contains" or "notcontains" or "startswith" or "endswith" or "in") { actual = actual is null ? null : CleanText(actual); expected = CleanText(expected); }
+        return TestClean(op, actual, expected, exists, original);
+    }
+
+    /// <summary>Removes what cannot be seen but makes two equal-looking texts differ.</summary>
+    public static string CleanText(string value)
+    {
+        if (value.Length == 0) return value;
+        var text = new System.Text.StringBuilder(value.Length);
+        foreach (var c in value)
+        {
+            if (c is '\u00A0' or '\u2007' or '\u202F') text.Append(' ');
+            else if (c is '\u200B' or '\u200C' or '\u200D' or '\u2060' or '\uFEFF' or '\u00AD' or '\u200E' or '\u200F') continue;
+            else if (char.IsControl(c) && c is not ('\t' or '\n' or '\r')) continue;
+            else text.Append(c);
+        }
+        return text.ToString().Trim();
+    }
+
+    private static bool TestClean(string op, string? actual, string expected, bool exists, string? original) => op switch
     {
         "eq" => string.Equals(actual ?? "", expected, StringComparison.OrdinalIgnoreCase),
         "ne" => !string.Equals(actual ?? "", expected, StringComparison.OrdinalIgnoreCase),
