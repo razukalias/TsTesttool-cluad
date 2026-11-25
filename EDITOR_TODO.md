@@ -1058,3 +1058,8 @@ To add:
 - [x] Tests: CellMarkTests (5), toolbar test now lists eight options.
 - [x] **Done 2026-11-25:** *Passed rows only* in the Show menu (rows that ran and passed; known bugs count as passed; it and Failed rows only switch each other off); **"+ Add as column"** button in the header of an extra column: adds `{eq}Step.path` to the response sheet and fills each row with the value the run got (rows whose environments disagree stay blank); one Undo takes it all back. Tests in CellMarkTests (7).
 - Not done: the green/yellow marks are not in the JSON, Record and Failed-cells views, nor in the results workbook; not looked at in the real window (headless screenshot only).
+
+## Parallel isolation check (done)
+- Test `ParallelIsolationTests`: 6 copies of one workbook (rows and columns of request and response sheets shuffled differently, every cell value unique), 3 environments, 40 rows, 2 chained steps; instances, environments and rows all in parallel (100 rows at once) against an echo server with random delays so replies arrive out of order.
+- Result: 1440 requests, 11520 assertions, 0 mixed values. Every request body, response body, environment, chained value (`<From_response_…>`) and assertion actual/expected belongs to its own row and cell. A control test proves the check reports a swapped cell.
+- Not covered: Threads > 1 and Iterations > 1 per row, `--run-all` as separate processes (each has its own memory, so no sharing expected), SQL/file/script steps.
