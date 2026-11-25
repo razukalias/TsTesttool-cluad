@@ -1048,4 +1048,4 @@ To add:
 - [ ] Open idea: `null` and `""` are the same to the app (a JSON null becomes `""`); a way to tell them apart (a `null` verb or `<null>` expected value) would be a new feature.
 
 ## Rerun window row list (fixed 2026-11-25)
-- [x] The row list in "Re-run from history" had a fixed height of 200 and showed only four of 36 rows. It now takes the room of the window (about ten compact lines at the opening size, more when the window is made taller) and its lines are compact. Test: `The_row_list_shows_about_ten_lines_and_grows_with_the_window`. Not checked in the real window.
+- [x] The row list in "Re-run from history" had a fixed height of 200 and showed only four of 36 rows. It now has compact lines and is as tall as the run (every row, up to 400, is shown and the window scrolls, not the list); a run with more than 400 rows keeps a scrolling, virtualized list. Test: `The_row_list_shows_every_row_of_the_run_without_scrolling`. Not checked in the real window.

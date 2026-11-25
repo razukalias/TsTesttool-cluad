@@ -72,8 +72,8 @@ public sealed class RerunWindow : Window
         // the list takes the room the window has (about ten lines at the opening size) instead of a fixed four lines, and its lines are compact
         Styles.Add(new Style(x => x.OfType<ListBoxItem>().Class("rerun-line")) { Setters = { new Setter(ListBoxItem.PaddingProperty, new Thickness(4, 0)), new Setter(ListBoxItem.MinHeightProperty, 26d) } });
         _rows.ContainerPrepared += (_, e) => { if (e.Container is ListBoxItem item) item.Classes.Add("rerun-line"); };
-        SizeChanged += (_, e) => _rows.Height = Math.Max(220, e.NewSize.Height - 400);
-        _rows.Height = Math.Max(220, Height - 400);
+        SizeChanged += (_, _) => FitRows();
+        FitRows();
         _rows.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<RowChoice>((choice, _) =>
         {
             var box = new CheckBox { FontFamily = new FontFamily("Consolas"), Content = choice?.Text };
@@ -183,8 +183,13 @@ public sealed class RerunWindow : Window
             _status.Text = "Every iteration and environment of a ticked data row runs again; the runner picks rows by data id.";
         }
         _rows.ItemsSource = _choices;
+        FitRows();
         UpdateCount();
     }
+
+    private const double LineHeight = 26;
+    /// <summary>Up to 400 rows are all shown at once (the window scrolls, not the list); a run with more keeps a list that scrolls and builds only the lines in view.</summary>
+    private void FitRows() => _rows.Height = _choices.Count is > 0 and <= 400 ? _choices.Count * LineHeight + 4 : Math.Max(220, Height - 400);
 
     private void SetAll(bool on) { foreach (var choice in _choices) choice.IsChecked = on; }
 

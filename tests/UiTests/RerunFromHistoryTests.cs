@@ -140,23 +140,21 @@ public class RerunWindowPagingTests
     }
 
     [AvaloniaFact]
-    public void The_row_list_shows_about_ten_lines_and_grows_with_the_window()
+    public void The_row_list_shows_every_row_of_the_run_without_scrolling()
     {
         var folder = Path.Combine(Path.GetTempPath(), "rerun-" + Guid.NewGuid().ToString("N"));
         try
         {
             var config = new AppConfig { HistoryFolder = folder };
-            WriteRun(config, folder, "mid", 72, DateTimeOffset.Now);   // 36 failed rows
+            WriteRun(config, folder, "mid", 72, DateTimeOffset.Now);   // 72 rows, 36 of them failed
             var window = new RerunWindow(new TestcaseItem(new TestcaseInfo(1, "Order", ["Create"]), 2), new RerunContext(folder, ["qa"]));
             window.Show();
             Wait(window);
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             var list = window.GetVisualDescendantsOf<ListBox>().First(l => (string?)l.Tag == "rerun-rows");
-            Assert.True(list.Height >= 280, $"the list is {list.Height} high");
+            Assert.Equal(72, list.ItemCount); Assert.True(list.Height >= 72 * 26, $"the list is {list.Height} high");
             var built = window.GetVisualDescendantsOf<CheckBox>().Count(b => b.Content?.ToString()?.StartsWith('d') == true);
-            Assert.InRange(built, 8, 40);   // not the four lines of the fixed height
-            window.Height = 1000; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-            Assert.True(list.Height >= 580, $"after growing the window the list is {list.Height} high");
+            Assert.InRange(built, 8, 72);   // the lines in view are built; the rest come as the window is scrolled (the list itself no longer scrolls)
             window.Close();
         }
         finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
