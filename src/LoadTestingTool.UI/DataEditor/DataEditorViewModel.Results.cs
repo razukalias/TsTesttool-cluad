@@ -63,7 +63,8 @@ public sealed partial class DataEditorViewModel
         ApplyFilter();   // rebuilds the rows, so the cell marks are drawn again too
         RefreshRowFailures();
         if (ShowFailedCells) RefreshFailedCells();
-        if (ShowFailedColumns || ShowBugColumns) RefreshFailedColumns();
+        if (ColumnFilterOn) RefreshFailedColumns();
+        RefreshExtraColumns();
     }
 
     /// <summary>A row's outcome as the chosen environment saw it (the whole outcome when "All environments"); null when the row did not run there.</summary>
@@ -114,7 +115,8 @@ public sealed partial class DataEditorViewModel
         if (ShowFailedOnly || ShowDifferingOnly || EnvironmentPicked) ApplyFilter(); // otherwise the rows stay as they are, so selection and scroll position survive a refresh
         RefreshRowFailures();
         if (ShowFailedCells) RefreshFailedCells();
-        if (ShowFailedColumns || ShowBugColumns) RefreshFailedColumns();
+        if (ColumnFilterOn) RefreshFailedColumns();
+        RefreshExtraColumns();
     }
 
     private void AssignOutcomes()

@@ -96,6 +96,6 @@ public sealed partial class DataEditorViewModel
     private void AfterCellsChanged()
     {
         if (ShowFailedCells) RefreshFailedCells();
-        if (ShowFailedColumns || ShowBugColumns) RefreshFailedColumns();
+        if (ColumnFilterOn) RefreshFailedColumns();
     }
 }

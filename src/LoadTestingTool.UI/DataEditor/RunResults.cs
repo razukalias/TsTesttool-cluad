@@ -20,6 +20,9 @@ public sealed record FailureDetail(string StepName, string? ResponsePath, string
     public bool IsSecondary => Secondary;
 }
 
+/// <summary>What a passed assertion (or an extra response field) saw in one environment: the value, or that the field was not in the response at all.</summary>
+public sealed record PassMark(string Environment, string Value, bool Absent);
+
 /// <summary>How one data row (a request/response row pair) fared in the latest run, across steps, iterations, threads and environments.</summary>
 public sealed class RowOutcome
 {
@@ -76,6 +79,8 @@ public sealed class RowOutcome
         foreach (var failure in older.Failures) if (Failures.Count < 40) Failures.Add(failure);
         PassedColumns.UnionWith(older.PassedColumns);
         BugColumns.UnionWith(older.BugColumns);
+        Merge(PassMarks, older.PassMarks);
+        Merge(Extras, older.Extras);
     }
     private readonly Dictionary<string, RowOutcome> _byEnvironment = new(StringComparer.OrdinalIgnoreCase);
 
@@ -89,6 +94,23 @@ public sealed class RowOutcome
 
     /// <summary>"step.path" (lower case) of the assertions that passed, so a comparison between environments can tell a passing column from one that was not checked.</summary>
     public HashSet<string> PassedColumns { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>"step.path" -> what the passed assertions of that column saw (one entry per environment and value): the response value, or "not in the response".</summary>
+    public Dictionary<string, List<PassMark>> PassMarks { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>"step.path" -> the value of a response field that has a real value but no column in the workbook (the runner reported it as an unexpected path).</summary>
+    public Dictionary<string, List<PassMark>> Extras { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    internal static void AddMark(Dictionary<string, List<PassMark>> marks, string key, PassMark mark)
+    {
+        if (!marks.TryGetValue(key, out var list)) marks[key] = list = [];
+        if (list.Count < 12 && !list.Contains(mark)) list.Add(mark);   // iterations repeat the same value: one entry is enough
+    }
+
+    private static void Merge(Dictionary<string, List<PassMark>> into, Dictionary<string, List<PassMark>> from)
+    {
+        foreach (var (key, list) in from) foreach (var mark in list) AddMark(into, key, mark);
+    }
 
     /// <summary>"step.path" of assertions the runner counted as known bugs.</summary>
     public HashSet<string> BugColumns { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -274,15 +296,25 @@ public static class RunResultsReader
         if (!result.Equals("FAIL", StringComparison.OrdinalIgnoreCase))
         {
             var column = $"{Text(root, "stepName")}.{Text(root, "responsePath")}";
-            if (result.Equals("PASS", StringComparison.OrdinalIgnoreCase)) outcome.PassedColumns.Add(column);
+            if (result.Equals("PASS", StringComparison.OrdinalIgnoreCase))
+            {
+                outcome.PassedColumns.Add(column);
+                var actual = Text(root, "actualValue");
+                RowOutcome.AddMark(outcome.PassMarks, column, new PassMark(environment, actual, actual == "<missing>"));
+            }
             else if (result.Equals("KNOWN_BUG", StringComparison.OrdinalIgnoreCase)) outcome.BugColumns.Add(column);
             return;
         }
         outcome.FailedAssertions++;
+        // a response field with a real value that the workbook has no column for: it becomes a read-only column in the table
+        if (Text(root, "assertionVerb") == "contract" && Text(root, "failureMessage").StartsWith("Unexpected response path", StringComparison.Ordinal) && Text(root, "actualValue") is { } extra && !IsBlankValue(extra))
+            RowOutcome.AddMark(outcome.Extras, $"{Text(root, "stepName")}.{Text(root, "responsePath")}", new PassMark(environment, extra, false));
         if (outcome.Failures.Count >= MaxFailuresPerRow) return;
         outcome.Failures.Add(new FailureDetail(Text(root, "stepName"), Text(root, "responsePath"), Text(root, "assertionVerb"),
             Text(root, "expectedValue"), Text(root, "actualValue"), Text(root, "failureMessage"), environment));
     }
+
+    private static bool IsBlankValue(string value) => string.IsNullOrWhiteSpace(value) || value is "null" or "[]" or "{}" or "<missing>";
 
     private static string Text(JsonElement root, string name)
         => root.TryGetProperty(name, out var value) ? value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined ? string.Empty : value.ToString() : string.Empty;

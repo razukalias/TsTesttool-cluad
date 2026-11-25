@@ -1049,3 +1049,11 @@ To add:
 
 ## Rerun window row list (fixed 2026-11-25)
 - [x] The row list in "Re-run from history" had a fixed height of 200 and showed only four of 36 rows. It now has compact lines and is as tall as the run (every row, up to 400, is shown and the window scrolls, not the list); a run with more than 400 rows keeps a scrolling, virtualized list. Test: `The_row_list_shows_every_row_of_the_run_without_scrolling`. Not checked in the real window.
+
+## Green / yellow cell marks, extra columns and two column filters (done 2026-11-25)
+- [x] **Every asserted cell gets a status:** red = failed (as before); **green** = passed, with the response value shown in the cell (`✓ value`, tooltip lists each environment); **yellow** = the field was not in the response (`∅ not in the response`: a passed `notexists` / `empty`, or a blank optional cell). With several environments red wins over yellow, and yellow over green. Follows the chosen environment.
+- [x] **Runner:** a blank optional `eq` cell whose field is missing is now reported as a PASS with actual `<missing>` (it used to be dropped silently), so the editor can mark it yellow. Older runs show green and red only.
+- [x] **Extra columns:** a response field that has a real value (not `""`, `null`, `[]`, `{}`) and no column in the workbook becomes a read-only column "EXTRA" right after the environment column (up to 60; with a step chosen only that step's fields). It still counts as a failure ("Unexpected response path"), as before. It disappears once you add a real column.
+- [x] **Filters** in the Show menu: *Passed columns only* and *Missing columns only* (combine with Failed / Bug columns only).
+- [x] Tests: CellMarkTests (5), toolbar test now lists eight options.
+- Not done: the green/yellow marks are not in the JSON, Record and Failed-cells views, nor in the results workbook; row filters for passed rows; an "assign" action for extra columns (add the column to the workbook with one click); not looked at in the real window (headless screenshot only).

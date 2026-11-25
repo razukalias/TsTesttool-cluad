@@ -23,6 +23,8 @@ public sealed class AssertionEngine
         // should not fail. A non-blank expectation remains strict.
         var activeDefinitions = definitions.Where(d => !IsOptionalMissing(d, values)).ToList();
         var results = activeDefinitions.Select(d => EvaluateOne(values, d, runId, requestId)).ToList();
+        // The skipped optional cells are still reported (as a pass whose actual value is "<missing>") so the editor can mark them as "not in the response".
+        results.AddRange(definitions.Where(d => IsOptionalMissing(d, values)).Select(d => EvaluateOne(values, d, runId, requestId, optionalAbsent: true)));
         var expectedPaths = activeDefinitions.Select(d => d.ResponsePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var missing in expectedPaths.Where(path => !values.ContainsKey(path)))
             if (!results.Any(r => r.ResponsePath.Equals(missing, StringComparison.OrdinalIgnoreCase))) results.Add(Mismatch(runId, requestId, definitions[0], missing, "<missing>", $"Missing response path '{missing}' in payload."));
@@ -138,8 +140,9 @@ public sealed class AssertionEngine
         return result;
     }
 
-    private static AssertionResult EvaluateOne(IReadOnlyDictionary<string, string> values, AssertionDefinition d, string runId, string requestId)
+    private static AssertionResult EvaluateOne(IReadOnlyDictionary<string, string> values, AssertionDefinition d, string runId, string requestId, bool optionalAbsent = false)
     {
+        if (optionalAbsent) return new AssertionResult { RunId = runId, RequestId = requestId, TestcaseIndex = d.TestcaseIndex, Testcase = d.Testcase, DataId = d.DataId, StepName = d.StepName, ResponsePath = d.ResponsePath, AssertionVerb = "eq", AssertionType = AssertionSemantics.Type("eq", "<missing>", ""), AssertionMeaning = "Optional field: blank expected value and the field is not in the response.", ExpectedValue = d.ExpectedValue, ActualValue = "<missing>", Result = "PASS", FailureMessage = "", ExtractVariable = string.Empty, ExcelRowNumber = d.ExcelRowNumber, ExpectedValueColumn = d.ExpectedValueColumn };
         values.TryGetValue(d.ResponsePath, out var actual);
         var op = string.IsNullOrWhiteSpace(d.AssertionVerb) ? "eq" : d.AssertionVerb.ToLowerInvariant();
         var exists = values.ContainsKey(d.ResponsePath);

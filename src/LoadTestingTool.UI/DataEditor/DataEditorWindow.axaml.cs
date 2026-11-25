@@ -138,6 +138,7 @@ public partial class DataEditorWindow : Window
         {
             _subscribed.ColumnsChanged -= OnColumnsChanged;
             _subscribed.FailedColumnsChanged -= OnFailedColumnsChanged;
+            _subscribed.ExtraColumnsChanged -= OnExtraColumnsChanged;
             _subscribed.SheetColumnsChanged -= OnSheetColumnsChanged;
             _subscribed.StepColumnsChanged -= OnStepColumnsChanged;
             _subscribed.PropertyChanged -= OnEditorPropertyChanged;
@@ -155,6 +156,7 @@ public partial class DataEditorWindow : Window
         UpdateEditOnlyTitle();
         _subscribed.ColumnsChanged += OnColumnsChanged;
         _subscribed.FailedColumnsChanged += OnFailedColumnsChanged;
+        _subscribed.ExtraColumnsChanged += OnExtraColumnsChanged;
         _subscribed.SheetColumnsChanged += OnSheetColumnsChanged;
         _subscribed.StepColumnsChanged += OnStepColumnsChanged;
         _subscribed.PropertyChanged += OnEditorPropertyChanged;
@@ -470,12 +472,65 @@ public partial class DataEditorWindow : Window
     /// <summary>Hides the columns without a failure while "Failed columns only" is on; the Data ID, tick and result columns always stay.</summary>
     private void OnFailedColumnsChanged(object? sender, EventArgs e) => ApplyColumnVisibility();
 
+    private const string ExtraColumnTag = "extra";
+
+    private void OnExtraColumnsChanged(object? sender, EventArgs e) => SyncExtraColumns();
+
+    /// <summary>The response fields that came back with a value but have no column in the workbook, as read-only columns after the environment column.</summary>
+    private void SyncExtraColumns()
+    {
+        if (this.FindControl<DataGrid>("Grid") is not { } grid || _shell?.Current is not { } editor) return;
+        foreach (var old in grid.Columns.Where(c => c.Tag is ExtraColumnTag).ToList()) grid.Columns.Remove(old);
+        var at = grid.Columns.ToList().FindIndex(c => c.Tag is EnvsColumnTag) + 1;
+        foreach (var key in editor.ExtraColumnKeys) grid.Columns.Insert(at++, CreateExtraColumn(editor, key));
+        ApplyColumnVisibility();
+    }
+
+    /// <summary>A read-only column that shows what the run got for a field the workbook has no column for yet (the header says EXTRA); hover for the value of each environment.</summary>
+    private static DataGridTemplateColumn CreateExtraColumn(DataEditorViewModel editor, string key) => new()
+    {
+        Tag = ExtraColumnTag,
+        Header = new StackPanel
+        {
+            Spacing = 1, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            Children =
+            {
+                new TextBlock { Text = "EXTRA", FontSize = 9.5, FontWeight = FontWeight.Bold, Foreground = new SolidColorBrush(Color.Parse("#F6C76B")) },
+                new TextBlock { Text = key, FontSize = 12.5, FontWeight = FontWeight.SemiBold }
+            }
+        },
+        MinWidth = Math.Clamp(key.Length * 8 + 30, 150, 320), MaxWidth = 360, Width = DataGridLength.Auto, CanUserSort = false,
+        CellTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<DataRowViewModel>((_, _) =>
+        {
+            var text = new TextBlock { FontSize = 12, Margin = new Avalonia.Thickness(8, 0), VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = Brush.Parse("#F6C76B"), Tag = "extra-value" };
+            DataRowViewModel? hooked = null;
+            void Refresh()
+            {
+                text.Text = hooked is null ? string.Empty : editor.ExtraValue(hooked, key);
+                ToolTip.SetTip(text, hooked is null ? null : editor.ExtraDetail(hooked, key) is { Length: > 0 } detail ? $"Not a column of the workbook yet: the run got this value.\n{detail}" : null);
+            }
+            void OnRowChanged(object? s, System.ComponentModel.PropertyChangedEventArgs e) { if (e.PropertyName == nameof(DataRowViewModel.Outcome)) Refresh(); }
+            void Hook()
+            {
+                if (hooked is not null) hooked.PropertyChanged -= OnRowChanged;
+                hooked = text.DataContext as DataRowViewModel;
+                if (hooked is not null) hooked.PropertyChanged += OnRowChanged;
+                Refresh();
+            }
+            text.DataContextChanged += (_, _) => Hook();
+            text.DetachedFromVisualTree += (_, _) => { if (hooked is not null) { hooked.PropertyChanged -= OnRowChanged; hooked = null; } };
+            text.AttachedToVisualTree += (_, _) => Hook();
+            return text;
+        })
+    };
+
     private void ApplyColumnVisibility()
     {
         if (this.FindControl<DataGrid>("Grid") is not { } grid || _shell?.Current is not { } editor) return;
         foreach (var column in grid.Columns)
-            column.IsVisible = column.Tag is EnvsColumnTag ? editor.HasEnvColumn : !(editor.ShowFailedColumns || editor.ShowBugColumns) || column.Tag is not int cell || cell < 1
-                || editor.ShowFailedColumns && editor.FailedColumnCells.Contains(cell) || editor.ShowBugColumns && editor.BugColumnCells.Contains(cell);
+            column.IsVisible = column.Tag is EnvsColumnTag ? editor.HasEnvColumn : !editor.ColumnFilterOn || column.Tag is not int cell || cell < 1
+                || editor.ShowFailedColumns && editor.FailedColumnCells.Contains(cell) || editor.ShowBugColumns && editor.BugColumnCells.Contains(cell)
+                || editor.ShowPassedColumns && editor.PassedColumnCells.Contains(cell) || editor.ShowMissingColumns && editor.MissingColumnCells.Contains(cell);
         StretchLastColumn(grid);
     }
 
@@ -521,6 +576,7 @@ public partial class DataEditorWindow : Window
             {
                 formatted.ExpectedColumn = column.Group == ColumnGroup.Response;
                 formatted.FailureAt = editor.FailureAt;
+                formatted.PassAt = editor.PassAt;
                 formatted.OpenFailure = ShowFailurePopup;
                 formatted.OpenBug = ShowBugPopup;
                 formatted.Selection = editor.CellSelection;
@@ -529,6 +585,8 @@ public partial class DataEditorWindow : Window
             grid.Columns.Add(created);
         }
         grid.ItemsSource = shownRows;
+        editor.RefreshExtraColumns();
+        SyncExtraColumns();
         ApplyColumnVisibility();
         AutofitColumns();
         editor.VisibleRows.CollectionChanged -= OnRowsResetAutofit;

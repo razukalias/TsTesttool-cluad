@@ -141,6 +141,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
     {
         if (_loading || _refreshingStepOptions) return;
         BuildRows();
+        RefreshExtraColumns();
     }
 
     private void ResetStepFilter()
@@ -287,7 +288,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         if (keep is not null && VisibleRows.Contains(keep)) SelectedRow = keep;
         OnPropertyChanged(nameof(RowCountText));
         if (ShowFailedCells) RefreshFailedCells();   // the shown rows changed (a filter, or Undo / Redo rebuilt them)
-        if (ShowFailedColumns || ShowBugColumns) RefreshFailedColumns();
+        if (ColumnFilterOn) RefreshFailedColumns();
     }
 
     /// <summary>
@@ -418,7 +419,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
         MarkChanged();
         if (cellIndex > 0) { row.RefreshStanding(); UpdateRunSummary(); }   // a bug tag written or removed changes whether the row failed
         if (ShowFailedCells) RefreshFailedCells();   // an edited cell may have become (or stopped being) a failed one
-        if (ShowFailedColumns || ShowBugColumns) RefreshFailedColumns();
+        if (ColumnFilterOn) RefreshFailedColumns();
     }
 
     private TableRow EnsureResponse(DataRowViewModel row)

@@ -93,6 +93,9 @@ public sealed class FormattedTextColumn : DataGridTextColumn
     /// <summary>Finds the failed assertion behind a cell of an expected-value column; set by the window together with <see cref="OpenFailure"/>.</summary>
     public Func<DataRowViewModel, int, FailureDetail?>? FailureAt { get; set; }
 
+    /// <summary>What the latest run saw behind a cell that passed (the value, or "not in the response"); set by the window.</summary>
+    public Func<DataRowViewModel, int, CellPass?>? PassAt { get; set; }
+
     /// <summary>Called with the cell, the mark that was clicked, the row and the failure.</summary>
     public Action<DataGridCell, Control, DataRowViewModel, FailureDetail>? OpenFailure { get; set; }
 
@@ -111,9 +114,34 @@ public sealed class FormattedTextColumn : DataGridTextColumn
         Button? mark = null;
         FailureDetail? current = null;
         DataRowViewModel? hooked = null;
+        Border? passTint = null;
+        Border? pill = null;
+        TextBlock? pillText = null;
+        // green: the cell passed and the response had this value; yellow: the field was not in the response (notexists, empty, or a blank optional cell)
+        void ShowPass(CellPass? pass)
+        {
+            if (pass is null && pill is null) return;
+            if (pill is null)
+            {
+                passTint = new Border { IsHitTestVisible = false };
+                pillText = new TextBlock { FontSize = 11, FontWeight = Avalonia.Media.FontWeight.SemiBold, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis, MaxWidth = 140 };
+                pill = new Border { Child = pillText, Tag = "pass-mark", CornerRadius = new Avalonia.CornerRadius(9), Padding = new Avalonia.Thickness(7, 1), HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, Margin = new Avalonia.Thickness(0, 0, 24, 0) };
+                host.Children.Insert(0, passTint);
+                host.Children.Add(pill);
+            }
+            passTint!.IsVisible = pill.IsVisible = pass is not null;
+            if (pass is null) return;
+            passTint.Background = Avalonia.Media.Brush.Parse(pass.Absent ? "#30F6C76B" : "#2639D39B");
+            pill.Background = Avalonia.Media.Brush.Parse(pass.Absent ? "#4A3F1E" : "#17422F");
+            pillText!.Foreground = Avalonia.Media.Brush.Parse(pass.Absent ? "#F6C76B" : "#39D39B");
+            pillText.Text = pass.Absent ? "∅ " + DataEditorViewModel.MissingText : "✓ " + (pass.Value.Length == 0 ? "(empty)" : pass.Value);
+            ToolTip.SetTip(pill, (pass.Absent ? "The field was not in the response of the latest run." : "Passed in the latest run; the response had this value.") + (pass.Detail.Length > 0 ? "\n" + pass.Detail : string.Empty));
+        }
         void Refresh()
         {
-            current = cell.DataContext is DataRowViewModel row ? FailureAt?.Invoke(row, _cell) : null;
+            var row = cell.DataContext as DataRowViewModel;
+            current = row is not null ? FailureAt?.Invoke(row, _cell) : null;
+            ShowPass(current is null && row is not null ? PassAt?.Invoke(row, _cell) : null);
             if (current is null && mark is null) return;
             if (mark is null)
             {

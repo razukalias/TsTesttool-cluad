@@ -28,6 +28,8 @@ public sealed partial class DataEditorViewModel
             if (ShowDifferingOnly) on.Add("Differing rows");
             if (ShowFailedColumns) on.Add("Failed columns");
             if (ShowBugColumns) on.Add("Bug columns");
+            if (ShowPassedColumns) on.Add("Passed columns");
+            if (ShowMissingColumns) on.Add("Missing columns");
             if (ShowFailedCells) on.Add("Failed cells");
             return on.Count == 0 ? "Show: default ▾" : "Show: " + string.Join(", ", on) + " ▾";
         }
@@ -85,6 +87,7 @@ public sealed partial class DataEditorViewModel
                     if (!bugs.Contains(cell) && cell < row.Cells.Count && row.Cells[cell] is { } text && text.IndexOf("<bug", StringComparison.OrdinalIgnoreCase) >= 0 && LoadTestingTool.Execution.BugTag.Parse(text).Tag is not null) bugs.Add(cell);
         }
         BugColumnCells = bugs;
+        RefreshPassColumns();
         FailedColumnsChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -104,18 +107,24 @@ public sealed partial class DataEditorViewModel
         return _headerSpelling.TryGetValue(key, out var spelling) ? spelling : key;
     }
 
+    private void EnsureFailureMaps()
+    {
+        if (ReferenceEquals(_failureCellsFor, Columns)) return;
+        _responseColumnOf = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var headers = _document.Response.Headers;
+        _headerSpelling = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < headers.Count; i++) { _responseColumnOf.TryAdd(StripVerb(headers[i]), i); _headerSpelling.TryAdd(StripVerb(headers[i]), StripVerb(headers[i])); }
+        _failureCells = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        _cellKeys = new Dictionary<int, string>();
+        foreach (var column in Columns.Where(c => c.Group == ColumnGroup.Response)) { var key = StripVerb(column.Title); if (_failureCells.TryAdd(key, column.CellIndex)) _cellKeys.TryAdd(column.CellIndex, key); }
+        _failureCellsFor = Columns;
+    }
+
+    private Dictionary<int, string> _cellKeys = [];
+
     internal int CellOfFailure(FailureDetail failure)
     {
-        if (!ReferenceEquals(_failureCellsFor, Columns))
-        {
-            _responseColumnOf = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            var headers = _document.Response.Headers;
-            _headerSpelling = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < headers.Count; i++) { _responseColumnOf.TryAdd(StripVerb(headers[i]), i); _headerSpelling.TryAdd(StripVerb(headers[i]), StripVerb(headers[i])); }
-            _failureCells = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            foreach (var column in Columns.Where(c => c.Group == ColumnGroup.Response)) _failureCells.TryAdd(StripVerb(column.Title), column.CellIndex);
-            _failureCellsFor = Columns;
-        }
+        EnsureFailureMaps();
         return _failureCells.TryGetValue($"{failure.StepName}.{failure.ResponsePath}", out var cell) ? cell : -1;
     }
 
