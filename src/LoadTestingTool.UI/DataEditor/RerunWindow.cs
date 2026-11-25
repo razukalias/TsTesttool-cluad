@@ -1,3 +1,4 @@
+using Avalonia.Styling;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -16,7 +17,7 @@ public sealed class RerunWindow : Window
     private readonly RerunContext _context;
     private readonly ComboBox _runs = new() { MinWidth = 420 };
     private readonly CheckBox _failedOnly = new() { Content = "Failed rows only", IsChecked = true };
-    private readonly ListBox _rows = new() { Height = 200, Background = Brushes.Transparent, SelectionMode = SelectionMode.Single, Tag = "rerun-rows" };   // virtualized: only the lines in view are built
+    private readonly ListBox _rows = new() { Height = 300, Background = Brushes.Transparent, SelectionMode = SelectionMode.Single, Tag = "rerun-rows" };   // virtualized: only the lines in view are built
     private readonly TextBlock _count = new() { FontSize = 12, Opacity = 0.8 };
     private readonly Button _more = new() { Content = "Load older runs", IsVisible = false, MinHeight = 30, Tag = "rerun-more" };
     private readonly List<RunHistoryRow> _scanned = [];
@@ -68,6 +69,11 @@ public sealed class RerunWindow : Window
         all.Click += (_, _) => SetAll(true);
         none.Click += (_, _) => SetAll(false);
         _more.Click += async (_, _) => { _more.IsEnabled = false; _status.Text = "Reading older history…"; await LoadPageAsync(); };
+        // the list takes the room the window has (about ten lines at the opening size) instead of a fixed four lines, and its lines are compact
+        Styles.Add(new Style(x => x.OfType<ListBoxItem>().Class("rerun-line")) { Setters = { new Setter(ListBoxItem.PaddingProperty, new Thickness(4, 0)), new Setter(ListBoxItem.MinHeightProperty, 26d) } });
+        _rows.ContainerPrepared += (_, e) => { if (e.Container is ListBoxItem item) item.Classes.Add("rerun-line"); };
+        SizeChanged += (_, e) => _rows.Height = Math.Max(220, e.NewSize.Height - 400);
+        _rows.Height = Math.Max(220, Height - 400);
         _rows.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<RowChoice>((choice, _) =>
         {
             var box = new CheckBox { FontFamily = new FontFamily("Consolas"), Content = choice?.Text };

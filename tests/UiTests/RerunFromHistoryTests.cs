@@ -140,6 +140,29 @@ public class RerunWindowPagingTests
     }
 
     [AvaloniaFact]
+    public void The_row_list_shows_about_ten_lines_and_grows_with_the_window()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "rerun-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var config = new AppConfig { HistoryFolder = folder };
+            WriteRun(config, folder, "mid", 72, DateTimeOffset.Now);   // 36 failed rows
+            var window = new RerunWindow(new TestcaseItem(new TestcaseInfo(1, "Order", ["Create"]), 2), new RerunContext(folder, ["qa"]));
+            window.Show();
+            Wait(window);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            var list = window.GetVisualDescendantsOf<ListBox>().First(l => (string?)l.Tag == "rerun-rows");
+            Assert.True(list.Height >= 280, $"the list is {list.Height} high");
+            var built = window.GetVisualDescendantsOf<CheckBox>().Count(b => b.Content?.ToString()?.StartsWith('d') == true);
+            Assert.InRange(built, 8, 40);   // not the four lines of the fixed height
+            window.Height = 1000; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.True(list.Height >= 580, $"after growing the window the list is {list.Height} high");
+            window.Close();
+        }
+        finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+    }
+
+    [AvaloniaFact]
     public void A_run_with_thousands_of_rows_builds_only_the_lines_in_view()
     {
         var folder = Path.Combine(Path.GetTempPath(), "rerun-" + Guid.NewGuid().ToString("N"));

@@ -1046,3 +1046,6 @@ To add:
 - [ ] Rewrite the help text (and the label tooltip in the step form, `StepFormView.cs`) to say that; check the docs (FEATURE_STEPS.md, README, APPLICATION_GUIDE) for the same wrong wording.
 - [ ] Maybe also show the rule next to an empty expected cell ("blank = optional field; passes when the response is empty") and add a test that pins the behaviour (blank + `""`, blank + `null`, blank + missing, with the flag on and off).
 - [ ] Open idea: `null` and `""` are the same to the app (a JSON null becomes `""`); a way to tell them apart (a `null` verb or `<null>` expected value) would be a new feature.
+
+## Rerun window row list (fixed 2026-11-25)
+- [x] The row list in "Re-run from history" had a fixed height of 200 and showed only four of 36 rows. It now takes the room of the window (about ten compact lines at the opening size, more when the window is made taller) and its lines are compact. Test: `The_row_list_shows_about_ten_lines_and_grows_with_the_window`. Not checked in the real window.
