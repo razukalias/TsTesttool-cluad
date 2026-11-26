@@ -39,6 +39,7 @@ public sealed class InstanceInfo
     public Reporting.HistoryStorage HistoryStorage { get; set; } = Reporting.HistoryStorage.Files;
     public int HistoryRetentionDays { get; set; }
     public int HistoryRetentionRuns { get; set; }
+    public int HistoryRetentionMaxMb { get; set; }
     public bool InternalLoggingEnabled { get; set; } = true;
     public bool SaveRequestBodyToHistory { get; set; } = true;
     public bool SaveResponseBodyToHistory { get; set; } = true;
@@ -423,6 +424,7 @@ public sealed partial class MainWindow : Window
                 item.HistoryStorage = centralInstance.HistoryStorage ?? Reporting.HistoryStorage.Files;
                 item.HistoryRetentionDays = centralInstance.HistoryRetentionDays ?? 0;
                 item.HistoryRetentionRuns = centralInstance.HistoryRetentionRuns ?? 0;
+                item.HistoryRetentionMaxMb = centralInstance.HistoryRetentionMaxMb ?? 0;
                 item.InternalLoggingEnabled = centralInstance.InternalLoggingEnabled ?? true;
                 item.SaveRequestBodyToHistory = centralInstance.SaveRequestBodyToHistory ?? true;
                 item.SaveResponseBodyToHistory = centralInstance.SaveResponseBodyToHistory ?? true;
@@ -584,6 +586,7 @@ public sealed partial class MainWindow : Window
             instance["HistoryStorage"] = item.HistoryStorage.ToString();
             instance["HistoryRetentionDays"] = item.HistoryRetentionDays;
             instance["HistoryRetentionRuns"] = item.HistoryRetentionRuns;
+            instance["HistoryRetentionMaxMb"] = item.HistoryRetentionMaxMb;
             instance["InternalLoggingEnabled"] = item.InternalLoggingEnabled;
             instance["SaveRequestBodyToHistory"] = item.SaveRequestBodyToHistory;
             instance["SaveResponseBodyToHistory"] = item.SaveResponseBodyToHistory;
@@ -604,6 +607,7 @@ public sealed partial class MainWindow : Window
                 central.HistoryStorage = item.HistoryStorage;
                 central.HistoryRetentionDays = item.HistoryRetentionDays;
                 central.HistoryRetentionRuns = item.HistoryRetentionRuns;
+                central.HistoryRetentionMaxMb = item.HistoryRetentionMaxMb;
                 central.InternalLoggingEnabled = item.InternalLoggingEnabled;
                 central.SaveRequestBodyToHistory = item.SaveRequestBodyToHistory;
                 central.SaveResponseBodyToHistory = item.SaveResponseBodyToHistory;

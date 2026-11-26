@@ -172,6 +172,20 @@ public class HistoryDatabaseUiTests
             Click("Save the workbook as it was in the shown run");                  // never over an existing file
             Assert.Contains("already there", Texts());
 
+            // replacing the live workbook needs a second click and keeps the replaced one aside
+            File.WriteAllText(Path.Combine(inst, "DataEngine.xlsx"), "edited since");
+            Click("Replace the live workbook with the shown run's copy");
+            Assert.Contains("Click again to replace the workbook with the copy of recent", Texts());
+            Assert.Equal("edited since", File.ReadAllText(Path.Combine(inst, "DataEngine.xlsx")));
+            Click("Click again to replace the workbook with the copy of recent");
+            Assert.Equal("new book", File.ReadAllText(Path.Combine(inst, "DataEngine.xlsx")));
+            Assert.Equal("edited since", File.ReadAllText(Directory.GetFiles(inst, "DataEngine_before_restore_*.xlsx").Single()));
+
+            tabs.GetVisualDescendants().OfType<NumericUpDown>().First(n => (string?)n.Tag == "history-retention-mb").Value = 50;
+            Click("Save");
+            Assert.Equal(50, selected.HistoryRetentionMaxMb);
+            Assert.Contains("\"HistoryRetentionMaxMb\": 50", File.ReadAllText(central));
+
             Click("Export shown run to Excel");
             Assert.True(File.Exists(Path.Combine(exchange, "Run_recent.xlsx")), Texts());
 

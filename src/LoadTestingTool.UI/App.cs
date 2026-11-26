@@ -51,6 +51,7 @@ public sealed class UiInstanceDefinition
     public LoadTestingTool.Reporting.HistoryStorage? HistoryStorage { get; set; }
     public int? HistoryRetentionDays { get; set; }
     public int? HistoryRetentionRuns { get; set; }
+    public int? HistoryRetentionMaxMb { get; set; }
     public bool? InternalLoggingEnabled { get; set; }
     public bool? SaveRequestBodyToHistory { get; set; }
     public bool? SaveResponseBodyToHistory { get; set; }

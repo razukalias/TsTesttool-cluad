@@ -366,6 +366,32 @@ public sealed class SqliteHistoryStore : IHistoryStore
         return DeleteRuns(ListRuns(keepRuns, int.MaxValue).Select(r => r.RunId).ToList());
     }
 
+    /// <summary>
+    /// Removes the oldest runs until the data in the database is at most <paramref name="maxBytes"/> (0 or less = no limit). The newest run is always kept, even when it alone is bigger.
+    /// The size is what the database really holds (pages in use), so it is right straight after removing, before <see cref="Vacuum"/> gives the room back to the disk.
+    /// </summary>
+    public int KeepUnderSize(long maxBytes)
+    {
+        if (maxBytes <= 0 || !Exists || UsedBytes() <= maxBytes) return 0;
+        var oldestFirst = ListRuns(1, int.MaxValue).Select(r => r.RunId).Reverse().ToList();   // skip the newest run, then oldest first
+        var removed = 0;
+        foreach (var id in oldestFirst)
+        {
+            removed += DeleteRuns([id]);
+            if (UsedBytes() <= maxBytes) break;
+        }
+        return removed;
+    }
+
+    /// <summary>Bytes of the database file that hold data (the pages in use; freed pages are not counted).</summary>
+    public long UsedBytes()
+    {
+        if (!Exists) return 0;
+        using var connection = Open();
+        long Pragma(string name) { using var command = connection.CreateCommand(); command.CommandText = "PRAGMA " + name; return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture); }
+        return (Pragma("page_count") - Pragma("freelist_count")) * Pragma("page_size");
+    }
+
     /// <summary>Gives the room of removed runs back to the file system (the file is rewritten; it needs room for a copy of itself while it runs).</summary>
     public void Vacuum()
     {
@@ -429,6 +455,32 @@ public sealed class SqliteHistoryStore : IHistoryStore
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(destination))!);
         File.WriteAllBytes(destination, content);
         return true;
+    }
+
+    /// <summary>
+    /// Replaces a live workbook with the copy a run kept. The workbook that is replaced is first copied next to it as <c>&lt;name&gt;_before_restore_&lt;time&gt;.xlsx</c> and the new content
+    /// is written beside it and moved into place, so a failure leaves the live workbook as it was. Returns the backup path, or null when the run has no copy.
+    /// </summary>
+    public string? ReplaceWithSnapshot(string runId, string liveWorkbook, DateTimeOffset? now = null)
+    {
+        if (!Exists) return null;
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT s.content FROM run_snapshots r JOIN snapshots s ON s.hash = r.hash WHERE r.run_id=@r";
+        command.Parameters.AddWithValue("@r", runId);
+        if (command.ExecuteScalar() is not byte[] content) return null;
+        var full = System.IO.Path.GetFullPath(liveWorkbook);
+        var backup = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(full)!, $"{System.IO.Path.GetFileNameWithoutExtension(full)}_before_restore_{(now ?? DateTimeOffset.Now):yyyyMMdd_HHmmss}{System.IO.Path.GetExtension(full)}");
+        var incoming = full + ".restoring";
+        if (File.Exists(full)) File.Copy(full, backup, overwrite: false);
+        else backup = "";
+        try
+        {
+            File.WriteAllBytes(incoming, content);
+            File.Move(incoming, full, overwrite: true);
+        }
+        catch { try { File.Delete(incoming); } catch (IOException) { } throw; }
+        return backup;
     }
 
     /// <summary>Copies one run, with everything it holds, into a database file of its own (to hand it to someone, or to keep it in a shared folder). An existing file is replaced.</summary>
@@ -736,6 +788,14 @@ public sealed class SqliteHistoryStore : IHistoryStore
         return list;
     }
 
+    /// <summary>Equal text; an Excel cell holds at most 32,767 characters, so a longer text in the database only has to start with what the workbook kept.</summary>
+    private static bool SameText(string workbook, string database)
+    {
+        if (workbook == database) return true;
+        const int cell = 32000;
+        return workbook.Length >= cell && database.Length > workbook.Length && database.StartsWith(workbook, StringComparison.Ordinal);
+    }
+
     /// <summary>Requests and assertions: the workbooks are read into a scratch database with the same code the import uses, and each run's steps (row, step, result, status) and assertion count are compared.</summary>
     private void CompareDetails(string workbookFolder, HashSet<string> runIds, List<string> differences)
     {
@@ -747,10 +807,18 @@ public sealed class SqliteHistoryStore : IHistoryStore
             foreach (var runId in runIds.Where(Contains).Where(other.Contains))
             {
                 static List<string> Keys(IEnumerable<RequestDetail> list) => list.Select(q => $"{q.TestcaseIndex}|{q.DataId}|{q.Iteration}|{q.Step}|{q.Result}|{q.HttpStatus}").Order().ToList();
-                var fromFiles = Keys(other.LoadRequests(runId, false)); var fromDatabase = Keys(LoadRequests(runId, false));
+                var filesRequests = other.LoadRequests(runId); var databaseRequests = LoadRequests(runId);
+                var fromFiles = Keys(filesRequests); var fromDatabase = Keys(databaseRequests);
                 if (fromFiles.Count == 0) continue;                                   // a workbook without a RequestHistory sheet has nothing to compare
-                if (!fromFiles.SequenceEqual(fromDatabase)) differences.Add($"{runId}: requests differ ({fromFiles.Count} in the workbooks, {fromDatabase.Count} in the database)");
-                else if (other.LoadAssertions(runId).Count != LoadAssertions(runId).Count) differences.Add($"{runId}: assertion count differs");
+                if (!fromFiles.SequenceEqual(fromDatabase)) { differences.Add($"{runId}: requests differ ({fromFiles.Count} in the workbooks, {fromDatabase.Count} in the database)"); continue; }
+                var other_ = databaseRequests.ToDictionary(q => q.RequestId);
+                foreach (var file in filesRequests)
+                {
+                    if (!other_.TryGetValue(file.RequestId, out var db)) { differences.Add($"{runId}/{file.DataId}/{file.Step}: request id {file.RequestId} is only in the workbooks"); continue; }
+                    foreach (var (name, a, b) in new[] { ("request headers", file.RequestHeaders, db.RequestHeaders), ("request body", file.RequestBody, db.RequestBody), ("response headers", file.ResponseHeaders, db.ResponseHeaders), ("response body", file.ResponseBody, db.ResponseBody) })
+                        if (!SameText(a, b)) differences.Add($"{runId}/{file.DataId}/{file.Step}: {name} differ");
+                }
+                if (other.LoadAssertions(runId).Count != LoadAssertions(runId).Count) differences.Add($"{runId}: assertion count differs");
             }
         }
         finally { try { Directory.Delete(scratch, true); } catch (IOException) { } catch (UnauthorizedAccessException) { } }

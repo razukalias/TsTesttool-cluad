@@ -1297,23 +1297,25 @@ public sealed partial class MainWindow
 
         var days = new NumericUpDown { Minimum = 0, Maximum = 36500, Increment = 1, Value = item.HistoryRetentionDays, Width = 120, FormatString = "0", Tag = "history-retention-days" };
         var runs = new NumericUpDown { Minimum = 0, Maximum = 1000000, Increment = 1, Value = item.HistoryRetentionRuns, Width = 120, FormatString = "0", Tag = "history-retention-runs" };
+        var megabytes = new NumericUpDown { Minimum = 0, Maximum = 10000000, Increment = 10, Value = item.HistoryRetentionMaxMb, Width = 120, FormatString = "0", Tag = "history-retention-mb" };
         var keep = DashboardStyle.Action("Save", () =>
         {
             item.HistoryRetentionDays = (int)(days.Value ?? 0);
             item.HistoryRetentionRuns = (int)(runs.Value ?? 0);
+            item.HistoryRetentionMaxMb = (int)(megabytes.Value ?? 0);
             SaveInstanceReportingSettings(item, true);
-            Say(item.HistoryRetentionDays == 0 && item.HistoryRetentionRuns == 0 ? "Runs are kept for ever."
-                : $"After each run, " + string.Join(" and ", new[] { item.HistoryRetentionDays > 0 ? $"runs older than {item.HistoryRetentionDays} days" : null, item.HistoryRetentionRuns > 0 ? $"all but the newest {item.HistoryRetentionRuns} runs" : null }.Where(x => x is not null)) + " are removed.");
+            Say(item.HistoryRetentionDays == 0 && item.HistoryRetentionRuns == 0 && item.HistoryRetentionMaxMb == 0 ? "Runs are kept for ever."
+                : $"After each run, " + string.Join(" and ", new[] { item.HistoryRetentionDays > 0 ? $"runs older than {item.HistoryRetentionDays} days" : null, item.HistoryRetentionRuns > 0 ? $"all but the newest {item.HistoryRetentionRuns} runs" : null, item.HistoryRetentionMaxMb > 0 ? $"the oldest runs beyond {item.HistoryRetentionMaxMb} MB" : null }.Where(x => x is not null)) + " are removed.");
         });
         var clean = DashboardStyle.Action("Clean up now", () =>
         {
             try
             {
                 var before = store.Summary().Bytes;
-                var removed = store.ApplyRetention(item.HistoryRetentionDays) + store.KeepNewestRuns(item.HistoryRetentionRuns);
+                var removed = store.ApplyRetention(item.HistoryRetentionDays) + store.KeepNewestRuns(item.HistoryRetentionRuns) + store.KeepUnderSize(item.HistoryRetentionMaxMb * 1024L * 1024L);
                 store.Vacuum();
                 var after = store.Summary().Bytes;
-                Say($"{removed} runs removed. Database {before / 1024.0 / 1024.0:0.0} MB → {after / 1024.0 / 1024.0:0.0} MB." + (item.HistoryRetentionDays == 0 && item.HistoryRetentionRuns == 0 ? " (Nothing is set to be removed.)" : ""));
+                Say($"{removed} runs removed. Database {before / 1024.0 / 1024.0:0.0} MB → {after / 1024.0 / 1024.0:0.0} MB." + (item.HistoryRetentionDays == 0 && item.HistoryRetentionRuns == 0 && item.HistoryRetentionMaxMb == 0 ? " (Nothing is set to be removed.)" : ""));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException) { Say($"Clean-up failed: {ex.Message}"); }
             Dispatcher.UIThread.Post(RefreshArtifacts);
@@ -1358,6 +1360,20 @@ public sealed partial class MainWindow
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException) { Say($"Delete failed: {ex.Message}"); }
             Dispatcher.UIThread.Post(RefreshArtifacts);
         });
+        Button? replace = null;
+        string? replaceArmed = null;
+        replace = DashboardStyle.Action("Replace the live workbook with the shown run's copy", () =>
+        {
+            try
+            {
+                if (Shown() is not { } run || store.SnapshotOf(run) is null) { Say("The shown run has no workbook copy (it was made before copies were kept, or copies are off)."); return; }
+                if (replaceArmed != run) { replaceArmed = run; replace!.Content = $"Click again to replace the workbook with the copy of {run}"; Say($"This overwrites {item.WorkbookPath}. It is first copied next to it as …_before_restore_<time>.xlsx. Close the workbook in Excel first; unsaved changes in the data editor are lost."); return; }
+                replaceArmed = null; replace!.Content = "Replace the live workbook with the shown run's copy";
+                var backup = store.ReplaceWithSnapshot(run, item.WorkbookPath);
+                Say(backup is { Length: > 0 } ? $"The workbook is now the copy of run {run}. The one it replaced is kept as {backup}." : $"The workbook is now the copy of run {run}.");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException) { Say($"Could not replace it (is it open in Excel?): {ex.Message}. The live workbook was not changed."); }
+        });
         var browse = DashboardStyle.Action("Browse…", async () =>
         {
             var folders = await StorageProvider.OpenFolderPickerAsync(new Avalonia.Platform.Storage.FolderPickerOpenOptions { Title = "Folder for run files", AllowMultiple = false });
@@ -1401,10 +1417,10 @@ public sealed partial class MainWindow
             Children =
             {
                 DashboardStyle.Text("Upkeep", 13, true),
-                DashboardStyle.Text("Keep runs for this many days and/or only the newest runs (0 = no limit). Older runs are removed after each run; “Clean up now” also gives the room back to the disk.", 12, false, DashboardStyle.Muted),
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { days, DashboardStyle.Text("days, and the newest", 12, false, DashboardStyle.Muted), runs, DashboardStyle.Text("runs", 12, false, DashboardStyle.Muted), keep, clean } },
+                DashboardStyle.Text("Keep runs for this many days, only the newest runs, and/or at most this many MB (0 = no limit; the newest run is always kept). Older runs are removed after each run; “Clean up now” also gives the room back to the disk.", 12, false, DashboardStyle.Muted),
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { days, DashboardStyle.Text("days, and the newest", 12, false, DashboardStyle.Muted), runs, DashboardStyle.Text("runs, and at most", 12, false, DashboardStyle.Muted), megabytes, DashboardStyle.Text("MB", 12, false, DashboardStyle.Muted), keep, clean } },
                 DashboardStyle.Text($"Workbook copies: {totals.Versions} versions, {totals.Bytes / 1024.0 / 1024.0:0.0} MB (the same content is stored once).", 12, false, DashboardStyle.Muted),
-                restore,
+                new WrapPanel { Children = { restore, replace } },
                 DashboardStyle.Text("One run in a file of its own, to hand over or to bring in:", 12, false, DashboardStyle.Muted),
                 new DockPanel { LastChildFill = true, Children = { DockedLeft(browse), _exchangeFolder } },
                 new WrapPanel { Children = { export, toExcel, import, delete } },

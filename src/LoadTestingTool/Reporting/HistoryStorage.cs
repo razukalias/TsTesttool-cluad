@@ -40,5 +40,6 @@ public static class HistoryStores
         if (workbookContent is not null && config.HistorySnapshotWorkbook && run.Testcases.Count > 0) store.SaveSnapshot(run.RunId, workbookContent);
         if (config.HistoryRetentionDays > 0) store.ApplyRetention(config.HistoryRetentionDays);
         if (config.HistoryRetentionRuns > 0) store.KeepNewestRuns(config.HistoryRetentionRuns);
+        if (config.HistoryRetentionMaxMb > 0) store.KeepUnderSize(config.HistoryRetentionMaxMb * 1024L * 1024L);
     }
 }

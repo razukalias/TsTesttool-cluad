@@ -409,6 +409,94 @@ public sealed class SqliteHistoryTests : IDisposable
     }
 
     [Fact]
+    public void The_oldest_runs_go_until_the_data_fits_the_size_limit_and_the_newest_run_always_stays()
+    {
+        var folder = Path.Combine(_root, "size");
+        var start = new DateTimeOffset(2026, 11, 1, 8, 0, 0, TimeSpan.Zero);
+        for (var i = 1; i <= 6; i++) SaveWithDetails(folder, "s" + i, start.AddHours(i), Workbook("v" + i), bodyKb: 60);
+        var store = new SqliteHistoryStore(folder);
+        var total = store.UsedBytes();
+        Assert.True(total > 200_000, total.ToString());
+        Assert.Equal(0, store.KeepUnderSize(0));                                               // 0 = no limit
+        Assert.Equal(0, store.KeepUnderSize(total + 1));                                       // already small enough
+
+        var removed = store.KeepUnderSize(total / 2);
+        Assert.InRange(removed, 1, 5);
+        Assert.True(store.UsedBytes() <= total / 2, $"{store.UsedBytes()} of {total}");
+        var left = store.ListRuns(0, 20).Select(r => r.RunId).ToArray();
+        Assert.Equal("s6", left[0]);                                                           // oldest go first
+        Assert.Equal(left.OrderByDescending(x => x).ToArray(), left);
+        Assert.Equal(6 - removed, left.Length);
+
+        store.KeepUnderSize(1);                                                                // an impossible limit still keeps the newest run
+        Assert.Equal(["s6"], store.ListRuns(0, 20).Select(r => r.RunId).ToArray());
+        Assert.NotNull(store.SnapshotOf("s6"));
+    }
+
+    [Fact]
+    public void A_workbook_copy_replaces_the_live_workbook_after_the_live_one_is_copied_aside()
+    {
+        var folder = Path.Combine(_root, "replace");
+        SaveWithDetails(folder, "old", DateTimeOffset.Now.AddMinutes(-5), Workbook("the old version"));
+        SaveWithDetails(folder, "nocopy", DateTimeOffset.Now);
+        var store = new SqliteHistoryStore(folder);
+        var live = Path.Combine(_root, "live", "Book.xlsx");
+        Directory.CreateDirectory(Path.GetDirectoryName(live)!);
+        File.WriteAllBytes(live, Workbook("edited since"));
+
+        Assert.Null(store.ReplaceWithSnapshot("nocopy", live));                                 // no copy: nothing is touched
+        Assert.Equal(Workbook("edited since"), File.ReadAllBytes(live));
+
+        var backup = store.ReplaceWithSnapshot("old", live, new DateTimeOffset(2026, 11, 26, 23, 0, 0, TimeSpan.Zero));
+        Assert.Equal(Workbook("the old version"), File.ReadAllBytes(live));
+        Assert.Equal(Path.Combine(Path.GetDirectoryName(live)!, "Book_before_restore_20261126_230000.xlsx"), backup);
+        Assert.Equal(Workbook("edited since"), File.ReadAllBytes(backup!));                     // what was replaced is kept
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(live)!, "*.restoring"));
+
+        // no live workbook yet: the copy simply becomes it, and there is no backup
+        var fresh = Path.Combine(_root, "live", "New.xlsx");
+        Assert.Equal("", store.ReplaceWithSnapshot("old", fresh));
+        Assert.Equal(Workbook("the old version"), File.ReadAllBytes(fresh));
+    }
+
+    [Fact]
+    public void The_compare_check_also_finds_a_changed_body_or_header()
+    {
+        var folder = Path.Combine(_root, "cmpbody");
+        var run = RunWithDetails("body", new DateTimeOffset(2026, 4, 3, 8, 0, 0, TimeSpan.Zero));
+        var config = new AppConfig { HistoryFolder = folder, SaveRequestBodyToHistory = true, SaveResponseBodyToHistory = true };
+        new HistoryWriter(config) { RunState = MakeState(run, "B") }.WritePerTestcase(run);
+        var dbFolder = Path.Combine(_root, "cmpbodydb");
+        var store = new SqliteHistoryStore(dbFolder);
+        store.ImportWorkbooks(folder, null, null);
+        Assert.Empty(store.CompareWithWorkbooks(folder));
+
+        var first = store.LoadRequests("body").First(r => r.ResponseBody.Length > 0 && r.RequestHeaders.Length > 0);
+        void Change(string column, string text)
+        {
+            using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(dbFolder, "history.sqlite")};Pooling=False");
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = $"UPDATE request_bodies SET {column}=@b WHERE run_id='body' AND seq=@s";
+            command.Parameters.AddWithValue("@b", StoredTextPack(text)); command.Parameters.AddWithValue("@s", first.Seq);
+            Assert.Equal(1, command.ExecuteNonQuery());
+        }
+        Change("response_body", first.ResponseBody + "x");
+        Assert.Contains(store.CompareWithWorkbooks(folder), d => d.EndsWith("response body differ"));
+        Change("response_body", first.ResponseBody);
+        Assert.Empty(store.CompareWithWorkbooks(folder));
+        Change("request_headers", first.RequestHeaders + "x");
+        Assert.Contains(store.CompareWithWorkbooks(folder), d => d.EndsWith("request headers differ"));
+    }
+
+    private static byte[] StoredTextPack(string text)
+    {
+        using var output = new MemoryStream();
+        using (var gzip = new System.IO.Compression.GZipStream(output, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true)) gzip.Write(System.Text.Encoding.UTF8.GetBytes(text));
+        return output.ToArray();
+    }
+
+    [Fact]
     public void A_database_made_before_the_upkeep_tables_is_upgraded_when_it_is_opened()
     {
         var folder = Path.Combine(_root, "oldschema");
