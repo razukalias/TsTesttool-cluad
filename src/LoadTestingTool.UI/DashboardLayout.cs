@@ -1317,6 +1317,7 @@ public sealed partial class MainWindow
         _artifactPanel.Children.Add(DashboardStyle.Section("Open"));
         var openButtons = new WrapPanel();
         if (_hostWindow is not { IsVisible: true }) openButtons.Children.Add(DashboardStyle.Action("Edit data", OpenDataEditor, "primary"));
+        openButtons.Children.Add(DashboardStyle.Action("Re-run center…", () => OpenRerunCenter()));
         openButtons.Children.Add(DashboardStyle.Action("Open latest result workbook", OpenLatestResultWorkbook));
         openButtons.Children.Add(DashboardStyle.Action("Open Templates folder", OpenTemplatesFolder));
         openButtons.Children.Add(DashboardStyle.Action("Open Results folder", () =>
