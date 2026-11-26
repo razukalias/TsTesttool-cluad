@@ -254,19 +254,60 @@ public sealed class ParallelIsolationTests : IDisposable
     }
 
     private async Task<(int ExitCode, string Output, string History)> RunProcess(Truth truth, int instance, string storage, params string[] extra)
+        => await RunProcess(truth, instance, storage, null, extra);
+
+    private async Task<(int ExitCode, string Output, string History)> RunProcess(Truth truth, int instance, string storage, Dictionary<string, object>? settings, params string[] extra)
     {
         File.WriteAllText(Path.Combine(truth.Folder, "appsettings.json"), System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object>
         {
             ["ExcelFilePath"] = truth.Workbook, ["TemplatesFolder"] = Path.Combine(truth.Folder, "Templates"), ["LogsFolder"] = Path.Combine(truth.Folder, "Logs"),
             ["HistoryFolder"] = Path.Combine(truth.Folder, "History"), ["ResultsFolder"] = Path.Combine(truth.Folder, "Results"), ["WorkspaceRoot"] = truth.Folder,
             ["Environments"] = Environments, ["HistoryStorage"] = storage, ["TestcaseSelection"] = "1",
-        }));
+        }.Concat(settings ?? []).ToDictionary(p => p.Key, p => p.Value)));
         var start = new System.Diagnostics.ProcessStartInfo("dotnet") { WorkingDirectory = truth.Folder, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var arg in new[] { typeof(AppConfig).Assembly.Location, "--config", Path.Combine(truth.Folder, "appsettings.json"), "--testcases", "1", "--dataids", $"1:I{instance}R001,I{instance}R002,I{instance}R003", "--environments-json", "[\"dev\"]" }.Concat(extra)) start.ArgumentList.Add(arg);
         using var process = System.Diagnostics.Process.Start(start)!;
         var output = await process.StandardOutput.ReadToEndAsync() + await process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync();
         return (process.ExitCode, output, Path.Combine(truth.Folder, "History"));
+    }
+
+    [Fact]
+    public async Task The_runner_stores_each_testcase_log_in_the_database_and_deletes_the_files_only_when_asked()
+    {
+        StartServer();
+        // Database: the log is in the database, the file stays
+        var kept = BuildInstance(6);
+        var run = await RunProcess(kept, 6, "Database", new Dictionary<string, object> { ["InternalLoggingEnabled"] = true });
+        Assert.True(run.ExitCode == 0, run.Output);
+        var store = new LoadTestingTool.Reporting.SqliteHistoryStore(run.History);
+        var runId = store.ListRuns(0, 1).Single().RunId;
+        Assert.True(store.HasLogs(runId), run.Output + "\n" + string.Join("\n", Directory.GetFileSystemEntries(Path.Combine(kept.Folder, "Logs"), "*", SearchOption.AllDirectories)));
+        var files = Directory.GetFiles(Path.Combine(kept.Folder, "Logs"), "*_Run_*.log").Where(f => !f.EndsWith("_process.log")).ToArray();
+        Assert.Single(files);
+        var stored = store.LogTotals();
+        Assert.Equal(1, stored.Logs);
+        var testcaseName = Path.GetFileName(files[0]).Split("_dev_")[0];
+        Assert.Equal(File.ReadAllText(files[0]), store.LoadLogFile(runId, testcaseName, "dev")!.Value.Text);       // the same text, and it is the one the step details window parses
+        Assert.Contains("REQUEST COMPLETED", store.LoadLog(runId, testcaseName, "dev"));
+
+        // Database with deletion: the same text is in the database and the file is gone (the process log stays)
+        var deleting = BuildInstance(7);
+        var gone = await RunProcess(deleting, 7, "Database", new Dictionary<string, object> { ["InternalLoggingEnabled"] = true, ["HistoryDeleteLogFiles"] = true });
+        Assert.True(gone.ExitCode == 0, gone.Output);
+        var goneStore = new LoadTestingTool.Reporting.SqliteHistoryStore(gone.History);
+        Assert.Equal(1, goneStore.LogTotals().Logs);
+        Assert.Empty(Directory.GetFiles(Path.Combine(deleting.Folder, "Logs"), "*_Run_*.log").Where(f => !f.EndsWith("_process.log")));
+
+        // switched off, and the old way (files only): nothing is stored
+        var off = BuildInstance(8);
+        var notStored = await RunProcess(off, 8, "Database", new Dictionary<string, object> { ["InternalLoggingEnabled"] = true, ["HistoryLogsInDatabase"] = false });
+        Assert.Equal(0, new LoadTestingTool.Reporting.SqliteHistoryStore(notStored.History).LogTotals().Logs);
+        var filesOnly = BuildInstance(9);
+        var oldWay = await RunProcess(filesOnly, 9, "Files", new Dictionary<string, object> { ["InternalLoggingEnabled"] = true });
+        Assert.True(oldWay.ExitCode == 0, oldWay.Output);
+        Assert.False(new LoadTestingTool.Reporting.SqliteHistoryStore(oldWay.History).Exists);
+        Assert.Single(Directory.GetFiles(Path.Combine(filesOnly.Folder, "Logs"), "*_Run_*.log").Where(f => !f.EndsWith("_process.log")));
     }
 
     [Fact]

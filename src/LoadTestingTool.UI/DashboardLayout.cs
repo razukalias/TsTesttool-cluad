@@ -121,7 +121,7 @@ internal static class ArtifactCatalog
         return leftShort.Equals(rightShort, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string LatestRunId(InstanceInfo item)
+    internal static string LatestRunId(InstanceInfo item)
     {
         if (!string.IsNullOrWhiteSpace(item.CurrentRunId)) return item.CurrentRunId;
         if (!Directory.Exists(item.HistoryFolder)) return "";
@@ -1037,11 +1037,37 @@ public sealed partial class MainWindow
         return MatchesTerms(StepSearchText(request), _overviewStepFilter.Text);
     }
 
+    /// <summary>The run's log for this step's testcase and environment, written to a temporary file for the details window (which removes it), or null when the database has none.</summary>
+    internal static string? TryLogFromDatabase(InstanceInfo item, DashboardRequest request, out string? sourceLabel)
+    {
+        sourceLabel = null;
+        if (item.HistoryStorage == HistoryStorage.Files) return null;
+        try
+        {
+            var store = new SqliteHistoryStore(item.HistoryFolder);
+            if (!store.Exists) return null;
+            var runId = DataEditor.ShownRunChoice.Get(item.ResultsFolder);
+            if (string.IsNullOrWhiteSpace(runId)) runId = string.IsNullOrWhiteSpace(item.CurrentRunId) ? ArtifactCatalog.LatestRunId(item) : item.CurrentRunId;
+            if (string.IsNullOrWhiteSpace(runId)) runId = store.ListRuns(0, 1).FirstOrDefault()?.RunId;
+            if (string.IsNullOrWhiteSpace(runId) || store.LoadLogFile(runId, request.Testcase, request.Environment) is not { } stored) return null;
+            var folder = Path.Combine(Path.GetTempPath(), "stepdetails_" + Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(folder);
+            var path = Path.Combine(folder, stored.Name);
+            File.WriteAllText(path, stored.Text);
+            sourceLabel = $"history database {store.Path_} (run {runId}, {stored.Name})";
+            return path;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException) { return null; }
+    }
+
     private void LaunchStepDetails(DashboardRequest request)
     {
         if (_selectedInstance is null) return;
         var item = _selectedInstance;
-        var log = FindInternalLogs(item)
+        // a finished run keeps its logs in the history database (when the instance stores history there): they win over a file, and are the only source once the files are gone
+        string? sourceLabel = null;
+        var log = TryLogFromDatabase(item, request, out sourceLabel);
+        log ??= FindInternalLogs(item)
             .Where(path => FindTestcaseLabel(path, item).Equals(request.Testcase, StringComparison.OrdinalIgnoreCase))
             .Where(path => FindEnvironmentLabel(path, item).Equals(string.IsNullOrWhiteSpace(request.Environment) ? "default" : request.Environment, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
@@ -1058,7 +1084,7 @@ public sealed partial class MainWindow
             var entryAssembly = System.Reflection.Assembly.GetEntryAssembly()?.Location;
             if (!string.IsNullOrWhiteSpace(entryAssembly) && (Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase) || Path.GetFileNameWithoutExtension(processPath).Equals("dotnet.exe", StringComparison.OrdinalIgnoreCase))) start.ArgumentList.Add(entryAssembly);
             start.ArgumentList.Add("--step-details");
-            foreach (var value in new[] { log, request.Testcase, request.DataId, request.StepName, string.IsNullOrWhiteSpace(request.Environment) ? "default" : request.Environment, request.StepType }) start.ArgumentList.Add(value);
+            foreach (var value in new[] { log, request.Testcase, request.DataId, request.StepName, string.IsNullOrWhiteSpace(request.Environment) ? "default" : request.Environment, request.StepType }.Concat(sourceLabel is null ? [] : [sourceLabel])) start.ArgumentList.Add(value);
             var process = Process.Start(start) ?? throw new InvalidOperationException("The step details process could not be started.");
             UiLog($"Step details process started. processId={process.Id}; testcase={request.Testcase}; dataId={request.DataId}; step={request.StepName}; environment={request.Environment}; log={log}");
         }
@@ -1410,6 +1436,22 @@ public sealed partial class MainWindow
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException) { Say($"Could not save it: {ex.Message}"); }
         });
+        var storeLogs = new CheckBox { Content = "Keep each run's log in the database (step details read it from there)", IsChecked = item.HistoryLogsInDatabase, Tag = "history-logs-in-db" };
+        var deleteLogs = new CheckBox { Content = "Delete a log file after it is stored in the database", IsChecked = item.HistoryDeleteLogFiles, Tag = "history-delete-log-files" };
+        void SaveLogSettings() { item.HistoryLogsInDatabase = storeLogs.IsChecked == true; item.HistoryDeleteLogFiles = deleteLogs.IsChecked == true; SaveInstanceReportingSettings(item, true); Say("Log settings saved."); }
+        storeLogs.IsCheckedChanged += (_, _) => { if (storeLogs.IsChecked != item.HistoryLogsInDatabase) SaveLogSettings(); };
+        deleteLogs.IsCheckedChanged += (_, _) => { if (deleteLogs.IsChecked != item.HistoryDeleteLogFiles) SaveLogSettings(); };
+        var importLogs = DashboardStyle.Action("Import logs of existing runs", () =>
+        {
+            try
+            {
+                var r = store.ImportLogFiles(item.LogsFolder, item.EnvironmentOptions);
+                Say($"{r.Added} logs stored, {r.Skipped} already there" + (r.NoRun > 0 ? $", {r.NoRun} belong to runs that are not in the database." : "."));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException) { Say($"Import failed: {ex.Message}"); }
+            Dispatcher.UIThread.Post(RefreshArtifacts);
+        });
+        var logTotals = store.LogTotals();
         var totals = store.SnapshotTotals();
         return new StackPanel
         {
@@ -1421,6 +1463,8 @@ public sealed partial class MainWindow
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { days, DashboardStyle.Text("days, and the newest", 12, false, DashboardStyle.Muted), runs, DashboardStyle.Text("runs, and at most", 12, false, DashboardStyle.Muted), megabytes, DashboardStyle.Text("MB", 12, false, DashboardStyle.Muted), keep, clean } },
                 DashboardStyle.Text($"Workbook copies: {totals.Versions} versions, {totals.Bytes / 1024.0 / 1024.0:0.0} MB (the same content is stored once).", 12, false, DashboardStyle.Muted),
                 new WrapPanel { Children = { restore, replace } },
+                DashboardStyle.Text($"Logs: {logTotals.Logs} stored, {logTotals.TextBytes / 1024.0 / 1024.0:0.0} MB of text taking {logTotals.StoredBytes / 1024.0 / 1024.0:0.0} MB.", 12, false, DashboardStyle.Muted),
+                storeLogs, deleteLogs, importLogs,
                 DashboardStyle.Text("One run in a file of its own, to hand over or to bring in:", 12, false, DashboardStyle.Muted),
                 new DockPanel { LastChildFill = true, Children = { DockedLeft(browse), _exchangeFolder } },
                 new WrapPanel { Children = { export, toExcel, import, delete } },

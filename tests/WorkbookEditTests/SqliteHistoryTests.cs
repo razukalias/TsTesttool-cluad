@@ -496,6 +496,73 @@ public sealed class SqliteHistoryTests : IDisposable
         return output.ToArray();
     }
 
+    private const string LogText = "2026-11-26T10:00:00.000+01:00 [INFO] [inst] [run=r1] ---- STEP 1: Create | dataid=D1 ----\n2026-11-26T10:00:01.000+01:00 [INFO] [inst] [run=r1] REQUEST COMPLETED [REQ-1] result=PASS";
+
+    [Fact]
+    public void A_run_keeps_its_logs_and_they_follow_the_run_through_export_import_retention_and_delete()
+    {
+        var folder = Path.Combine(_root, "logs");
+        var start = new DateTimeOffset(2026, 11, 1, 8, 0, 0, TimeSpan.Zero);
+        SaveWithDetails(folder, "keep", start.AddHours(1), Workbook("a"));
+        SaveWithDetails(folder, "gone", start, Workbook("b"));
+        var store = new SqliteHistoryStore(folder);
+        store.SaveLog("keep", "Order_qa_passed_20261126_100000_T1_I1_Run_keep.log", "Order", "qa", "passed", LogText);
+        store.SaveLog("keep", "Order_default_failed_20261126_100500_T1_I1_Run_keep.log", "Order", "", "failed", "default env log");
+        store.SaveLog("gone", "Order_qa_passed_20261125_100000_T1_I1_Run_gone.log", "Order", "qa", "passed", "old log");
+
+        Assert.Equal(LogText, store.LoadLog("keep", "Order", "qa"));
+        Assert.Equal("default env log", store.LoadLog("keep", "Order", "default"));           // an empty environment is "default"
+        Assert.Equal("default env log", store.LoadLog("keep", "Order", ""));
+        Assert.Equal("Order_qa_passed_20261126_100000_T1_I1_Run_keep.log", store.LoadLogFile("keep", "Order", "qa")!.Value.Name);
+        Assert.Null(store.LoadLog("keep", "Other", "qa"));
+        Assert.Null(store.LoadLog("nope", "Order", "qa"));
+        Assert.Equal(3, store.LogTotals().Logs);
+        Assert.True(store.HasLogs("keep"));
+
+        store.SaveLog("keep", "Order_qa_passed_20261126_100000_T1_I1_Run_keep.log", "Order", "qa", "passed", "replaced");   // the same name replaces
+        Assert.Equal("replaced", store.LoadLog("keep", "Order", "qa"));
+        Assert.Equal(3, store.LogTotals().Logs);
+
+        var file = Path.Combine(_root, "logs_share", "Run_keep.runhistory.sqlite");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        store.ExportRun("keep", file);
+        var other = new SqliteHistoryStore(Path.Combine(_root, "logs_other"));
+        other.ImportRunFile(file);
+        Assert.Equal("replaced", other.LoadLog("keep", "Order", "qa"));                       // the logs travel in the run file
+        Assert.Equal(2, other.LogTotals().Logs);
+
+        Assert.Equal(1, store.KeepNewestRuns(1));                                              // retention removes the logs of a removed run
+        Assert.False(store.HasLogs("gone"));
+        Assert.Equal(2, store.LogTotals().Logs);
+        store.DeleteRuns(["keep"]);
+        Assert.Equal(0, store.LogTotals().Logs);
+    }
+
+    [Fact]
+    public void Logs_of_existing_runs_are_read_from_a_logs_folder_by_the_short_run_id_and_only_once()
+    {
+        var folder = Path.Combine(_root, "logimport");
+        var start = new DateTimeOffset(2026, 11, 1, 8, 0, 0, TimeSpan.Zero);
+        SaveWithDetails(folder, "20261126_100000_a1b2c3d4", start, Workbook("a"));
+        SaveWithDetails(folder, "20261126_110000_e5f6a7b8", start.AddHours(1), Workbook("b"));
+        var logs = Path.Combine(_root, "logimport_files"); Directory.CreateDirectory(logs);
+        File.WriteAllText(Path.Combine(logs, "Order checkout_qa_passed_20261126_100000_T1_I1_Run_a1b2c3d4.log"), "first");
+        File.WriteAllText(Path.Combine(logs, "Order checkout_default_failed_20261126_110000_T2_I1_Run_e5f6a7b8.log"), "second");
+        File.WriteAllText(Path.Combine(logs, "Order checkout_qa_passed_20261126_090000_T1_I1_Run_deadbeef.log"), "run not in the database");
+        File.WriteAllText(Path.Combine(logs, "Order checkout_qa_passed_20261126_100000_T1_I1_Run_a1b2c3d4_process.log"), "process log is not stored");
+        File.WriteAllText(Path.Combine(logs, "Order checkout_qa_running_20261126_120000_T1_I1_Run_a1b2c3d4.log"), "still running");
+        var store = new SqliteHistoryStore(folder);
+
+        var first = store.ImportLogFiles(logs, ["qa", "dev"]);
+        Assert.Equal((3, 2, 0, 1), (first.Files, first.Added, first.Skipped, first.NoRun));
+        Assert.Equal("first", store.LoadLog("20261126_100000_a1b2c3d4", "Order checkout", "qa"));
+        Assert.Equal("second", store.LoadLog("20261126_110000_e5f6a7b8", "Order checkout", "default"));   // no known environment in the name: default
+        Assert.Equal(2, store.LogTotals().Logs);
+        var again = store.ImportLogFiles(logs, ["qa", "dev"]);
+        Assert.Equal((0, 2), (again.Added, again.Skipped));
+        Assert.Equal(5, Directory.GetFiles(logs).Length);                                     // the files are not touched
+    }
+
     [Fact]
     public void A_database_made_before_the_upkeep_tables_is_upgraded_when_it_is_opened()
     {

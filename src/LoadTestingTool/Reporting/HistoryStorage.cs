@@ -32,6 +32,35 @@ public static class HistoryStores
         => storage == HistoryStorage.Database ? new SqliteHistoryStore(historyFolder) : new FileHistoryStore(historyFolder);
 
     /// <summary>Writes the run to the database when the instance's storage asks for it. The workbooks are written by <see cref="HistoryWriter"/>.</summary>
+    /// <summary>Finished internal logs of this process, waiting to be stored once the run itself has been saved.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentQueue<(string Testcase, string Environment, string Result, string Path)> FinishedLogs = new();
+
+    /// <summary>Called when a testcase's internal log has been closed and given its final name. Only remembered when the database keeps logs.</summary>
+    public static void LogFinished(AppConfig config, string testcase, string environment, string result, string path)
+    {
+        if (config.HistoryStorage != HistoryStorage.Files && config.HistoryLogsInDatabase && File.Exists(path)) FinishedLogs.Enqueue((testcase, environment, result, path));
+    }
+
+    /// <summary>Stores the remembered logs under the run. With <see cref="AppConfig.HistoryDeleteLogFiles"/> a file is deleted only after its text is in the database.</summary>
+    public static int SaveLogs(AppConfig config, string runId)
+    {
+        if (config.HistoryStorage == HistoryStorage.Files) return 0;
+        var store = new SqliteHistoryStore(config.HistoryFolder);
+        var saved = 0;
+        while (FinishedLogs.TryDequeue(out var log))
+        {
+            try
+            {
+                store.SaveLog(runId, System.IO.Path.GetFileName(log.Path), log.Testcase, log.Environment, log.Result, File.ReadAllText(log.Path));
+                saved++;
+                if (config.HistoryDeleteLogFiles) File.Delete(log.Path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
+            { Console.Error.WriteLine($"[Warning] The log {System.IO.Path.GetFileName(log.Path)} could not be stored in the history database: {ex.Message}"); }
+        }
+        return saved;
+    }
+
     public static void SaveToDatabase(AppConfig config, RunResult run, RunValueMemory.Snapshot? state, string? rerunOf, byte[]? workbookContent = null)
     {
         if (config.HistoryStorage == HistoryStorage.Files) return;

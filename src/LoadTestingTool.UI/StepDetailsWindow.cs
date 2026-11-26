@@ -23,9 +23,14 @@ public sealed class StepDetailsWindow : Window
     private readonly Dictionary<string, TextEditor> _viewers = new(StringComparer.OrdinalIgnoreCase);
     private double _fontSize = 12;
 
-    public StepDetailsWindow(string logPath, string testcase, string dataId, string stepName, string environment, string stepType)
+    private readonly string? _sourceLabel;
+
+    /// <param name="sourceLabel">When the log was taken out of the history database into a temporary file, where it really came from; the temporary file is removed when the window closes.</param>
+    public StepDetailsWindow(string logPath, string testcase, string dataId, string stepName, string environment, string stepType, string? sourceLabel = null)
     {
         _logPath = logPath;
+        _sourceLabel = string.IsNullOrWhiteSpace(sourceLabel) ? null : sourceLabel;
+        if (_sourceLabel is not null) Closed += (_, _) => { try { Directory.Delete(Path.GetDirectoryName(_logPath)!, true); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { } };
         _testcase = testcase;
         _dataId = dataId;
         _stepName = stepName;
@@ -47,7 +52,7 @@ public sealed class StepDetailsWindow : Window
             : StepLogView.Build(blocks, _stepType, _environment);
 
         var heading = DashboardStyle.Text($"{_stepType}  ·  {_testcase} / Row {_dataId} / {_stepName} / {_environment}", 16, true);
-        var source = DashboardStyle.Text($"Source: {_logPath}", 11, false, DashboardStyle.Muted);
+        var source = DashboardStyle.Text($"Source: {_sourceLabel ?? _logPath}", 11, false, DashboardStyle.Muted);
         source.TextWrapping = TextWrapping.Wrap;
         var tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children =
         {

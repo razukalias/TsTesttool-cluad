@@ -52,6 +52,8 @@ public sealed class UiInstanceDefinition
     public int? HistoryRetentionDays { get; set; }
     public int? HistoryRetentionRuns { get; set; }
     public int? HistoryRetentionMaxMb { get; set; }
+    public bool? HistoryLogsInDatabase { get; set; }
+    public bool? HistoryDeleteLogFiles { get; set; }
     public bool? InternalLoggingEnabled { get; set; }
     public bool? SaveRequestBodyToHistory { get; set; }
     public bool? SaveResponseBodyToHistory { get; set; }
@@ -89,7 +91,7 @@ public sealed class App : Application
                 var detailsIndex = Array.FindIndex(args, x => x.Equals("--step-details", StringComparison.OrdinalIgnoreCase));
                 if (detailsIndex >= 0 && detailsIndex + 6 < args.Length)
                 {
-                    desktop.MainWindow = new StepDetailsWindow(args[detailsIndex + 1], args[detailsIndex + 2], args[detailsIndex + 3], args[detailsIndex + 4], args[detailsIndex + 5], args[detailsIndex + 6]);
+                    desktop.MainWindow = new StepDetailsWindow(args[detailsIndex + 1], args[detailsIndex + 2], args[detailsIndex + 3], args[detailsIndex + 4], args[detailsIndex + 5], args[detailsIndex + 6], detailsIndex + 7 < args.Length && !args[detailsIndex + 7].StartsWith("--") ? args[detailsIndex + 7] : null);
                     base.OnFrameworkInitializationCompleted();
                     return;
                 }

@@ -14,7 +14,7 @@ namespace LoadTestingTool.Reporting;
 public sealed class SqliteHistoryStore : IHistoryStore
 {
     public const string FileName = "history.sqlite";
-    private const int SchemaVersion = 3;
+    private const int SchemaVersion = 4;
     private readonly string _path;
 
     public SqliteHistoryStore(string historyFolder) => _path = System.IO.Path.Combine(historyFolder, FileName);
@@ -64,6 +64,7 @@ public sealed class SqliteHistoryStore : IHistoryStore
                 CREATE TABLE IF NOT EXISTS request_bodies(run_id TEXT NOT NULL, seq INTEGER NOT NULL, step_config BLOB, request_headers BLOB, request_body BLOB, response_headers BLOB, response_body BLOB, PRIMARY KEY(run_id, seq)) WITHOUT ROWID;
                 CREATE TABLE IF NOT EXISTS snapshots(hash TEXT PRIMARY KEY, size INTEGER NOT NULL, created_at TEXT NOT NULL, content BLOB NOT NULL) WITHOUT ROWID;
                 CREATE TABLE IF NOT EXISTS run_snapshots(run_id TEXT PRIMARY KEY, hash TEXT NOT NULL) WITHOUT ROWID;
+                CREATE TABLE IF NOT EXISTS logs(run_id TEXT NOT NULL, name TEXT NOT NULL, testcase TEXT NOT NULL, environment TEXT NOT NULL, result TEXT NOT NULL, size INTEGER NOT NULL, content BLOB, PRIMARY KEY(run_id, name)) WITHOUT ROWID;
                 CREATE TABLE IF NOT EXISTS assertions(run_id TEXT NOT NULL, seq INTEGER NOT NULL, request_seq INTEGER NOT NULL, testcase TEXT, data_id TEXT, step TEXT, path TEXT, verb TEXT, type TEXT, meaning TEXT, expected TEXT, actual TEXT, result TEXT, message TEXT, PRIMARY KEY(run_id, seq)) WITHOUT ROWID;
                 """);
             Exec(connection, $"PRAGMA user_version={SchemaVersion};");
@@ -316,7 +317,7 @@ public sealed class SqliteHistoryStore : IHistoryStore
 
     // ---- Upkeep: retention, shrinking, workbook snapshots, one run in a file of its own ----
 
-    private static readonly string[] RunTables = ["state", "steps", "rows", "requests", "request_bodies", "assertions", "run_snapshots"];
+    private static readonly string[] RunTables = ["state", "steps", "rows", "requests", "request_bodies", "assertions", "run_snapshots", "logs"];
 
     /// <summary>Removes runs (and the workbook snapshots nobody refers to any more). Returns how many runs were removed.</summary>
     public int DeleteRuns(IEnumerable<string> runIds)
@@ -399,6 +400,95 @@ public sealed class SqliteHistoryStore : IHistoryStore
         using var connection = Open();
         Exec(connection, "VACUUM;");
         Exec(connection, "PRAGMA wal_checkpoint(TRUNCATE);");
+    }
+
+    // ---- The run's internal logs (what the step details window reads) ----
+
+    /// <summary>Testcase and environment as they appear in a log file's name.</summary>
+    private static string Safe(string value) => InternalLogger.SafeFolderName(value);
+    private static string SafeEnvironment(string value) => string.IsNullOrWhiteSpace(value) ? "default" : Safe(value);
+
+    /// <summary>Stores the text of a finished internal log under its run (compressed). The same name for the same run replaces the earlier text.</summary>
+    public void SaveLog(string runId, string name, string testcase, string environment, string result, string text)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "INSERT OR REPLACE INTO logs(run_id,name,testcase,environment,result,size,content) VALUES(@r,@n,@t,@e,@s,@z,@c)";
+        command.Parameters.AddWithValue("@r", runId); command.Parameters.AddWithValue("@n", name); command.Parameters.AddWithValue("@t", Safe(testcase));
+        command.Parameters.AddWithValue("@e", SafeEnvironment(environment)); command.Parameters.AddWithValue("@s", result); command.Parameters.AddWithValue("@z", text.Length);
+        command.Parameters.AddWithValue("@c", (object?)StoredText.Pack(text) ?? DBNull.Value);
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>The log of a testcase in an environment for a run (the newest when there are several), or null.</summary>
+    public string? LoadLog(string runId, string testcase, string environment) => LoadLogFile(runId, testcase, environment)?.Text;
+
+    /// <summary>Like <see cref="LoadLog"/>, with the log's file name (it carries the environment and the thread and iteration counts).</summary>
+    public (string Name, string Text)? LoadLogFile(string runId, string testcase, string environment)
+    {
+        if (!Exists) return null;
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT name, content FROM logs WHERE run_id=@r AND testcase=@t AND environment=@e ORDER BY name DESC LIMIT 1";
+        command.Parameters.AddWithValue("@r", runId); command.Parameters.AddWithValue("@t", Safe(testcase)); command.Parameters.AddWithValue("@e", SafeEnvironment(environment));
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? (reader.GetString(0), StoredText.Unpack(reader.IsDBNull(1) ? null : reader.GetValue(1))) : null;
+    }
+
+    /// <summary>How many logs are kept, their original size, and the bytes they take compressed.</summary>
+    public (int Logs, long TextBytes, long StoredBytes) LogTotals()
+    {
+        if (!Exists) return (0, 0, 0);
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*), COALESCE(SUM(size),0), COALESCE(SUM(LENGTH(content)),0) FROM logs";
+        using var reader = command.ExecuteReader();
+        reader.Read();
+        return (reader.GetInt32(0), reader.GetInt64(1), reader.GetInt64(2));
+    }
+
+    public bool HasLogs(string runId)
+    {
+        if (!Exists) return false;
+        using var connection = Open();
+        return Scalar(connection, "SELECT 1 FROM logs WHERE run_id=@r LIMIT 1", ("@r", runId)) is not null;
+    }
+
+    public sealed record LogImportResult(int Files, int Added, int Skipped, int NoRun);
+
+    /// <summary>
+    /// Reads the internal logs of finished runs from a Logs folder into the database. A file name carries only the last 8 characters of the run id
+    /// (<c>…_Run_&lt;id&gt;.log</c>), so a log is stored under the run of the database whose id ends with them; logs of runs the database does not have are counted
+    /// but not stored. A log that is already stored is skipped. The files are not changed.
+    /// </summary>
+    public LogImportResult ImportLogFiles(string logsFolder, IReadOnlyCollection<string> environments)
+    {
+        if (!Directory.Exists(logsFolder) || !Exists) return new(0, 0, 0, 0);
+        var runs = ListRuns(0, int.MaxValue).Select(r => r.RunId).ToList();
+        int files = 0, added = 0, skipped = 0, noRun = 0;
+        foreach (var path in Directory.GetFiles(logsFolder, "*.log", SearchOption.TopDirectoryOnly))
+        {
+            var name = System.IO.Path.GetFileNameWithoutExtension(path);
+            if (name.EndsWith("_process", StringComparison.OrdinalIgnoreCase)) continue;
+            var marker = name.LastIndexOf("_Run_", StringComparison.Ordinal);
+            var status = new[] { "passed", "failed", "cancelled" }.FirstOrDefault(x => name.Contains($"_{x}_", StringComparison.OrdinalIgnoreCase));
+            if (marker < 0 || status is null) continue;                                   // still running, or not a run log
+            files++;
+            var shortId = name[(marker + 5)..];
+            var matches = runs.Where(r => Safe(r).EndsWith(shortId, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (matches.Count != 1) { noRun++; continue; }
+            var runId = matches[0];
+            var prefix = name[..name.IndexOf($"_{status}_", StringComparison.OrdinalIgnoreCase)];
+            var environment = environments.Append("default").Select(Safe).OrderByDescending(x => x.Length).FirstOrDefault(x => prefix.EndsWith($"_{x}", StringComparison.OrdinalIgnoreCase));
+            var testcase = environment is null ? prefix : prefix[..^(environment.Length + 1)];
+            using (var connection = Open())
+                if (Scalar(connection, "SELECT 1 FROM logs WHERE run_id=@r AND name=@n", ("@r", runId), ("@n", name + ".log")) is not null) { skipped++; continue; }
+            string text;
+            try { text = File.ReadAllText(path); } catch (IOException) { noRun++; continue; }
+            SaveLog(runId, name + ".log", testcase, environment ?? "default", status, text);
+            added++;
+        }
+        return new(files, added, skipped, noRun);
     }
 
     /// <summary>Keeps the workbook as it was for this run. Identical content is stored once, however many runs used it.</summary>

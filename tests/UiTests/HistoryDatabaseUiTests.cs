@@ -172,6 +172,34 @@ public class HistoryDatabaseUiTests
             Click("Save the workbook as it was in the shown run");                  // never over an existing file
             Assert.Contains("already there", Texts());
 
+            // logs: the checkboxes are saved with the instance, old log files are read into the database by their short run id
+            var logs = Path.Combine(inst, "Logs"); Directory.CreateDirectory(logs);
+            selected.HistoryStorage = HistoryStorage.Database;
+            selected.EnvironmentOptions.Clear(); selected.EnvironmentOptions.Add("qa");
+            File.WriteAllText(Path.Combine(logs, "Order_qa_passed_20261126_100000_T1_I1_Run_recent.log"), "old log text");   // "recent" is shorter than 8: the whole id is the short id
+            tabs.GetVisualDescendants().OfType<CheckBox>().First(c => (string?)c.Tag == "history-delete-log-files").IsChecked = true;
+            Assert.True(selected.HistoryDeleteLogFiles);
+            Assert.Contains("\"HistoryDeleteLogFiles\": true", File.ReadAllText(central));
+            tabs.GetVisualDescendants().OfType<CheckBox>().First(c => (string?)c.Tag == "history-logs-in-db").IsChecked = false;
+            Assert.False(selected.HistoryLogsInDatabase);
+            Click("Import logs of existing runs");
+            Assert.Contains("1 logs stored", Texts());
+            Assert.Equal("old log text", store.LoadLog("recent", "Order", "qa"));
+            Assert.Contains("Logs: 1 stored", Texts());
+
+            // the step details window takes a finished run's log from the database, into a temporary file named like the original
+            var request = new LoadTestingTool.UI.DashboardRequest("Create", "HTTP", "Order", "D1", "qa", "PASS", 10, "", "");
+            var fromDatabase = LoadTestingTool.UI.MainWindow.TryLogFromDatabase(selected, request, out var label);
+            Assert.NotNull(fromDatabase);
+            Assert.Equal("old log text", File.ReadAllText(fromDatabase!));
+            Assert.Contains("history database", label);
+            Assert.Equal("Order_qa_passed_20261126_100000_T1_I1_Run_recent.log", Path.GetFileName(fromDatabase));
+            Directory.Delete(Path.GetDirectoryName(fromDatabase)!, true);
+            Assert.Null(LoadTestingTool.UI.MainWindow.TryLogFromDatabase(selected, request with { Testcase = "Other" }, out _));      // no log for another testcase: the caller falls back to the file
+            selected.HistoryStorage = HistoryStorage.Files;
+            Assert.Null(LoadTestingTool.UI.MainWindow.TryLogFromDatabase(selected, request, out _));                                    // the old way never looks in the database
+            selected.HistoryStorage = HistoryStorage.Database;
+
             // replacing the live workbook needs a second click and keeps the replaced one aside
             File.WriteAllText(Path.Combine(inst, "DataEngine.xlsx"), "edited since");
             Click("Replace the live workbook with the shown run's copy");

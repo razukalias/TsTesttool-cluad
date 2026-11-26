@@ -156,6 +156,7 @@ internal static class Program
                     if (config.HistoryStorage != HistoryStorage.Database)
                         historyFiles = config.GenerateRowHistory ? historyWriter.WritePerTestcase(overall, workbook).ToArray() : Array.Empty<string>();
                     HistoryStores.SaveToDatabase(config, overall, runState, rerunOf, workbookContent);
+                    HistoryStores.SaveLogs(config, runId);
                     if (config.GenerateAggregateHistory && config.HistoryStorage != HistoryStorage.Database)
                     {
                         var aggregateFolder = Path.Combine(config.HistoryFolder, "_aggregate", overallResult);
@@ -290,6 +291,7 @@ internal static class Program
         processLogger.Dispose();
         var finalResult = local.Cancelled ? "cancelled" : failed ? "failed" : "passed";
         MoveInternalLog(logger.FilePath, Path.Combine(config.LogsFolder, string.Format(logStem, finalResult) + ".log"));
+        HistoryStores.LogFinished(config, testcase.Testcase, environment, finalResult, Path.Combine(config.LogsFolder, string.Format(logStem, finalResult) + ".log"));
         MoveInternalLog(processLogger.FilePath, Path.Combine(config.LogsFolder, string.Format(logStem, finalResult) + "_process.log"));
         if (Directory.Exists(resultFolder))
         {
@@ -390,6 +392,8 @@ internal static class Program
         if (instance.HistoryRetentionDays.HasValue) config.HistoryRetentionDays = instance.HistoryRetentionDays.Value;
         if (instance.HistoryRetentionRuns.HasValue) config.HistoryRetentionRuns = instance.HistoryRetentionRuns.Value;
         if (instance.HistoryRetentionMaxMb.HasValue) config.HistoryRetentionMaxMb = instance.HistoryRetentionMaxMb.Value;
+        if (instance.HistoryLogsInDatabase.HasValue) config.HistoryLogsInDatabase = instance.HistoryLogsInDatabase.Value;
+        if (instance.HistoryDeleteLogFiles.HasValue) config.HistoryDeleteLogFiles = instance.HistoryDeleteLogFiles.Value;
         if (!string.IsNullOrWhiteSpace(instance.TestcaseSelection)) config.TestcaseSelection = instance.TestcaseSelection;
         if (!string.IsNullOrWhiteSpace(instance.StepSelection)) config.StepSelection = instance.StepSelection;
         if (!string.IsNullOrWhiteSpace(instance.EnvironmentSelection)) config.EnvironmentSelection = instance.EnvironmentSelection;

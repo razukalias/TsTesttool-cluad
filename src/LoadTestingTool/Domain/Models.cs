@@ -22,6 +22,10 @@ public sealed class AppConfig
     public int HistoryRetentionRuns { get; set; }
     /// <summary>Database history: the oldest runs are removed until the data is at most this many megabytes (0 = no limit).</summary>
     public int HistoryRetentionMaxMb { get; set; }
+    /// <summary>Database history: the internal log of each testcase is copied into the database when the run ends (the step details window reads it from there).</summary>
+    public bool HistoryLogsInDatabase { get; set; } = true;
+    /// <summary>Database history: a log file is deleted after its text is stored in the database.</summary>
+    public bool HistoryDeleteLogFiles { get; set; }
     /// <summary>Database history: keep a copy of the workbook as it was for each run (identical copies are stored once).</summary>
     public bool HistorySnapshotWorkbook { get; set; } = true;
 
@@ -73,6 +77,8 @@ public sealed class CentralInstanceConfig
     public int? HistoryRetentionDays { get; set; }
     public int? HistoryRetentionRuns { get; set; }
     public int? HistoryRetentionMaxMb { get; set; }
+    public bool? HistoryLogsInDatabase { get; set; }
+    public bool? HistoryDeleteLogFiles { get; set; }
     public string? WorkspaceRoot { get; set; }
     public string? TestcaseSelection { get; set; }
     public string? StepSelection { get; set; }
