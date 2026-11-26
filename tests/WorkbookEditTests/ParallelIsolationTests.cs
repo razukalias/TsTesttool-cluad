@@ -252,4 +252,46 @@ public sealed class ParallelIsolationTests : IDisposable
         Assert.True(process.ExitCode == 0, output);
         Assert.Equal(3 * 2, _served);   // 2 steps per row run: dev x 1 row + prod x 2 rows; nothing else ran
     }
+
+    private async Task<(int ExitCode, string Output, string History)> RunProcess(Truth truth, int instance, string storage, params string[] extra)
+    {
+        File.WriteAllText(Path.Combine(truth.Folder, "appsettings.json"), System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["ExcelFilePath"] = truth.Workbook, ["TemplatesFolder"] = Path.Combine(truth.Folder, "Templates"), ["LogsFolder"] = Path.Combine(truth.Folder, "Logs"),
+            ["HistoryFolder"] = Path.Combine(truth.Folder, "History"), ["ResultsFolder"] = Path.Combine(truth.Folder, "Results"), ["WorkspaceRoot"] = truth.Folder,
+            ["Environments"] = Environments, ["HistoryStorage"] = storage, ["TestcaseSelection"] = "1",
+        }));
+        var start = new System.Diagnostics.ProcessStartInfo("dotnet") { WorkingDirectory = truth.Folder, RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var arg in new[] { typeof(AppConfig).Assembly.Location, "--config", Path.Combine(truth.Folder, "appsettings.json"), "--testcases", "1", "--dataids", $"1:I{instance}R001,I{instance}R002,I{instance}R003", "--environments-json", "[\"dev\"]" }.Concat(extra)) start.ArgumentList.Add(arg);
+        using var process = System.Diagnostics.Process.Start(start)!;
+        var output = await process.StandardOutput.ReadToEndAsync() + await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        return (process.ExitCode, output, Path.Combine(truth.Folder, "History"));
+    }
+
+    [Fact]
+    public async Task Storage_both_writes_workbooks_and_database_that_agree_and_database_only_writes_no_workbooks()
+    {
+        StartServer();
+        var truth = BuildInstance(5);
+        var both = await RunProcess(truth, 5, "Both");
+        Assert.True(both.ExitCode == 0, both.Output);
+        var store = new LoadTestingTool.Reporting.SqliteHistoryStore(both.History);
+        Assert.True(store.Exists, both.Output + "\n" + string.Join("\n", Directory.GetFileSystemEntries(both.History, "*", SearchOption.AllDirectories)));
+        Assert.Equal(3, store.ScanPage(0, 10).Rows.Count);
+        Assert.NotEmpty(Directory.GetFiles(both.History, "*.xlsx", SearchOption.AllDirectories));
+        Assert.Empty(store.CompareWithWorkbooks(both.History));
+
+        var onlyDatabase = BuildInstance(4);
+        var database = await RunProcess(onlyDatabase, 4, "Database");
+        Assert.True(database.ExitCode == 0, database.Output);
+        Assert.Empty(Directory.GetFiles(database.History, "*.xlsx", SearchOption.AllDirectories));
+        var rows = new LoadTestingTool.Reporting.SqliteHistoryStore(database.History).ScanPage(0, 10).Rows;
+        Assert.Equal(3, rows.Count);
+        // a re-run with the old data of that run reads it from the database, not from workbooks
+        var runId = rows[0].RunId;
+        var rerun = await RunProcess(onlyDatabase, 4, "Database", "--rerun-of", runId, "--rerun", "true");
+        Assert.True(rerun.ExitCode == 0, rerun.Output);
+        Assert.Equal(2, new LoadTestingTool.Reporting.SqliteHistoryStore(database.History).ScanPage(0, 10).Files);
+    }
 }

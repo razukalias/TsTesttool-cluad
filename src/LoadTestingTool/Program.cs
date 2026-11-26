@@ -80,10 +80,9 @@ internal static class Program
             var stopMonitor = MonitorStopFileAsync(stopFile, cancellation, stopMonitorCancellation.Token);
             using var http = new HttpClient(new HttpClientHandler { UseDefaultCredentials = true, AutomaticDecompression = DecompressionMethods.All }) { Timeout = Timeout.InfiniteTimeSpan };
             WorkbookModel workbook;
-            HistoryRunStateStore? historyState = null;
             try
             {
-                RunValueMemory.Active = new RunValueMemory(historyState = new HistoryRunStateStore(config.HistoryFolder, rerunOf));
+                RunValueMemory.Active = new RunValueMemory(HistoryStores.Reader(config.HistoryFolder, config.HistoryStorage).OpenRunState(rerunOf));
                 RunValueMemory.Active.BeginRead(reuse: false);
                 workbook = new WorkbookReader().Read(workbookPath);
             }
@@ -148,8 +147,10 @@ internal static class Program
                 try
                 {
                     var historyWriter = new HistoryWriter(config) { RunState = runState, RerunOf = rerunOf };
-                    historyFiles = config.GenerateRowHistory ? historyWriter.WritePerTestcase(overall, workbook).ToArray() : Array.Empty<string>();
-                    if (config.GenerateAggregateHistory)
+                    if (config.HistoryStorage != HistoryStorage.Database)
+                        historyFiles = config.GenerateRowHistory ? historyWriter.WritePerTestcase(overall, workbook).ToArray() : Array.Empty<string>();
+                    HistoryStores.SaveToDatabase(config, overall, runState, rerunOf);
+                    if (config.GenerateAggregateHistory && config.HistoryStorage != HistoryStorage.Database)
                     {
                         var aggregateFolder = Path.Combine(config.HistoryFolder, "_aggregate", overallResult);
                         var aggregateName = $"Execution_History_{InternalLogger.SafeFolderName(runId)}.xlsx";
@@ -378,6 +379,7 @@ internal static class Program
         if (instance.GenerateResults.HasValue) config.GenerateResults = instance.GenerateResults.Value;
         if (instance.GenerateAggregateHistory.HasValue) config.GenerateAggregateHistory = instance.GenerateAggregateHistory.Value;
         if (instance.GenerateRowHistory.HasValue) config.GenerateRowHistory = instance.GenerateRowHistory.Value;
+        if (instance.HistoryStorage.HasValue) config.HistoryStorage = instance.HistoryStorage.Value;
         if (!string.IsNullOrWhiteSpace(instance.TestcaseSelection)) config.TestcaseSelection = instance.TestcaseSelection;
         if (!string.IsNullOrWhiteSpace(instance.StepSelection)) config.StepSelection = instance.StepSelection;
         if (!string.IsNullOrWhiteSpace(instance.EnvironmentSelection)) config.EnvironmentSelection = instance.EnvironmentSelection;
