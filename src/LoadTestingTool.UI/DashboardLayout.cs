@@ -464,7 +464,7 @@ public sealed partial class MainWindow
         var item = instanceName is null ? _selectedInstance : _instances.FirstOrDefault(x => x.Name == instanceName);
         if (item is null) { _details.Text = "Select an instance first."; return; }
         var current = new Reporting.HistoryOptions(item.InternalLoggingEnabled, item.InternalLogErrorsOnly, item.GenerateAggregateHistory, item.GenerateRowHistory, item.SaveRequestBodyToHistory,
-            item.SaveResponseBodyToHistory, item.MaskSensitiveData, item.HistoryDetail, item.HistorySampleEvery, new Dictionary<string, bool>(item.HistorySheets, StringComparer.OrdinalIgnoreCase));
+            item.SaveResponseBodyToHistory, item.MaskSensitiveData, item.HistoryDetail, item.HistorySampleEvery, new Dictionary<string, bool>(item.HistorySheets, StringComparer.OrdinalIgnoreCase), item.HistoryStorage);
         var window = new HistoryLogsWindow(item.Name, current, Reporting.HistoryProfiles.RunIsLarge(1, item.Iterations, item.MaxParallelRows));
         window.Closed += (_, _) =>
         {
@@ -473,6 +473,9 @@ public sealed partial class MainWindow
             item.GenerateAggregateHistory = chosen.AggregateHistory; item.GenerateRowHistory = chosen.RowHistory;
             item.SaveRequestBodyToHistory = chosen.SaveRequestBodies; item.SaveResponseBodyToHistory = chosen.SaveResponseBodies; item.MaskSensitiveData = chosen.MaskSensitive;
             item.HistoryDetail = chosen.Detail; item.HistorySampleEvery = chosen.SampleEvery;
+            item.HistoryStorage = chosen.Storage;
+            if (chosen.Storage != HistoryStorage.Files)
+                try { new SqliteHistoryStore(item.HistoryFolder).EnsureCreated(); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException) { _details.Text = $"The history database could not be created: {ex.Message}"; }
             foreach (var sheet in chosen.Sheets) item.HistorySheets[sheet.Key] = sheet.Value;
             SaveInstanceReportingSettings(item, true);
         };
@@ -665,7 +668,7 @@ public sealed partial class MainWindow
             editor.Shell.RunHandler = RunFromEditorAsync;
             editor.Shell.EnvironmentSettings = new EditorEnvironmentSettings(this);
             editor.Shell.HistoryHandler = LaunchHistoryWorkspace;
-            editor.Shell.RerunContextProvider = name => _instances.FirstOrDefault(x => x.Name == name) is { } target ? new DataEditor.RerunContext(target.HistoryFolder, target.EnvironmentOptions.ToList()) : null;
+            editor.Shell.RerunContextProvider = name => _instances.FirstOrDefault(x => x.Name == name) is { } target ? new DataEditor.RerunContext(target.HistoryFolder, target.EnvironmentOptions.ToList(), target.HistoryStorage) : null;
             editor.Shell.WorkbookSaved += path => Dispatcher.UIThread.Post(() => _ = RevalidateAfterSaveAsync(path));
             editor.Shell.RunDetails = new EditorRunDetails(this);
             _hostWindow = editor;
@@ -1241,6 +1244,71 @@ public sealed partial class MainWindow
         return new StackPanel { Spacing = 4, Children = { DashboardStyle.Text("Legacy assertion functions (disabled)", 13, true), buttons } };
     }
 
+    private readonly CalendarDatePicker _importFrom = new() { Watermark = "From (optional)", Width = 160 };
+    private readonly CalendarDatePicker _importTo = new() { Watermark = "To (optional)", Width = 160 };
+    private readonly TextBox _importFolder = new() { MinWidth = 340, Watermark = "Folder with old history workbooks" };
+    private readonly ProgressBar _importBar = new() { Minimum = 0, Maximum = 1, Height = 6, IsVisible = false };
+    private readonly TextBlock _importText = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = DashboardStyle.Muted };
+    private bool _importing;
+
+    /// <summary>The history database of the selected instance: what it holds, and the functions that fill it from old history workbooks and compare it with them.</summary>
+    private Control HistoryDatabaseSection(InstanceInfo item)
+    {
+        // the controls are kept between refreshes (an import keeps reporting into them), so they leave the previous section before they join the new one
+        foreach (var kept in new Control[] { _importFolder, _importFrom, _importTo, _importBar, _importText }) if (kept.Parent is Panel owner) owner.Children.Remove(kept);
+        var store = new SqliteHistoryStore(item.HistoryFolder);
+        var storage = item.HistoryStorage switch { HistoryStorage.Both => "database and workbooks", HistoryStorage.Database => "database only", _ => "history workbooks only" };
+        string held;
+        try { var s = store.Summary(); held = store.Exists ? $"{s.Runs} runs, {s.Rows} rows{(s.Newest is { } n ? $", newest {n.ToLocalTime():yyyy-MM-dd HH:mm}" : "")}, {s.Bytes / 1024.0 / 1024.0:0.0} MB" : "not created yet"; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException) { held = $"cannot be read: {ex.Message}"; }
+        if (string.IsNullOrWhiteSpace(_importFolder.Text) || _importFolder.Tag as string != item.HistoryFolder) { _importFolder.Text = item.HistoryFolder; _importFolder.Tag = item.HistoryFolder; }   // a new instance (folder) starts from its own History folder
+
+        Control Fix(Control control, double width) { control.Width = width; return control; }
+        var import = DashboardStyle.Action("Import runs", () => _ = RunImportAsync(item, compare: false), "primary");
+        var compare = DashboardStyle.Action("Compare with workbooks", () => _ = RunImportAsync(item, compare: true));
+        var panel = new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                KeyValue("Stored in", storage), KeyValue("Database", $"{store.Path_}  ({held})"),
+                DashboardStyle.Text("Copy runs of old history workbooks into the database, from one date to another. Runs already in the database are skipped, and the workbooks are not changed.", 12, false, DashboardStyle.Muted),
+                _importFolder,
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _importFrom, _importTo, import, compare } },
+                _importBar, _importText,
+            }
+        };
+        return new StackPanel { Spacing = 6, Children = { DashboardStyle.Section("History database"), DashboardStyle.Card(panel, new Thickness(12, 10)) } };
+    }
+
+    private async Task RunImportAsync(InstanceInfo item, bool compare)
+    {
+        if (_importing) { _importText.Text = "An import is already running."; return; }
+        var folder = _importFolder.Text?.Trim() ?? "";
+        if (!Directory.Exists(folder)) { _importText.Text = "That folder does not exist."; return; }
+        var from = _importFrom.SelectedDate?.Date; var to = _importTo.SelectedDate?.Date;
+        if (from is { } f && to is { } t && f > t) { _importText.Text = "The From date is after the To date."; return; }
+        _importing = true; _importBar.IsVisible = true; _importBar.Value = 0;
+        var store = new SqliteHistoryStore(item.HistoryFolder);
+        try
+        {
+            if (compare)
+            {
+                _importText.Text = "Comparing…";
+                var differences = await Task.Run(() => store.CompareWithWorkbooks(folder));
+                _importText.Text = differences.Count == 0 ? "The database and the workbooks agree." : $"{differences.Count} differences, for example:\n" + string.Join("\n", differences.Take(8));
+            }
+            else
+            {
+                var progress = new Progress<(int Done, int Total, string File)>(p => { _importBar.Value = p.Total == 0 ? 1 : (double)p.Done / p.Total; _importText.Text = p.File.Length == 0 ? "Finishing…" : $"Reading {p.File} ({p.Done + 1} of {p.Total})"; });
+                var result = await Task.Run(() => store.ImportWorkbooks(folder, from, to, progress));
+                _importText.Text = $"Read {result.Files} workbooks: {result.RunsAdded} runs added, {result.RunsSkipped} already there." + (result.Problems.Count > 0 ? $" {result.Problems.Count} could not be read: {result.Problems[0]}" : "");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException) { _importText.Text = $"Failed: {ex.Message}"; }
+        finally { _importing = false; _importBar.IsVisible = false; Dispatcher.UIThread.Post(RefreshArtifacts); }
+    }
+
     private void RefreshArtifacts()
     {
         _artifactPanel.Children.Clear(); var item = _selectedInstance;
@@ -1261,6 +1329,7 @@ public sealed partial class MainWindow
             OpenFolder(item.ResultsFolder, "results folder");
         }));
         _artifactPanel.Children.Add(openButtons);
+        _artifactPanel.Children.Add(HistoryDatabaseSection(item));
         _artifactPanel.Children.Add(LegacyAssertionTools());
         _artifactPanel.Children.Add(DashboardStyle.Section("Locations"));
         _artifactPanel.Children.Add(DashboardStyle.Card(new StackPanel { Spacing = 6, Children = { KeyValue("Workbook", item.WorkbookPath), KeyValue("Results", item.ResultsFolder), KeyValue("Current run", item.CurrentRunFolder) } }, new Thickness(12, 10)));

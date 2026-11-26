@@ -32,6 +32,23 @@ public class HistoryLogsWindowTests
     }
 
     [AvaloniaFact]
+    public void The_storage_choice_is_saved_and_a_profile_change_does_not_reset_it()
+    {
+        var window = new HistoryLogsWindow("Demo", Functional() with { Storage = HistoryStorage.Both }, largeRun: false);
+        window.Show();
+        var storage = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<ComboBox>().First(c => c.ItemsSource is string[] items && items.Any(i => i.StartsWith("Database only")));
+        Assert.Equal(1, storage.SelectedIndex);                       // opened on "Database and workbooks"
+
+        var profile = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<ComboBox>().First(c => c.ItemsSource is string[] names && names.Contains(HistoryProfiles.LoadTest));
+        profile.SelectedItem = HistoryProfiles.LoadTest;              // loading a profile keeps where history is kept
+        Assert.Equal(1, storage.SelectedIndex);
+
+        storage.SelectedIndex = 2;
+        Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<Button>().First(b => b.Content?.ToString() == "Save").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(HistoryStorage.Database, window.Result!.Storage);
+    }
+
+    [AvaloniaFact]
     public void Changing_any_single_option_turns_the_profile_into_Custom()
     {
         var window = new HistoryLogsWindow("Demo", Functional(), largeRun: false);

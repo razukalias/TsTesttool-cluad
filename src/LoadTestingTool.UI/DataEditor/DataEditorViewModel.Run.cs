@@ -356,4 +356,4 @@ public sealed partial class DataEditorViewModel
 }
 
 /// <summary>Where an instance's history is and which environments it can run in.</summary>
-public sealed record RerunContext(string HistoryFolder, IReadOnlyList<string> Environments);
+public sealed record RerunContext(string HistoryFolder, IReadOnlyList<string> Environments, LoadTestingTool.Reporting.HistoryStorage Storage = LoadTestingTool.Reporting.HistoryStorage.Files);

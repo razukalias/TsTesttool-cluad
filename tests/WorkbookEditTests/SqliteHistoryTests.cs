@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using System.Diagnostics;
 using ClosedXML.Excel;
 using LoadTestingTool.Domain;
@@ -171,5 +172,26 @@ public sealed class SqliteHistoryTests : IDisposable
         _output.WriteLine($"read run list ({rowsRead} rows): {read.TotalMilliseconds:0} ms; read the old data of {rows} rows: {readState.TotalMilliseconds:0} ms");
         Assert.Equal(rows, oldData.Rows.Count);
         Assert.True(sixIntoOne < TimeSpan.FromSeconds(60), $"six runs into one file took {sixIntoOne}");
+    }
+}
+
+public sealed class HistoryStorageSettingTests
+{
+    [Fact]
+    public void The_storage_is_read_from_the_settings_file_for_the_whole_app_and_for_one_instance()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), $"sqlset-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(folder);
+        try
+        {
+            File.WriteAllText(Path.Combine(folder, "appsettings.json"), "{ \"HistoryStorage\": \"Database\", \"Instances\": { \"Demo\": { \"HistoryStorage\": \"Both\" }, \"Other\": { } } }");
+            var config = new AppConfig();
+            new ConfigurationBuilder().AddJsonFile(Path.Combine(folder, "appsettings.json")).Build().Bind(config);
+            Assert.Equal(HistoryStorage.Database, config.HistoryStorage);
+            Assert.Equal(HistoryStorage.Both, config.Instances["Demo"].HistoryStorage);
+            Assert.Null(config.Instances["Other"].HistoryStorage);                      // not set: the app-wide choice applies
+            Assert.Equal(HistoryStorage.Files, new AppConfig().HistoryStorage);         // the default changes nothing for existing instances
+        }
+        finally { Directory.Delete(folder, true); }
     }
 }

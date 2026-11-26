@@ -48,6 +48,7 @@ public sealed class UiInstanceDefinition
     public bool? GenerateResults { get; set; }
     public bool? GenerateAggregateHistory { get; set; }
     public bool? GenerateRowHistory { get; set; }
+    public LoadTestingTool.Reporting.HistoryStorage? HistoryStorage { get; set; }
     public bool? InternalLoggingEnabled { get; set; }
     public bool? SaveRequestBodyToHistory { get; set; }
     public bool? SaveResponseBodyToHistory { get; set; }

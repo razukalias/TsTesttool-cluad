@@ -110,6 +110,20 @@ public sealed class SqliteHistoryStore : IHistoryStore
         Store(stored);
     }
 
+    /// <summary>Creates the (empty) database file with its tables when it is not there yet.</summary>
+    public void EnsureCreated() { using var connection = Open(); }
+
+    /// <summary>What the database holds: runs, rows, the newest run's start and the file size.</summary>
+    public (int Runs, int Rows, DateTimeOffset? Newest, long Bytes) Summary()
+    {
+        if (!Exists) return (0, 0, null, 0);
+        using var connection = Open();
+        var runs = Convert.ToInt32(Scalar(connection, "SELECT COUNT(*) FROM runs"), CultureInfo.InvariantCulture);
+        var rows = Convert.ToInt32(Scalar(connection, "SELECT COUNT(*) FROM rows"), CultureInfo.InvariantCulture);
+        var newest = Scalar(connection, "SELECT started_at FROM runs ORDER BY started_ticks DESC LIMIT 1") as string;
+        return (runs, rows, newest is null ? null : DateTimeOffset.Parse(newest, CultureInfo.InvariantCulture), new FileInfo(_path).Length);
+    }
+
     internal bool Contains(string runId)
     {
         using var connection = Open();

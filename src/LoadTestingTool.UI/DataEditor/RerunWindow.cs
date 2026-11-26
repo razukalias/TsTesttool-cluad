@@ -119,8 +119,8 @@ public sealed class RerunWindow : Window
     /// <summary>Reads the next page of history workbooks off the UI thread and refreshes the run list.</summary>
     private async Task LoadPageAsync()
     {
-        var folder = _context.HistoryFolder; var skip = _filesScanned;
-        var (rows, files) = await Task.Run(() => RunHistoryIndex.ScanPage(folder, skip, PageSize));
+        var store = HistoryStores.Reader(_context.HistoryFolder, _context.Storage); var skip = _filesScanned;
+        var (rows, files) = await Task.Run(() => store.ScanPage(skip, PageSize));
         _filesScanned += files;
         _scanned.AddRange(rows);
         _history = _scanned.Where(r => r.TestcaseIndex == _testcase.Index).ToList();

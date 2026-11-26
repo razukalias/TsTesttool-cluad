@@ -5,7 +5,7 @@ namespace LoadTestingTool.Reporting;
 /// <summary>What a history/log profile sets. Profiles are chosen by hand; "Custom" is what any other combination is called.</summary>
 public sealed record HistoryOptions(
     bool InternalLog, bool InternalLogErrorsOnly, bool AggregateHistory, bool RowHistory, bool SaveRequestBodies, bool SaveResponseBodies, bool MaskSensitive,
-    string Detail, int SampleEvery, IReadOnlyDictionary<string, bool> Sheets);
+    string Detail, int SampleEvery, IReadOnlyDictionary<string, bool> Sheets, HistoryStorage Storage = HistoryStorage.Files);
 
 public static class HistoryProfiles
 {

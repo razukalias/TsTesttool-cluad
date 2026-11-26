@@ -16,6 +16,7 @@ public sealed class HistoryLogsWindow : Window
     private readonly CheckBox _internalLog = new() { Content = "Internal log" };
     private readonly CheckBox _errorsOnly = new() { Content = "Errors and warnings only", Margin = new Thickness(22, 0, 0, 0) };
     private readonly CheckBox _aggregate = new() { Content = "Aggregate history (one workbook for the whole run)" };
+    private readonly ComboBox _storage = new() { ItemsSource = new[] { "History workbooks only (default)", "Database and workbooks (compare the two)", "Database only (fast, no history workbooks)" }, MinWidth = 330 };
     private readonly CheckBox _rowHistory = new() { Content = "Row history (one workbook per data row)" };
     private readonly CheckBox _requestBodies = new() { Content = "Save request bodies" };
     private readonly CheckBox _responseBodies = new() { Content = "Save response bodies" };
@@ -39,7 +40,7 @@ public sealed class HistoryLogsWindow : Window
         Background = Brush.Parse("#0B1626");
 
         _profile.ItemsSource = new[] { HistoryProfiles.Functional, HistoryProfiles.Debug, HistoryProfiles.LoadTest, HistoryProfiles.Custom };
-        _profile.SelectionChanged += (_, _) => { if (!_loading && _profile.SelectedItem is string name && name != HistoryProfiles.Custom) Load(HistoryProfiles.For(name, (int)(_sample.Value ?? HistoryProfiles.DefaultSampleEvery))); };
+        _profile.SelectionChanged += (_, _) => { if (!_loading && _profile.SelectedItem is string name && name != HistoryProfiles.Custom) Load(HistoryProfiles.For(name, (int)(_sample.Value ?? HistoryProfiles.DefaultSampleEvery)) with { Storage = StorageChosen() }); };
 
         var sheetPanel = new StackPanel { Spacing = 2 };
         foreach (var name in UiHistorySheetCatalog.Names)
@@ -56,6 +57,8 @@ public sealed class HistoryLogsWindow : Window
             Spacing = 6,
             Children =
             {
+                new StackPanel { Spacing = 4, Children = { new TextBlock { Text = "Where history is kept", FontWeight = FontWeight.SemiBold }, _storage,
+                    new TextBlock { Text = "The database is one history.sqlite file in the instance's History folder: faster to write and to search, used by Re-run. Use \"Database and workbooks\" first and compare in Overview > Artifacts.", TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = Brush.Parse("#9FB3C8") } } },
                 Row(_internalLog, "Writes a detailed text log of the run (one file per run in the instance's Logs folder). Useful for finding why something failed; it slows a very large run down."),
                 Row(_errorsOnly, "Keeps only warnings and errors in the internal log. The default for load tests."),
                 Row(_aggregate, "Writes one history workbook for the whole run, with the summary sheets."),
@@ -70,6 +73,7 @@ public sealed class HistoryLogsWindow : Window
         foreach (var box in new[] { _internalLog, _errorsOnly, _aggregate, _rowHistory, _requestBodies, _responseBodies, _mask }.Concat(_sheets.Values))
             box.IsCheckedChanged += (_, _) => Changed();
         _detail.SelectionChanged += (_, _) => Changed();
+        _storage.SelectionChanged += (_, _) => Changed();
         _sample.ValueChanged += (_, _) => Changed();
 
         var save = new Button { Content = "Save", Classes = { "primary" }, MinHeight = 34, MinWidth = 96 };
@@ -101,16 +105,19 @@ public sealed class HistoryLogsWindow : Window
         _requestBodies.IsChecked = options.SaveRequestBodies; _responseBodies.IsChecked = options.SaveResponseBodies; _mask.IsChecked = options.MaskSensitive;
         _detail.SelectedIndex = options.Detail.Equals(HistoryProfiles.DetailFailedAndSample, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
         _sample.Value = options.SampleEvery;
+        _storage.SelectedIndex = options.Storage switch { HistoryStorage.Both => 1, HistoryStorage.Database => 2, _ => 0 };
         foreach (var (name, box) in _sheets) box.IsChecked = (!options.Sheets.TryGetValue(name, out var on) || on);
         _loading = false;
         Changed();
     }
 
+    private HistoryStorage StorageChosen() => _storage.SelectedIndex switch { 1 => HistoryStorage.Both, 2 => HistoryStorage.Database, _ => HistoryStorage.Files };
+
     private HistoryOptions Read() => new(
         _internalLog.IsChecked == true, _internalLog.IsChecked == true && _errorsOnly.IsChecked == true, _aggregate.IsChecked == true, _rowHistory.IsChecked == true,
         _requestBodies.IsChecked == true, _responseBodies.IsChecked == true, _mask.IsChecked == true,
         _detail.SelectedIndex == 1 ? HistoryProfiles.DetailFailedAndSample : HistoryProfiles.DetailAll, (int)Math.Max(1, _sample.Value ?? HistoryProfiles.DefaultSampleEvery),
-        _sheets.ToDictionary(p => p.Key, p => p.Value.IsChecked == true, StringComparer.OrdinalIgnoreCase));
+        _sheets.ToDictionary(p => p.Key, p => p.Value.IsChecked == true, StringComparer.OrdinalIgnoreCase), StorageChosen());
 
     private void Changed()
     {

@@ -122,6 +122,31 @@ public class RerunWindowPagingTests
     }
 
     [AvaloniaFact]
+    public void With_the_database_as_storage_the_window_lists_the_runs_and_failed_rows_of_the_database()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "rerun-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var run = new RunResult { RunId = "runDb", StartedAt = DateTimeOffset.Now, EndedAt = DateTimeOffset.Now };
+            foreach (var (data, status) in new[] { ("d1", 200), ("d2", 500), ("d3", 200) })
+            {
+                var testcase = new TestcaseResult { TestcaseIndex = 1, Testcase = "Order", DataId = data, Iteration = 1, Environment = "qa", StartedAt = DateTimeOffset.Now, EndedAt = DateTimeOffset.Now };
+                testcase.Requests.Add(new RequestResult { Testcase = "Order", StepName = "Create", HttpStatus = status });
+                run.Testcases.Add(testcase);
+            }
+            new LoadTestingTool.Reporting.SqliteHistoryStore(folder).SaveRun(run, null, null);   // no history workbook at all
+            Assert.Empty(Directory.GetFiles(folder, "*.xlsx"));
+            var window = new RerunWindow(new TestcaseItem(new TestcaseInfo(1, "Order", ["Create"]), 3), new RerunContext(folder, ["qa"], LoadTestingTool.Reporting.HistoryStorage.Database));
+            window.Show();
+            Wait(window);
+            var list = window.GetVisualDescendantsOf<ListBox>().First(l => (string?)l.Tag == "rerun-rows");
+            Assert.Equal(1, list.ItemCount);                 // only d2 failed
+            window.Close();
+        }
+        finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+    }
+
+    [AvaloniaFact]
     public void Steps_that_passed_in_the_failed_rows_are_listed_but_unticked()
     {
         var folder = Path.Combine(Path.GetTempPath(), "rerun-" + Guid.NewGuid().ToString("N"));

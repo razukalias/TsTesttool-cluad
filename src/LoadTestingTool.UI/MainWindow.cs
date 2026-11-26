@@ -36,6 +36,7 @@ public sealed class InstanceInfo
     public bool GenerateResults { get; set; } = true;
     public bool GenerateAggregateHistory { get; set; }
     public bool GenerateRowHistory { get; set; } = true;
+    public Reporting.HistoryStorage HistoryStorage { get; set; } = Reporting.HistoryStorage.Files;
     public bool InternalLoggingEnabled { get; set; } = true;
     public bool SaveRequestBodyToHistory { get; set; } = true;
     public bool SaveResponseBodyToHistory { get; set; } = true;
@@ -416,6 +417,7 @@ public sealed partial class MainWindow : Window
                 item.GenerateResults = centralInstance.GenerateResults ?? _config.GenerateResults;
                 item.GenerateAggregateHistory = centralInstance.GenerateAggregateHistory ?? false;
                 item.GenerateRowHistory = centralInstance.GenerateRowHistory ?? true;
+                item.HistoryStorage = centralInstance.HistoryStorage ?? Reporting.HistoryStorage.Files;
                 item.InternalLoggingEnabled = centralInstance.InternalLoggingEnabled ?? true;
                 item.SaveRequestBodyToHistory = centralInstance.SaveRequestBodyToHistory ?? true;
                 item.SaveResponseBodyToHistory = centralInstance.SaveResponseBodyToHistory ?? true;
@@ -574,6 +576,7 @@ public sealed partial class MainWindow : Window
             instance["GenerateResults"] = item.GenerateResults;
             instance["GenerateAggregateHistory"] = item.GenerateAggregateHistory;
             instance["GenerateRowHistory"] = item.GenerateRowHistory;
+            instance["HistoryStorage"] = item.HistoryStorage.ToString();
             instance["InternalLoggingEnabled"] = item.InternalLoggingEnabled;
             instance["SaveRequestBodyToHistory"] = item.SaveRequestBodyToHistory;
             instance["SaveResponseBodyToHistory"] = item.SaveResponseBodyToHistory;
@@ -591,6 +594,7 @@ public sealed partial class MainWindow : Window
                 central.GenerateResults = item.GenerateResults;
                 central.GenerateAggregateHistory = item.GenerateAggregateHistory;
                 central.GenerateRowHistory = item.GenerateRowHistory;
+                central.HistoryStorage = item.HistoryStorage;
                 central.InternalLoggingEnabled = item.InternalLoggingEnabled;
                 central.SaveRequestBodyToHistory = item.SaveRequestBodyToHistory;
                 central.SaveResponseBodyToHistory = item.SaveResponseBodyToHistory;
