@@ -1082,3 +1082,4 @@ To add:
   4. One-time import of existing history `.xlsx` files, or keep reading them for re-run only.
 - Keep as files: logs and `events_*.ndjson` (appended line by line, a database adds little).
 - Open questions: one database per instance or one central file; backup/corruption handling; retention default; do the dashboard history views read the database or still the workbooks.
+- Decisions so far (discussion 2026-11-26): database stays local, one per instance; shared-folder use through export/import of a run (single file, imported by run id); Excel export button wanted; bodies compressed + retention setting (sizes still to be measured); logs: question open (files during the run, optionally attached to the run in the database afterwards).
