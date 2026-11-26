@@ -294,4 +294,28 @@ public sealed class ParallelIsolationTests : IDisposable
         Assert.True(rerun.ExitCode == 0, rerun.Output);
         Assert.Equal(2, new LoadTestingTool.Reporting.SqliteHistoryStore(database.History).ScanPage(0, 10).Files);
     }
+
+    [Fact]
+    public async Task Both_mode_over_several_runs_and_a_rerun_keeps_workbooks_and_database_in_agreement()
+    {
+        StartServer();
+        var truth = BuildInstance(3);
+        var store = new LoadTestingTool.Reporting.SqliteHistoryStore(Path.Combine(truth.Folder, "History"));
+        var first = await RunProcess(truth, 3, "Both");
+        Assert.True(first.ExitCode == 0, first.Output);
+        Assert.Empty(store.CompareWithWorkbooks(first.History));
+        var runId = store.ScanPage(0, 10).Rows[0].RunId;
+
+        var second = await RunProcess(truth, 3, "Both", "--rerun-of", runId, "--rerun", "true");    // a re-run with the old data of the first run
+        Assert.True(second.ExitCode == 0, second.Output);
+        Assert.Empty(store.CompareWithWorkbooks(second.History));
+
+        var third = await RunProcess(truth, 3, "Both");
+        Assert.True(third.ExitCode == 0, third.Output);
+        var differences = store.CompareWithWorkbooks(third.History);
+        Assert.True(differences.Count == 0, string.Join("\n", differences.Take(10)));
+        Assert.Equal(3, store.ScanPage(0, 10).Files);
+        Assert.Equal(9, store.ScanPage(0, 10).Rows.Count);          // 3 runs x 3 rows
+        Assert.Equal(runId, store.ScanPage(0, 10).Rows.Single(r => r.RerunOf is not null && r.DataId == "I3R001").RerunOf);
+    }
 }
