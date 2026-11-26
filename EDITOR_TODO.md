@@ -1083,3 +1083,8 @@ To add:
 - Keep as files: logs and `events_*.ndjson` (appended line by line, a database adds little).
 - Open questions: one database per instance or one central file; backup/corruption handling; retention default; do the dashboard history views read the database or still the workbooks.
 - Decisions so far (discussion 2026-11-26): database stays local, one per instance; shared-folder use through export/import of a run (single file, imported by run id); Excel export button wanted; bodies compressed + retention setting (sizes still to be measured); logs: question open (files during the run, optionally attached to the run in the database afterwards).
+
+## One earlier-run choice for the table and the dashboard (not started)
+- Today the dashboard's "Run" drop-down (Overview, Run Summary, Assertions, Environments, Artifacts) replays a saved run's events into the dashboard only; the editor table's cell marks always come from the latest run (`RunResultsReader.ReadLatest`).
+- Wanted: one shared run choice per instance. Picking an earlier run shows it everywhere: the dashboard tabs and the table (red/green/yellow marks, extra columns, failed/passed filters, failed-cells view). Both places show a drop-down bound to the same choice, and the table says "Showing run from <time>, not the latest" when it is not the latest.
+- Details to settle: while a run is going the choice follows the live run; "Show the latest run" resets both; Re-run and "Run" actions keep working on the workbook, not on the shown run; new results must not overwrite an earlier run that is being shown.
