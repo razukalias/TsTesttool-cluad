@@ -196,6 +196,7 @@ public sealed partial class MainWindow : Window
         Height = 700;
         _config = LoadConfig();
         UiLog("UI started.");
+        DataEditor.ShownRunChoice.Subscribe(this, static (window, key, runId) => window.OnShownRunChosen(key, runId));
         BuildLayout();
         RefreshInstances();
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
@@ -710,6 +711,7 @@ public sealed partial class MainWindow : Window
             var selection = string.IsNullOrWhiteSpace(item.TestcaseSelection) ? "0" : item.TestcaseSelection;
             item.CurrentRunId = $"{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}"[..25];
             item.CurrentRunFolder = item.GenerateResults ? item.ResultsFolder : item.LogsFolder;
+            DataEditor.ShownRunChoice.Set(item.ResultsFolder, null);   // a new run is shown live, in the dashboard and the table
             var environments = item.EnvironmentSelection;
             if (!string.IsNullOrWhiteSpace(item.SelectionReadError)) throw new InvalidDataException(item.SelectionReadError);
             var draft = new RunSelectionDraft(item.TestcaseOptions, item.EnvironmentOptions, selection, item.StepSelectionJson, environments, item.EnvironmentSelectionJson);

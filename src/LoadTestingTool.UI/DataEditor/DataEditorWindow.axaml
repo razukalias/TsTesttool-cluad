@@ -463,6 +463,12 @@
                 </Button>
                 <ComboBox Tag="environment-filter" ItemsSource="{Binding EnvironmentOptions}" SelectedItem="{Binding EnvironmentChoice, Mode=TwoWay}" IsVisible="{Binding HasEnvironmentChoice}" IsEnabled="{Binding HasResults}" MinWidth="150" ToolTip.Tip="Which environment the failed rows, columns and cells and the red marks refer to. The run covers several environments; All environments mixes them" />
               </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,14,8" VerticalAlignment="Center" IsVisible="{Binding HasRunOptions}">
+                <TextBlock Text="Run" Foreground="#8EA4BC" VerticalAlignment="Center" />
+                <ComboBox Tag="table-run" ItemsSource="{Binding RunOptions}" SelectedItem="{Binding RunChoice, Mode=TwoWay}" MinWidth="230" MinHeight="36" ToolTip.Tip="Which run the table shows. The same choice as the dashboard's Run drop-down: pick an earlier run and both show it" />
+                <Button Tag="table-run-latest" Content="Show the latest run" Command="{Binding ShowLatestRunCommand}" IsVisible="{Binding ShowingEarlierRun}" MinHeight="36" />
+                <TextBlock Text="{Binding EarlierRunText}" IsVisible="{Binding ShowingEarlierRun}" Foreground="#F6A623" VerticalAlignment="Center" />
+              </StackPanel>
               <Button Content="Find &amp; replace" Command="{Binding OpenFindCommand}" Margin="0,0,8,8" MinHeight="36" />
               <Button Content="+ Column" Tag="add-column" Command="{Binding OpenAddColumnCommand}" Margin="0,0,8,8" MinHeight="36" ToolTip.Tip="Add a request (variable) or expected-value column for a step of this testcase, even a step that has no columns yet" />
               <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,8,8">

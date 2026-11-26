@@ -5,7 +5,7 @@ namespace LoadTestingTool.UI;
 /// <summary>An earlier run of an instance that left an event file, listed by the date and time it started.</summary>
 public sealed record SavedRun(string RunId, string Folder, DateTime When)
 {
-    public string Label => $"{When:yyyy-MM-dd HH:mm:ss}  ·  {(RunId.Length <= 8 ? RunId : RunId[^8..])}";
+    public string Label => DataEditor.RunLabel.Of(RunId, When);
 }
 
 public partial class MainWindow
@@ -54,6 +54,20 @@ public partial class MainWindow
         item.CurrentRunFolder = run.Folder;
         UiLog($"Loading a saved run. instance={item.Name}; runId={run.RunId}; folder={run.Folder}");
         ReadEvents(item);   // replays the event file now, so the panel is complete when it redraws
+        // The table follows: it shows this run too (no choice = the newest run)
+        DataEditor.ShownRunChoice.Set(item.ResultsFolder, SavedRuns(item).FirstOrDefault()?.RunId.Equals(run.RunId, StringComparison.OrdinalIgnoreCase) == true ? null : run.RunId);
         return true;
+    }
+
+    /// <summary>The table's Run drop-down (or "Show the latest run") changed the shared choice: show that run in the dashboard too.</summary>
+    private void OnShownRunChosen(string resultsFolderKey, string? runId)
+    {
+        if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess()) { Avalonia.Threading.Dispatcher.UIThread.Post(() => OnShownRunChosen(resultsFolderKey, runId)); return; }
+        var item = _instances.FirstOrDefault(i => DataEditor.ShownRunChoice.Same(i.ResultsFolder, resultsFolderKey));
+        if (item is null || item.Process is { HasExited: false }) return;
+        var runs = SavedRuns(item);
+        var run = runId is null ? runs.FirstOrDefault() : runs.FirstOrDefault(r => r.RunId.Equals(runId, StringComparison.OrdinalIgnoreCase));
+        if (run is null || run.RunId.Equals(item.CurrentRunId, StringComparison.OrdinalIgnoreCase)) return;
+        if (LoadSavedRun(item, run) && ReferenceEquals(item, _selectedInstance)) RefreshDashboardDetails(true);
     }
 }

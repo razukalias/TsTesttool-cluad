@@ -121,6 +121,15 @@ public sealed class RunResults
 {
     public string RunId { get; init; } = string.Empty;
     public DateTime WhenLocal { get; init; }
+
+    /// <summary>The newest run on disk; differs from <see cref="RunId"/> when an earlier run is shown.</summary>
+    public string LatestRunId { get; init; } = string.Empty;
+
+    /// <summary>True when the shown run is not the newest one (the shared run choice points at an earlier run).</summary>
+    public bool IsEarlierRun => LatestRunId.Length > 0 && !string.Equals(RunId, LatestRunId, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Every run found in the Results folder, newest first.</summary>
+    public IReadOnlyList<RunChoice> Runs { get; init; } = [];
     public IReadOnlyDictionary<(int Testcase, string DataId), RowOutcome> Rows { get; init; } = new Dictionary<(int, string), RowOutcome>();
 
     /// <summary>Every environment the run covered (empty when the events carry no environment names).</summary>
@@ -145,7 +154,7 @@ public static class RunResultsReader
     private const int MaxEarlierRuns = 100;
 
     /// <summary>Summarises the most recently written run, or returns null when there are no results.</summary>
-    public static RunResults? ReadLatest(string resultsFolder)
+    public static RunResults? ReadLatest(string resultsFolder, string? asOfRunId = null)
     {
         if (!Directory.Exists(resultsFolder)) return null;
         var files = Directory.EnumerateFiles(resultsFolder, "events_*.ndjson", SearchOption.AllDirectories)
@@ -157,6 +166,14 @@ public static class RunResultsReader
         // Files of one run share the run ID in their name; take the run whose newest file is most recent.
         var runs = files.GroupBy(f => RunIdOf(f.Name)).Select(g => (RunId: g.Key, Files: g.ToList(), Newest: g.Max(f => f.LastWriteTimeUtc), Bytes: g.Sum(f => f.Length)))
             .OrderByDescending(r => r.Newest).ToList();
+        var newestRunId = runs[0].RunId;
+        var choices = runs.Select(r => new RunChoice(r.RunId, RunLabel.WhenOf(r.RunId, r.Newest.ToLocalTime()))).ToList();
+        // The shared run choice: an earlier run is shown as if it were the newest one; the runs after it are ignored.
+        if (!string.IsNullOrWhiteSpace(asOfRunId))
+        {
+            var at = runs.FindIndex(r => r.RunId.Equals(asOfRunId, StringComparison.OrdinalIgnoreCase));
+            if (at > 0) runs = runs.Skip(at).ToList();
+        }
         var latest = runs[0];
         var runId = latest.RunId;
         var runFiles = latest.Files;
@@ -195,7 +212,7 @@ public static class RunResultsReader
 
         foreach (var outcome in rows.Values) { FoldExplainedRequests(outcome); foreach (var child in outcome.Children) FoldExplainedRequests(child); }
         var environments = rows.Values.SelectMany(r => r.Environments).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList();
-        return new RunResults { RunId = runId, WhenLocal = runFiles.Max(f => f.LastWriteTime), Rows = rows, Environments = environments };
+        return new RunResults { RunId = runId, LatestRunId = newestRunId, Runs = choices, WhenLocal = runFiles.Max(f => f.LastWriteTime), Rows = rows, Environments = environments };
     }
 
     /// <summary>

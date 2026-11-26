@@ -152,6 +152,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
     public EditorShellViewModel(IEnumerable<(string Name, string Path)> instances, string? selectedPath = null, bool lazyLoading = false)
     {
         _lazyLoading = lazyLoading;
+        ShownRunChoice.Subscribe(this, static (shell, key, _) => shell.OnShownRunChosen(key));
         foreach (var (name, path) in instances)
         {
             var node = new InstanceNode(name, path);
@@ -527,7 +528,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
             Wire(node);
             _signatures[node.Path] = RunResultsReader.Signature(editor.ResultsFolder)?.Signature;
             RunResults? results = null;
-            try { results = await Task.Run(() => RunResultsReader.ReadLatest(editor.ResultsFolder)); }
+            try { results = await Task.Run(() => RunResultsReader.ReadLatest(editor.ResultsFolder, ShownRunChoice.Get(editor.ResultsFolder))); }
             catch (IOException) { }
             editor.ApplyResults(results);
         }
@@ -558,6 +559,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
     [RelayCommand]
     public async Task RefreshResultsAsync()
     {
+        if (IsLoadingResults) { _refreshAgain = true; return; }
         IsLoadingResults = true;
         try
         {
@@ -565,7 +567,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
                 _signatures[node.Path] = RunResultsReader.Signature(node.Editor!.ResultsFolder)?.Signature;
             var loaded = await Task.WhenAll(Instances.Where(n => n.Editor is not null).Select(async node =>
             {
-                try { return (node, results: await Task.Run(() => RunResultsReader.ReadLatest(node.Editor!.ResultsFolder))); }
+                try { return (node, results: await Task.Run(() => RunResultsReader.ReadLatest(node.Editor!.ResultsFolder, ShownRunChoice.Get(node.Editor!.ResultsFolder)))); }
                 catch (IOException) { return (node, results: (RunResults?)null); }
             }));
             foreach (var (node, results) in loaded) node.Editor!.ApplyResults(results);
@@ -574,6 +576,17 @@ public sealed partial class EditorShellViewModel : ObservableObject
         {
             IsLoadingResults = false;
         }
+        if (_refreshAgain) { _refreshAgain = false; await RefreshResultsAsync(); }   // the run choice changed while reading: read again with the new choice
+    }
+
+    private bool _refreshAgain;
+
+    /// <summary>The shared run choice of an instance changed (here or in the dashboard): show that run in the table.</summary>
+    private void OnShownRunChosen(string resultsFolderKey)
+    {
+        if (!Instances.Any(n => n.Editor is { } e && ShownRunChoice.Same(e.ResultsFolder, resultsFolderKey))) return;
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess()) _ = RefreshResultsAsync();
+        else Avalonia.Threading.Dispatcher.UIThread.Post(() => _ = RefreshResultsAsync());
     }
 
     [ObservableProperty] private bool _isLoadingResults;

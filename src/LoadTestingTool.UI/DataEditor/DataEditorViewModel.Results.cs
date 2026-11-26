@@ -102,10 +102,55 @@ public sealed partial class DataEditorViewModel
     /// <summary>Asks the view to scroll a grid column into view (cell index as in <see cref="DataRowViewModel.Cells"/>).</summary>
     public event EventHandler<int>? RevealColumnRequested;
 
+    // ---- The shared run choice: the same earlier run as the dashboard's Run drop-down (see ShownRunChoice) ----
+    private bool _refreshingRunOptions;
+    private IReadOnlyList<RunChoice> _runChoices = [];
+
+    /// <summary>Every run of the instance, newest first, as the Run drop-down above the table lists them.</summary>
+    public ObservableCollection<string> RunOptions { get; } = [];
+
+    [ObservableProperty] private string? _runChoice;
+
+    public bool HasRunOptions => RunOptions.Count > 1;
+
+    /// <summary>The table shows an earlier run, not the newest one.</summary>
+    public bool ShowingEarlierRun => _results?.IsEarlierRun == true;
+
+    public string EarlierRunText => _results is { IsEarlierRun: true } r ? $"Showing run from {r.WhenLocal:yyyy-MM-dd HH:mm:ss}, not the latest." : string.Empty;
+
+    partial void OnRunChoiceChanged(string? value)
+    {
+        if (_refreshingRunOptions || value is null) return;
+        var run = _runChoices.FirstOrDefault(c => c.Label == value);
+        if (run is null) return;
+        ShownRunChoice.Set(ResultsFolder, _runChoices.Count > 0 && _runChoices[0].RunId == run.RunId ? null : run.RunId);
+    }
+
+    /// <summary>Back to the newest run, in the table and the dashboard.</summary>
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private void ShowLatestRun() => ShownRunChoice.Set(ResultsFolder, null);
+
+    private void RefreshRunOptions()
+    {
+        _refreshingRunOptions = true;
+        try
+        {
+            var runs = _results?.Runs ?? [];
+            if (!runs.Select(r => r.Label).SequenceEqual(RunOptions)) { RunOptions.Clear(); foreach (var run in runs) RunOptions.Add(run.Label); }
+            _runChoices = runs;
+            RunChoice = runs.FirstOrDefault(r => r.RunId.Equals(_results?.RunId, StringComparison.OrdinalIgnoreCase))?.Label;
+        }
+        finally { _refreshingRunOptions = false; }
+        OnPropertyChanged(nameof(HasRunOptions));
+        OnPropertyChanged(nameof(ShowingEarlierRun));
+        OnPropertyChanged(nameof(EarlierRunText));
+    }
+
     /// <summary>Shows the outcome of a run (or clears it with null).</summary>
     public void ApplyResults(RunResults? results)
     {
         _results = results;
+        RefreshRunOptions();
         OnPropertyChanged(nameof(HasResults));
         OnPropertyChanged(nameof(HasEnvColumn));
         if (!HasEnvColumn && ShowDifferingOnly) ShowDifferingOnly = false;
@@ -149,7 +194,7 @@ public sealed partial class DataEditorViewModel
             failedCells += row.FailedCount; bugCells += row.BugCount;
         }
         var scope = EnvironmentPicked ? $" in {EnvironmentChoice}" : string.Empty;
-        RunSummaryText = $"Last run{scope} {_results.WhenLocal.ToString("d MMM HH:mm", CultureInfo.CurrentCulture)}: {passed} passed, {failed} failed" + (errors > 0 ? $", {errors} {(errors == 1 ? "error" : "errors")}" : string.Empty) + (bugs > 0 ? $", {bugs} known {(bugs == 1 ? "bug" : "bugs")}" : string.Empty)
+        RunSummaryText = $"{(_results.IsEarlierRun ? "Earlier run" : "Last run")}{scope} {_results.WhenLocal.ToString("d MMM HH:mm", CultureInfo.CurrentCulture)}: {passed} passed, {failed} failed" + (errors > 0 ? $", {errors} {(errors == 1 ? "error" : "errors")}" : string.Empty) + (bugs > 0 ? $", {bugs} known {(bugs == 1 ? "bug" : "bugs")}" : string.Empty)
             + (failedCells + bugCells > 0 ? $" ({failedCells} failed {(failedCells == 1 ? "cell" : "cells")}, {bugCells} bug {(bugCells == 1 ? "cell" : "cells")})" : string.Empty)
             + (_results.RowsFromEarlierRuns > 0 ? $" · {_results.RowsFromEarlierRuns} {(_results.RowsFromEarlierRuns == 1 ? "row keeps its" : "rows keep their")} result from an earlier run" : string.Empty);
     }
