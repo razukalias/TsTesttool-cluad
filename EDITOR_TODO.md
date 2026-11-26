@@ -1088,3 +1088,8 @@ To add:
 - Today the dashboard's "Run" drop-down (Overview, Run Summary, Assertions, Environments, Artifacts) replays a saved run's events into the dashboard only; the editor table's cell marks always come from the latest run (`RunResultsReader.ReadLatest`).
 - Wanted: one shared run choice per instance. Picking an earlier run shows it everywhere: the dashboard tabs and the table (red/green/yellow marks, extra columns, failed/passed filters, failed-cells view). Both places show a drop-down bound to the same choice, and the table says "Showing run from <time>, not the latest" when it is not the latest.
 - Details to settle: while a run is going the choice follows the live run; "Show the latest run" resets both; Re-run and "Run" actions keep working on the workbook, not on the shown run; new results must not overwrite an earlier run that is being shown.
+
+## Table status after several re-runs of different rows (found by reading the code, not yet reproduced)
+- `RunResultsReader.ReadLatest` fills rows the latest run did not run from older runs, but only from runs that are BIGGER (event bytes) than the latest, at most 10 older runs back, stopping at a run that covers everything.
+- Risk: re-run row A (run 2), then re-run row B (run 3, same size or bigger): run 2 is skipped as "not bigger", so A falls back to its status from the full run 1 and the re-run of A seems lost. More than 10 re-runs after the full run: the rows lose their status.
+- Fix idea: newest result per (testcase, data id, environment) wins across the runs, ordered by time, instead of the size rule; no limit of 10 until the full run is found, or a limit by age. Add a test with run1 (all rows), run2 (A), run3 (B).
