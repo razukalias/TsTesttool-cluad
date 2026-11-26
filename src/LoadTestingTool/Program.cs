@@ -388,6 +388,7 @@ internal static class Program
         if (instance.GenerateRowHistory.HasValue) config.GenerateRowHistory = instance.GenerateRowHistory.Value;
         if (instance.HistoryStorage.HasValue) config.HistoryStorage = instance.HistoryStorage.Value;
         if (instance.HistoryRetentionDays.HasValue) config.HistoryRetentionDays = instance.HistoryRetentionDays.Value;
+        if (instance.HistoryRetentionRuns.HasValue) config.HistoryRetentionRuns = instance.HistoryRetentionRuns.Value;
         if (!string.IsNullOrWhiteSpace(instance.TestcaseSelection)) config.TestcaseSelection = instance.TestcaseSelection;
         if (!string.IsNullOrWhiteSpace(instance.StepSelection)) config.StepSelection = instance.StepSelection;
         if (!string.IsNullOrWhiteSpace(instance.EnvironmentSelection)) config.EnvironmentSelection = instance.EnvironmentSelection;

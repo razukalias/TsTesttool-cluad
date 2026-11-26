@@ -359,6 +359,13 @@ public sealed class SqliteHistoryStore : IHistoryStore
         return DeleteRuns(old);
     }
 
+    /// <summary>Keeps only the newest <paramref name="keepRuns"/> runs (0 or less keeps everything). Returns how many runs were removed.</summary>
+    public int KeepNewestRuns(int keepRuns)
+    {
+        if (keepRuns <= 0 || !Exists) return 0;
+        return DeleteRuns(ListRuns(keepRuns, int.MaxValue).Select(r => r.RunId).ToList());
+    }
+
     /// <summary>Gives the room of removed runs back to the file system (the file is rewritten; it needs room for a copy of itself while it runs).</summary>
     public void Vacuum()
     {
@@ -442,6 +449,48 @@ public sealed class SqliteHistoryStore : IHistoryStore
         }
         finally { Exec(connection, "DETACH DATABASE exported"); }
         FromFile(file).Vacuum();   // a file to hand over: one file, no -wal beside it
+    }
+
+    /// <summary>Writes one run as an Excel file for people: Rows (one per data row), Requests and Assertions. An existing file is replaced.</summary>
+    public void ExportRunToExcel(string runId, string file)
+    {
+        if (!Contains(runId)) throw new InvalidOperationException($"Run {runId} is not in the database.");
+        using var book = new XLWorkbook();
+        var rows = book.AddWorksheet("Rows");
+        string[] rowHeader = ["RunId", "TestcaseIndex", "DataId", "Iteration", "Environment", "Result", "FailedSteps"];
+        for (var i = 0; i < rowHeader.Length; i++) rows.Cell(1, i + 1).Value = rowHeader[i];
+        var r = 2;
+        foreach (var row in ScanPage(0, int.MaxValue).Rows.Where(x => x.RunId == runId))
+        {
+            rows.Cell(r, 1).Value = row.RunId; rows.Cell(r, 2).Value = row.TestcaseIndex; rows.Cell(r, 3).Value = row.DataId; rows.Cell(r, 4).Value = row.Iteration;
+            rows.Cell(r, 5).Value = row.Environment; rows.Cell(r, 6).Value = row.Result; rows.Cell(r, 7).Value = row.FailedSteps is null ? "" : string.Join(", ", row.FailedSteps.Order());
+            r++;
+        }
+        var requests = book.AddWorksheet("Requests");
+        string[] requestHeader = ["Seq", "TestcaseIndex", "Testcase", "DataId", "Iteration", "Environment", "Step", "StepType", "Result", "HttpStatus", "DurationMs", "StartedAt", "Error", "FailureCategory", "Verb", "TargetUrl", "RequestHeaders", "RequestBody", "ResponseHeaders", "ResponseBody"];
+        for (var i = 0; i < requestHeader.Length; i++) requests.Cell(1, i + 1).Value = requestHeader[i];
+        r = 2;
+        foreach (var q in LoadRequests(runId))
+        {
+            object[] values = [q.Seq, q.TestcaseIndex, q.Testcase, q.DataId, q.Iteration, q.Environment, q.Step, q.StepType, q.Result, q.HttpStatus, q.DurationMs, Iso(q.StartedAt), q.Error, q.FailureCategory, q.Verb, q.TargetUrl, q.RequestHeaders, Clip(q.RequestBody), q.ResponseHeaders, Clip(q.ResponseBody)];
+            for (var i = 0; i < values.Length; i++) requests.Cell(r, i + 1).Value = XLCellValue.FromObject(values[i]);
+            r++;
+        }
+        var assertions = book.AddWorksheet("Assertions");
+        string[] assertionHeader = ["RequestSeq", "Testcase", "DataId", "Step", "Path", "Verb", "Type", "Meaning", "Expected", "Actual", "Result", "Message"];
+        for (var i = 0; i < assertionHeader.Length; i++) assertions.Cell(1, i + 1).Value = assertionHeader[i];
+        r = 2;
+        foreach (var a in LoadAssertions(runId))
+        {
+            string[] values = [a.Testcase, a.DataId, a.Step, a.Path, a.Verb, a.Type, a.Meaning, a.Expected, a.Actual, a.Result, a.Message];
+            assertions.Cell(r, 1).Value = a.RequestSeq;
+            for (var i = 0; i < values.Length; i++) assertions.Cell(r, i + 2).Value = values[i];
+            r++;
+        }
+        foreach (var sheet in book.Worksheets) sheet.Row(1).Style.Font.Bold = true;
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(file))!);
+        book.SaveAs(file);
+        static string Clip(string text) => text.Length <= 32000 ? text : text[..32000];   // an Excel cell holds at most 32,767 characters
     }
 
     /// <summary>Adds the runs of an exported file that this database does not have yet (by run id). Returns how many were added and how many were already there.</summary>
@@ -687,6 +736,26 @@ public sealed class SqliteHistoryStore : IHistoryStore
         return list;
     }
 
+    /// <summary>Requests and assertions: the workbooks are read into a scratch database with the same code the import uses, and each run's steps (row, step, result, status) and assertion count are compared.</summary>
+    private void CompareDetails(string workbookFolder, HashSet<string> runIds, List<string> differences)
+    {
+        var scratch = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "compare_" + Guid.NewGuid().ToString("N")[..8]);
+        try
+        {
+            var other = new SqliteHistoryStore(scratch);
+            other.ImportWorkbooks(workbookFolder, null, null);
+            foreach (var runId in runIds.Where(Contains).Where(other.Contains))
+            {
+                static List<string> Keys(IEnumerable<RequestDetail> list) => list.Select(q => $"{q.TestcaseIndex}|{q.DataId}|{q.Iteration}|{q.Step}|{q.Result}|{q.HttpStatus}").Order().ToList();
+                var fromFiles = Keys(other.LoadRequests(runId, false)); var fromDatabase = Keys(LoadRequests(runId, false));
+                if (fromFiles.Count == 0) continue;                                   // a workbook without a RequestHistory sheet has nothing to compare
+                if (!fromFiles.SequenceEqual(fromDatabase)) differences.Add($"{runId}: requests differ ({fromFiles.Count} in the workbooks, {fromDatabase.Count} in the database)");
+                else if (other.LoadAssertions(runId).Count != LoadAssertions(runId).Count) differences.Add($"{runId}: assertion count differs");
+            }
+        }
+        finally { try { Directory.Delete(scratch, true); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
+    }
+
     /// <summary>Differences between the workbooks and the database for the same runs (rows, results, failed steps, re-run memory); empty when they agree.</summary>
     public IReadOnlyList<string> CompareWithWorkbooks(string workbookFolder)
     {
@@ -701,6 +770,7 @@ public sealed class SqliteHistoryStore : IHistoryStore
             if (row.FailedSteps is not null && other.FailedSteps is not null && !row.FailedSteps.SetEquals(other.FailedSteps)) differences.Add($"{key.RunId}/{key.DataId}: failed steps differ");
         }
         foreach (var key in database.Keys.Where(k => inFiles.Contains(k.RunId) && !files.ContainsKey(k))) differences.Add($"{key.RunId}/{key.DataId}: only in the database");
+        CompareDetails(workbookFolder, inFiles, differences);
         var fromFiles = new HistoryRunStateStore(workbookFolder).Load()!;
         var fromDatabase = LoadState(null, out _);
         foreach (var pair in fromFiles.Generated) if (!fromDatabase.Generated.TryGetValue(pair.Key, out var v) || v != pair.Value) differences.Add($"generated value {pair.Key} differs");

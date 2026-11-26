@@ -1284,6 +1284,8 @@ public sealed partial class MainWindow
         return new StackPanel { Spacing = 6, Children = { DashboardStyle.Section("History database"), DashboardStyle.Card(panel, new Thickness(12, 10)) } };
     }
 
+    private static Control DockedLeft(Control control) { DockPanel.SetDock(control, Dock.Right); control.Margin = new Thickness(6, 0, 0, 0); return control; }
+
     /// <summary>Retention and clean-up, one run as a file of its own, and the workbook as it was in a run.</summary>
     private Control UpkeepControls(InstanceInfo item, SqliteHistoryStore store)
     {
@@ -1294,21 +1296,24 @@ public sealed partial class MainWindow
         string? Shown() => DataEditor.ShownRunChoice.Get(item.ResultsFolder) ?? (store.Exists ? store.ListRuns(0, 1).FirstOrDefault()?.RunId : null);
 
         var days = new NumericUpDown { Minimum = 0, Maximum = 36500, Increment = 1, Value = item.HistoryRetentionDays, Width = 120, FormatString = "0", Tag = "history-retention-days" };
+        var runs = new NumericUpDown { Minimum = 0, Maximum = 1000000, Increment = 1, Value = item.HistoryRetentionRuns, Width = 120, FormatString = "0", Tag = "history-retention-runs" };
         var keep = DashboardStyle.Action("Save", () =>
         {
             item.HistoryRetentionDays = (int)(days.Value ?? 0);
+            item.HistoryRetentionRuns = (int)(runs.Value ?? 0);
             SaveInstanceReportingSettings(item, true);
-            Say(item.HistoryRetentionDays == 0 ? "Runs are kept for ever." : $"Runs older than {item.HistoryRetentionDays} days are removed after each run.");
+            Say(item.HistoryRetentionDays == 0 && item.HistoryRetentionRuns == 0 ? "Runs are kept for ever."
+                : $"After each run, " + string.Join(" and ", new[] { item.HistoryRetentionDays > 0 ? $"runs older than {item.HistoryRetentionDays} days" : null, item.HistoryRetentionRuns > 0 ? $"all but the newest {item.HistoryRetentionRuns} runs" : null }.Where(x => x is not null)) + " are removed.");
         });
         var clean = DashboardStyle.Action("Clean up now", () =>
         {
             try
             {
                 var before = store.Summary().Bytes;
-                var removed = store.ApplyRetention(item.HistoryRetentionDays);
+                var removed = store.ApplyRetention(item.HistoryRetentionDays) + store.KeepNewestRuns(item.HistoryRetentionRuns);
                 store.Vacuum();
                 var after = store.Summary().Bytes;
-                Say($"{removed} runs removed. Database {before / 1024.0 / 1024.0:0.0} MB → {after / 1024.0 / 1024.0:0.0} MB." + (item.HistoryRetentionDays == 0 ? " (Keep for 0 days means for ever, so no run was removed.)" : ""));
+                Say($"{removed} runs removed. Database {before / 1024.0 / 1024.0:0.0} MB → {after / 1024.0 / 1024.0:0.0} MB." + (item.HistoryRetentionDays == 0 && item.HistoryRetentionRuns == 0 ? " (Nothing is set to be removed.)" : ""));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException) { Say($"Clean-up failed: {ex.Message}"); }
             Dispatcher.UIThread.Post(RefreshArtifacts);
@@ -1324,6 +1329,39 @@ public sealed partial class MainWindow
                 Say($"Run {run} written to {file}");
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException or InvalidOperationException) { Say($"Export failed: {ex.Message}"); }
+        });
+        var toExcel = DashboardStyle.Action("Export shown run to Excel", () =>
+        {
+            try
+            {
+                if (Shown() is not { } run) { Say("There is no run in the database to export."); return; }
+                Directory.CreateDirectory(_exchangeFolder.Text!);
+                var file = System.IO.Path.Combine(_exchangeFolder.Text!, $"Run_{run}.xlsx");
+                store.ExportRunToExcel(run, file);
+                Say($"Run {run} written to {file}");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException or InvalidOperationException) { Say($"Export failed: {ex.Message}"); }
+        });
+        Button? delete = null;
+        string? armed = null;
+        delete = DashboardStyle.Action("Delete shown run", () =>
+        {
+            try
+            {
+                if (Shown() is not { } run) { Say("There is no run in the database to delete."); return; }
+                if (armed != run) { armed = run; delete!.Content = $"Click again to delete {run}"; Say($"This removes run {run} and its workbook copy from the database. Export it first if you may need it again."); return; }
+                armed = null;
+                DataEditor.ShownRunChoice.Set(item.ResultsFolder, null);
+                store.DeleteRuns([run]);
+                Say($"Run {run} deleted.");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException) { Say($"Delete failed: {ex.Message}"); }
+            Dispatcher.UIThread.Post(RefreshArtifacts);
+        });
+        var browse = DashboardStyle.Action("Browse…", async () =>
+        {
+            var folders = await StorageProvider.OpenFolderPickerAsync(new Avalonia.Platform.Storage.FolderPickerOpenOptions { Title = "Folder for run files", AllowMultiple = false });
+            if (folders.Count > 0 && folders[0].Path is { IsFile: true } uri) _exchangeFolder.Text = uri.LocalPath;
         });
         var import = DashboardStyle.Action("Import run files", () =>
         {
@@ -1363,13 +1401,13 @@ public sealed partial class MainWindow
             Children =
             {
                 DashboardStyle.Text("Upkeep", 13, true),
-                DashboardStyle.Text("Keep runs for (days, 0 = for ever). Older runs are removed after each run; “Clean up now” also gives the room back to the disk.", 12, false, DashboardStyle.Muted),
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { days, keep, clean } },
+                DashboardStyle.Text("Keep runs for this many days and/or only the newest runs (0 = no limit). Older runs are removed after each run; “Clean up now” also gives the room back to the disk.", 12, false, DashboardStyle.Muted),
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { days, DashboardStyle.Text("days, and the newest", 12, false, DashboardStyle.Muted), runs, DashboardStyle.Text("runs", 12, false, DashboardStyle.Muted), keep, clean } },
                 DashboardStyle.Text($"Workbook copies: {totals.Versions} versions, {totals.Bytes / 1024.0 / 1024.0:0.0} MB (the same content is stored once).", 12, false, DashboardStyle.Muted),
                 restore,
                 DashboardStyle.Text("One run in a file of its own, to hand over or to bring in:", 12, false, DashboardStyle.Muted),
-                _exchangeFolder,
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { export, import } },
+                new DockPanel { LastChildFill = true, Children = { DockedLeft(browse), _exchangeFolder } },
+                new WrapPanel { Children = { export, toExcel, import, delete } },
                 message,
             }
         };

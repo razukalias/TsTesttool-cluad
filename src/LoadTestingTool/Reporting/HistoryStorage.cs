@@ -39,5 +39,6 @@ public static class HistoryStores
         store.SaveRun(run, state, rerunOf, new HistoryWriter(config).BuildDetails(run));
         if (workbookContent is not null && config.HistorySnapshotWorkbook && run.Testcases.Count > 0) store.SaveSnapshot(run.RunId, workbookContent);
         if (config.HistoryRetentionDays > 0) store.ApplyRetention(config.HistoryRetentionDays);
+        if (config.HistoryRetentionRuns > 0) store.KeepNewestRuns(config.HistoryRetentionRuns);
     }
 }

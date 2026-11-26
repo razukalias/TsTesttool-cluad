@@ -363,6 +363,52 @@ public sealed class SqliteHistoryTests : IDisposable
     }
 
     [Fact]
+    public void Only_the_newest_runs_are_kept_when_a_run_count_is_set_and_a_run_is_exported_to_excel()
+    {
+        var folder = Path.Combine(_root, "count");
+        var start = new DateTimeOffset(2026, 11, 1, 8, 0, 0, TimeSpan.Zero);
+        for (var i = 1; i <= 5; i++) SaveWithDetails(folder, "r" + i, start.AddHours(i), Workbook("v" + i));
+        var store = new SqliteHistoryStore(folder);
+        Assert.Equal(0, store.KeepNewestRuns(0));                                              // 0 = no limit
+        Assert.Equal(0, store.KeepNewestRuns(9));
+        Assert.Equal(3, store.KeepNewestRuns(2));
+        Assert.Equal(["r5", "r4"], store.ListRuns(0, 10).Select(r => r.RunId).ToArray());
+        Assert.Equal(2, store.SnapshotTotals().Versions);
+
+        var file = Path.Combine(_root, "excel", "Run_r5.xlsx");
+        store.ExportRunToExcel("r5", file);
+        using var book = new ClosedXML.Excel.XLWorkbook(file);
+        Assert.Equal(["Rows", "Requests", "Assertions"], book.Worksheets.Select(w => w.Name).ToArray());
+        Assert.Equal(3, book.Worksheet("Rows").RowsUsed().Count() - 1);
+        Assert.Equal(store.LoadRequests("r5").Count, book.Worksheet("Requests").RowsUsed().Count() - 1);
+        Assert.Equal(store.LoadAssertions("r5").Count, book.Worksheet("Assertions").RowsUsed().Count() - 1);
+        Assert.Equal("D0001", book.Worksheet("Rows").Cell(2, 3).GetString());
+        Assert.Throws<InvalidOperationException>(() => store.ExportRunToExcel("gone", Path.Combine(_root, "excel", "x.xlsx")));
+    }
+
+    [Fact]
+    public void The_compare_check_also_finds_requests_that_differ_from_the_workbooks()
+    {
+        var folder = Path.Combine(_root, "cmpfiles");
+        var run = RunWithDetails("cmp", new DateTimeOffset(2026, 4, 3, 8, 0, 0, TimeSpan.Zero));
+        var config = new AppConfig { HistoryFolder = folder, SaveRequestBodyToHistory = true, SaveResponseBodyToHistory = true };
+        new HistoryWriter(config) { RunState = MakeState(run, "C") }.WritePerTestcase(run);
+        var dbFolder = Path.Combine(_root, "cmpdb");
+        var store = new SqliteHistoryStore(dbFolder);
+        store.ImportWorkbooks(folder, null, null);
+        Assert.Empty(store.CompareWithWorkbooks(folder));
+
+        using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(dbFolder, "history.sqlite")};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE requests SET http_status = 418 WHERE seq = (SELECT MIN(seq) FROM requests)";
+            Assert.Equal(1, command.ExecuteNonQuery());
+        }
+        Assert.Contains(store.CompareWithWorkbooks(folder), d => d.StartsWith("cmp: requests differ"));
+    }
+
+    [Fact]
     public void A_database_made_before_the_upkeep_tables_is_upgraded_when_it_is_opened()
     {
         var folder = Path.Combine(_root, "oldschema");

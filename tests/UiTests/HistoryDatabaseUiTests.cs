@@ -171,6 +171,18 @@ public class HistoryDatabaseUiTests
             Assert.Equal("new book", File.ReadAllText(restored));
             Click("Save the workbook as it was in the shown run");                  // never over an existing file
             Assert.Contains("already there", Texts());
+
+            Click("Export shown run to Excel");
+            Assert.True(File.Exists(Path.Combine(exchange, "Run_recent.xlsx")), Texts());
+
+            // deleting needs a second click, and says what it removes
+            Click("Delete shown run");
+            Assert.Contains("Click again to delete recent", Texts());
+            Assert.Equal(["recent"], store.ListRuns(0, 10).Select(r => r.RunId).ToArray());
+            Click("Click again to delete recent");
+            Assert.Contains("Run recent deleted.", Texts());
+            Assert.Empty(store.ListRuns(0, 10));
+            Assert.Equal(0, store.SnapshotTotals().Versions);
         }
         finally { Directory.SetCurrentDirectory(previous); try { Directory.Delete(root, true); } catch (IOException) { } }
     }

@@ -18,6 +18,8 @@ public sealed class AppConfig
     public Reporting.HistoryStorage HistoryStorage { get; set; } = Reporting.HistoryStorage.Files;
     /// <summary>Database history: runs older than this many days are removed after each run (0 keeps everything).</summary>
     public int HistoryRetentionDays { get; set; }
+    /// <summary>Database history: only the newest this many runs are kept (0 keeps everything). Works together with the days.</summary>
+    public int HistoryRetentionRuns { get; set; }
     /// <summary>Database history: keep a copy of the workbook as it was for each run (identical copies are stored once).</summary>
     public bool HistorySnapshotWorkbook { get; set; } = true;
 
@@ -67,6 +69,7 @@ public sealed class CentralInstanceConfig
     public bool? GenerateRowHistory { get; set; }
     public Reporting.HistoryStorage? HistoryStorage { get; set; }
     public int? HistoryRetentionDays { get; set; }
+    public int? HistoryRetentionRuns { get; set; }
     public string? WorkspaceRoot { get; set; }
     public string? TestcaseSelection { get; set; }
     public string? StepSelection { get; set; }
