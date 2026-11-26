@@ -80,11 +80,17 @@ internal static class Program
             var stopMonitor = MonitorStopFileAsync(stopFile, cancellation, stopMonitorCancellation.Token);
             using var http = new HttpClient(new HttpClientHandler { UseDefaultCredentials = true, AutomaticDecompression = DecompressionMethods.All }) { Timeout = Timeout.InfiniteTimeSpan };
             WorkbookModel workbook;
+            byte[]? workbookContent = null;   // the workbook as this run reads it, for the database's snapshot
             try
             {
                 RunValueMemory.Active = new RunValueMemory(HistoryStores.Reader(config.HistoryFolder, config.HistoryStorage).OpenRunState(rerunOf));
                 RunValueMemory.Active.BeginRead(reuse: false);
                 workbook = new WorkbookReader().Read(workbookPath);
+                if (config.HistoryStorage != HistoryStorage.Files && config.HistorySnapshotWorkbook)
+                {
+                    try { using var stream = new FileStream(workbookPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete); using var copy = new MemoryStream(); stream.CopyTo(copy); workbookContent = copy.ToArray(); }
+                    catch (IOException ex) { Console.Error.WriteLine($"[Warning] The workbook could not be copied into the history database: {ex.Message}"); }
+                }
             }
             catch (Exception ex)
             {
@@ -149,7 +155,7 @@ internal static class Program
                     var historyWriter = new HistoryWriter(config) { RunState = runState, RerunOf = rerunOf };
                     if (config.HistoryStorage != HistoryStorage.Database)
                         historyFiles = config.GenerateRowHistory ? historyWriter.WritePerTestcase(overall, workbook).ToArray() : Array.Empty<string>();
-                    HistoryStores.SaveToDatabase(config, overall, runState, rerunOf);
+                    HistoryStores.SaveToDatabase(config, overall, runState, rerunOf, workbookContent);
                     if (config.GenerateAggregateHistory && config.HistoryStorage != HistoryStorage.Database)
                     {
                         var aggregateFolder = Path.Combine(config.HistoryFolder, "_aggregate", overallResult);
@@ -381,6 +387,7 @@ internal static class Program
         if (instance.GenerateAggregateHistory.HasValue) config.GenerateAggregateHistory = instance.GenerateAggregateHistory.Value;
         if (instance.GenerateRowHistory.HasValue) config.GenerateRowHistory = instance.GenerateRowHistory.Value;
         if (instance.HistoryStorage.HasValue) config.HistoryStorage = instance.HistoryStorage.Value;
+        if (instance.HistoryRetentionDays.HasValue) config.HistoryRetentionDays = instance.HistoryRetentionDays.Value;
         if (!string.IsNullOrWhiteSpace(instance.TestcaseSelection)) config.TestcaseSelection = instance.TestcaseSelection;
         if (!string.IsNullOrWhiteSpace(instance.StepSelection)) config.StepSelection = instance.StepSelection;
         if (!string.IsNullOrWhiteSpace(instance.EnvironmentSelection)) config.EnvironmentSelection = instance.EnvironmentSelection;

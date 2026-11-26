@@ -263,6 +263,124 @@ public sealed class SqliteHistoryTests : IDisposable
         Assert.All(assertions, a => Assert.Contains(imported, r => r.Seq == a.RequestSeq && r.DataId == a.DataId && r.Step == a.Step));   // every assertion still points at its own request
     }
 
+    private static void SaveWithDetails(string folder, string runId, DateTimeOffset start, byte[]? workbook = null, int bodyKb = 0)
+    {
+        var run = RunWithDetails(runId, start);
+        if (bodyKb > 0) foreach (var r in run.Testcases.SelectMany(t => t.Requests)) r.ResponseBody = string.Concat(Enumerable.Range(0, bodyKb * 8).Select(i => Guid.NewGuid().ToString("N")));   // does not compress
+        var config = new AppConfig { HistoryFolder = folder, HistoryStorage = HistoryStorage.Database, SaveRequestBodyToHistory = true, SaveResponseBodyToHistory = true };
+        HistoryStores.SaveToDatabase(config, run, MakeState(run, runId), null, workbook);
+    }
+
+    private static byte[] Workbook(string content) => System.Text.Encoding.UTF8.GetBytes("PK-fake-workbook " + content);
+
+    [Fact]
+    public void Retention_removes_old_runs_with_everything_they_hold_and_vacuum_gives_the_room_back()
+    {
+        var folder = Path.Combine(_root, "ret");
+        var now = new DateTimeOffset(2026, 11, 26, 12, 0, 0, TimeSpan.Zero);
+        for (var i = 0; i < 6; i++) SaveWithDetails(folder, "old" + i, now.AddDays(-100 + i), Workbook("v-old"), bodyKb: 40);
+        SaveWithDetails(folder, "recent1", now.AddDays(-10), Workbook("v-new"));
+        SaveWithDetails(folder, "recent2", now.AddDays(-1), Workbook("v-new"));
+        var store = new SqliteHistoryStore(folder);
+        Assert.Equal(8, store.Summary().Runs);
+        Assert.Equal(2, store.SnapshotTotals().Versions);
+        var before = Directory.GetFiles(folder, "history.sqlite*").Sum(f => new FileInfo(f).Length);
+
+        Assert.Equal(0, store.ApplyRetention(0, now));                                          // 0 days = keep everything
+        Assert.Equal(6, store.ApplyRetention(30, now));
+        Assert.Equal(["recent2", "recent1"], store.ListRuns(0, 20).Select(r => r.RunId).ToArray());
+        Assert.Empty(store.LoadRequests("old0")); Assert.Empty(store.LoadAssertions("old0"));   // rows, requests, assertions and state of a removed run are gone
+        Assert.Null(store.SnapshotOf("old0"));
+        Assert.Equal(1, store.SnapshotTotals().Versions);                                       // the workbook version only the old runs used is gone, the shared one stays
+        Assert.Equal(3, store.LoadRequests("recent1").Select(r => r.DataId).Distinct().Count());
+        Assert.NotNull(store.SnapshotOf("recent1"));
+        Assert.Equal("recent2-guid-D0001", store.OpenRunState(null).Load()!.Generated["1|D0001|1|qa|guid|1"]);   // the re-run memory of kept runs is still there (the newest run supplies it)
+        Assert.Equal("recent1-guid-D0001", store.OpenRunState("recent1").Load()!.Generated["1|D0001|1|qa|guid|1"]);
+
+        store.Vacuum();
+        var after = Directory.GetFiles(folder, "history.sqlite*").Sum(f => new FileInfo(f).Length);
+        _output.WriteLine($"{before:N0} bytes before, {after:N0} after retention and vacuum");
+        Assert.True(after < before / 4, $"{after} bytes after, {before} before");
+    }
+
+    [Fact]
+    public void A_workbook_snapshot_is_stored_once_per_content_and_restored_next_to_the_live_workbook_never_over_it()
+    {
+        var folder = Path.Combine(_root, "snap");
+        var start = DateTimeOffset.Now;
+        SaveWithDetails(folder, "r1", start, Workbook("version 1"));
+        SaveWithDetails(folder, "r2", start.AddMinutes(1), Workbook("version 1"));
+        SaveWithDetails(folder, "r3", start.AddMinutes(2), Workbook("version 2"));
+        var store = new SqliteHistoryStore(folder);
+        Assert.Equal(2, store.SnapshotTotals().Versions);
+        Assert.Equal(store.SnapshotOf("r1")!.Value.Hash, store.SnapshotOf("r2")!.Value.Hash);
+        Assert.NotEqual(store.SnapshotOf("r1")!.Value.Hash, store.SnapshotOf("r3")!.Value.Hash);
+
+        var restored = Path.Combine(_root, "restored", "r1.xlsx");
+        Assert.True(store.RestoreSnapshot("r1", restored));
+        Assert.Equal(Workbook("version 1"), File.ReadAllBytes(restored));
+        Assert.Throws<IOException>(() => store.RestoreSnapshot("r1", restored));                 // an existing file is never overwritten
+        Assert.False(store.RestoreSnapshot("nope", Path.Combine(_root, "restored", "x.xlsx")));
+
+        // saving a run again keeps its snapshot link
+        SaveWithDetails(folder, "r1", start, workbook: null);
+        Assert.NotNull(store.SnapshotOf("r1"));
+        // a run saved without a workbook (a runner that could not read it) simply has none
+        SaveWithDetails(folder, "r4", start.AddMinutes(3));
+        Assert.Null(store.SnapshotOf("r4"));
+    }
+
+    [Fact]
+    public void One_run_is_exported_to_a_file_of_its_own_and_imported_into_another_database_once()
+    {
+        var folder = Path.Combine(_root, "exp");
+        var start = new DateTimeOffset(2026, 11, 1, 8, 0, 0, TimeSpan.Zero);
+        SaveWithDetails(folder, "shareme", start, Workbook("shared version"));
+        SaveWithDetails(folder, "keepme", start.AddHours(1), Workbook("other version"));
+        var store = new SqliteHistoryStore(folder);
+        var file = Path.Combine(_root, "share", "Run_shareme.runhistory.sqlite");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        store.ExportRun("shareme", file);
+
+        Assert.True(File.Exists(file));
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(file)!, "*-wal"));                // one file to hand over
+        var exported = SqliteHistoryStore.FromFile(file);
+        Assert.Equal(["shareme"], exported.ListRuns(0, 10).Select(r => r.RunId).ToArray());     // only that run
+        Assert.Equal(1, exported.SnapshotTotals().Versions);
+        Assert.Throws<InvalidOperationException>(() => store.ExportRun("missing", Path.Combine(_root, "share", "x.sqlite")));
+
+        var other = new SqliteHistoryStore(Path.Combine(_root, "other"));
+        Assert.Equal((1, 0), other.ImportRunFile(file));
+        Assert.Equal((0, 1), other.ImportRunFile(file));                                        // the same file again adds nothing
+        Assert.Equal(store.LoadRequests("shareme").Select(r => (r.DataId, r.Step, r.Result, r.HttpStatus, r.RequestBody, r.ResponseBody)).ToList(),
+                     other.LoadRequests("shareme").Select(r => (r.DataId, r.Step, r.Result, r.HttpStatus, r.RequestBody, r.ResponseBody)).ToList());
+        Assert.Equal(store.LoadAssertions("shareme").Count, other.LoadAssertions("shareme").Count);
+        Assert.Equal(3, other.ScanPage(0, 10).Rows.Count);
+        Assert.Equal("shareme-token-D0002", other.OpenRunState("shareme").Load()!.Rows["1|D0002|1|qa"]["token"]);
+        var back = Path.Combine(_root, "back.xlsx");
+        Assert.True(other.RestoreSnapshot("shareme", back));                                    // the workbook of the run came along
+        Assert.Equal(Workbook("shared version"), File.ReadAllBytes(back));
+    }
+
+    [Fact]
+    public void A_database_made_before_the_upkeep_tables_is_upgraded_when_it_is_opened()
+    {
+        var folder = Path.Combine(_root, "oldschema");
+        Directory.CreateDirectory(folder);
+        using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(folder, "history.sqlite")};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "CREATE TABLE runs(run_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, started_ticks INTEGER NOT NULL, ended_at TEXT, rerun_of TEXT, result TEXT, has_steps INTEGER NOT NULL DEFAULT 0); INSERT INTO runs VALUES('legacy','2026-01-01T00:00:00.0000000+00:00',1,NULL,NULL,'passed',0); PRAGMA user_version=1;";
+            command.ExecuteNonQuery();
+        }
+        var store = new SqliteHistoryStore(folder);
+        Assert.Equal(["legacy"], store.ListRuns(0, 10).Select(r => r.RunId).ToArray());          // the old run is still there
+        SaveWithDetails(folder, "fresh", DateTimeOffset.Now, Workbook("x"));                      // and the new tables work
+        Assert.NotNull(store.SnapshotOf("fresh"));
+        Assert.Equal(6, store.LoadRequests("fresh").Count);
+    }
+
     [Fact]
     public void The_compare_check_reports_a_difference()
     {

@@ -16,6 +16,10 @@ public sealed class AppConfig
     public bool GenerateRowHistory { get; set; } = true;
     /// <summary>Where history is kept: the history workbooks (default), a SQLite database in the history folder, or both while they are compared.</summary>
     public Reporting.HistoryStorage HistoryStorage { get; set; } = Reporting.HistoryStorage.Files;
+    /// <summary>Database history: runs older than this many days are removed after each run (0 keeps everything).</summary>
+    public int HistoryRetentionDays { get; set; }
+    /// <summary>Database history: keep a copy of the workbook as it was for each run (identical copies are stored once).</summary>
+    public bool HistorySnapshotWorkbook { get; set; } = true;
 
     public string InstanceId { get; set; } = "default";
     public string RunId { get; set; } = string.Empty;
@@ -62,6 +66,7 @@ public sealed class CentralInstanceConfig
     public bool? GenerateAggregateHistory { get; set; }
     public bool? GenerateRowHistory { get; set; }
     public Reporting.HistoryStorage? HistoryStorage { get; set; }
+    public int? HistoryRetentionDays { get; set; }
     public string? WorkspaceRoot { get; set; }
     public string? TestcaseSelection { get; set; }
     public string? StepSelection { get; set; }

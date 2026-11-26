@@ -305,6 +305,12 @@ public sealed class ParallelIsolationTests : IDisposable
         var rerun = await RunProcess(onlyDatabase, 4, "Database", "--rerun-of", runId, "--rerun", "true");
         Assert.True(rerun.ExitCode == 0, rerun.Output);
         Assert.Equal(2, new LoadTestingTool.Reporting.SqliteHistoryStore(database.History).ScanPage(0, 10).Files);
+        // the database also holds the workbook as the run read it; the re-run used the same workbook, so it is still one stored version
+        var dbStore = new LoadTestingTool.Reporting.SqliteHistoryStore(database.History);
+        var snapshot = dbStore.SnapshotOf(runId);
+        Assert.NotNull(snapshot);
+        Assert.Equal(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(onlyDatabase.Workbook))).ToLowerInvariant(), snapshot!.Value.Hash);
+        Assert.Equal(1, dbStore.SnapshotTotals().Versions);
     }
 
     [Fact]

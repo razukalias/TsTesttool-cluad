@@ -92,6 +92,89 @@ public class HistoryDatabaseUiTests
         finally { Directory.SetCurrentDirectory(previous); try { Directory.Delete(root, true); } catch (IOException) { } }
     }
 
+    [AvaloniaFact]
+    public async Task The_Artifacts_tab_cleans_up_exports_imports_and_restores_the_workbook_of_a_run()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "upkeep_" + Guid.NewGuid().ToString("N")[..8]);
+        var inst = Path.Combine(root, "Instances", "Demo"); Directory.CreateDirectory(inst);
+        using (var dir = new TempDir()) File.Copy(Samples.CreateLarge(dir, rows: 3), Path.Combine(inst, "DataEngine.xlsx"));
+        File.WriteAllText(Path.Combine(root, "appsettings.json"), "{\"InstancesRoot\":\"Instances\",\"WorkbookName\":\"DataEngine.xlsx\"}");
+        var history = Path.Combine(inst, "History");
+        var store = new SqliteHistoryStore(history);
+        var config = new AppConfig { HistoryFolder = history, HistoryStorage = HistoryStorage.Database };
+        void Save(string runId, DateTimeOffset start, string book)
+        {
+            var run = new RunResult { RunId = runId, StartedAt = start, EndedAt = start.AddMinutes(1) };
+            run.Testcases.Add(new TestcaseResult { TestcaseIndex = 1, Testcase = "Order", DataId = "D1", Iteration = 1, Environment = "qa", StartedAt = start, EndedAt = start.AddSeconds(1) });
+            HistoryStores.SaveToDatabase(config, run, new RunValueMemory.Snapshot(), null, System.Text.Encoding.UTF8.GetBytes(book));
+        }
+        Save("ancient", DateTimeOffset.Now.AddDays(-90), "old book");
+        Save("recent", DateTimeOffset.Now.AddHours(-1), "new book");
+        var previous = Directory.GetCurrentDirectory();
+        try
+        {
+            Directory.SetCurrentDirectory(root);
+            var main = new LoadTestingTool.UI.MainWindow();
+            var create = typeof(LoadTestingTool.UI.MainWindow).GetMethod("CreateStandaloneEditor", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)!;
+            var editor = (DataEditorWindow)create.Invoke(main, null)!; editor.Height = 1800; editor.Show();
+            var tabs = ((DockPanel)editor.FindControl<Border>("RightHost")!.Child!).Children.OfType<TabControl>().Single();
+            await editor.Shell.LoadAsync(editor.Shell.Instances[0]);
+            editor.Shell.SelectedNode = editor.Shell.Instances[0];
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            var selected = (LoadTestingTool.UI.InstanceInfo)typeof(LoadTestingTool.UI.MainWindow).GetField("_selectedInstance", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(main)!;
+            selected.FolderPath = inst; selected.WorkbookPath = Path.Combine(inst, "DataEngine.xlsx"); selected.HistoryStorage = HistoryStorage.Database;
+            // saving the retention must go to a settings file of this test, never to the real central one
+            var central = Path.Combine(root, "central.json"); File.WriteAllText(central, "{}");
+            var appConfig = typeof(LoadTestingTool.UI.MainWindow).GetField("_config", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(main)!;
+            appConfig.GetType().GetProperty("SettingsFile")!.SetValue(appConfig, central);
+            typeof(LoadTestingTool.UI.MainWindow).GetMethod("RefreshDashboardDetails", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)!.Invoke(main, [true]);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            tabs.SelectedIndex = tabs.Items.Count - 1;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            string Texts() => string.Join("|", tabs.GetVisualDescendants().OfType<TextBlock>().Where(x => x.IsEffectivelyVisible).Select(x => x.Text));
+            void Click(string label) { tabs.GetVisualDescendants().OfType<Button>().First(b => b.Content?.ToString() == label).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent)); Avalonia.Threading.Dispatcher.UIThread.RunJobs(); }
+            Assert.Contains("Workbook copies: 2 versions", Texts());
+
+            // clean up with keep-for-ever removes nothing
+            Click("Clean up now");
+            Assert.Contains("0 runs removed", Texts());
+            Assert.Equal(2, store.Summary().Runs);
+
+            // 30 days: the 90 day old run goes, with the workbook version only it used
+            tabs.GetVisualDescendants().OfType<NumericUpDown>().First(n => (string?)n.Tag == "history-retention-days").Value = 30;
+            Click("Save");
+            Assert.Equal(30, selected.HistoryRetentionDays);
+            Assert.Contains("\"HistoryRetentionDays\": 30", File.ReadAllText(central));
+            Click("Clean up now");
+            Assert.Contains("1 runs removed", Texts());
+            Assert.Equal(["recent"], store.ListRuns(0, 10).Select(r => r.RunId).ToArray());
+            Assert.Equal(1, store.SnapshotTotals().Versions);
+
+            // export the shown run (the newest when none is chosen), import it into a second instance's database, restore the workbook next to the live one
+            var exchange = Path.Combine(root, "Exchange");
+            tabs.GetVisualDescendants().OfType<TextBox>().First(t => (string?)t.Tag == "history-exchange-folder").Text = exchange;
+            Click("Export shown run");
+            var exported = Path.Combine(exchange, "Run_recent.runhistory.sqlite");
+            Assert.True(File.Exists(exported), Texts());
+            var other = new SqliteHistoryStore(Path.Combine(root, "other"));
+            Assert.Equal((1, 0), other.ImportRunFile(exported));
+
+            store.DeleteRuns(["recent"]);
+            Click("Import run files");                                             // bring the file back from the exchange folder
+            Assert.Contains("1 runs added", Texts());
+            Assert.Equal(["recent"], store.ListRuns(0, 10).Select(r => r.RunId).ToArray());
+
+            Click("Save the workbook as it was in the shown run");
+            var restored = Path.Combine(inst, "DataEngine_as_of_recent.xlsx");
+            Assert.True(File.Exists(restored), Texts());
+            Assert.Equal("new book", File.ReadAllText(restored));
+            Click("Save the workbook as it was in the shown run");                  // never over an existing file
+            Assert.Contains("already there", Texts());
+        }
+        finally { Directory.SetCurrentDirectory(previous); try { Directory.Delete(root, true); } catch (IOException) { } }
+    }
+
     [Fact]
     public void The_dashboard_history_explorer_lists_the_runs_of_the_database_and_loads_bodies_and_assertions_only_for_a_comparison()
     {

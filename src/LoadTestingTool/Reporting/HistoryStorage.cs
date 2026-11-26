@@ -32,9 +32,12 @@ public static class HistoryStores
         => storage == HistoryStorage.Database ? new SqliteHistoryStore(historyFolder) : new FileHistoryStore(historyFolder);
 
     /// <summary>Writes the run to the database when the instance's storage asks for it. The workbooks are written by <see cref="HistoryWriter"/>.</summary>
-    public static void SaveToDatabase(AppConfig config, RunResult run, RunValueMemory.Snapshot? state, string? rerunOf)
+    public static void SaveToDatabase(AppConfig config, RunResult run, RunValueMemory.Snapshot? state, string? rerunOf, byte[]? workbookContent = null)
     {
         if (config.HistoryStorage == HistoryStorage.Files) return;
-        new SqliteHistoryStore(config.HistoryFolder).SaveRun(run, state, rerunOf, new HistoryWriter(config).BuildDetails(run));
+        var store = new SqliteHistoryStore(config.HistoryFolder);
+        store.SaveRun(run, state, rerunOf, new HistoryWriter(config).BuildDetails(run));
+        if (workbookContent is not null && config.HistorySnapshotWorkbook && run.Testcases.Count > 0) store.SaveSnapshot(run.RunId, workbookContent);
+        if (config.HistoryRetentionDays > 0) store.ApplyRetention(config.HistoryRetentionDays);
     }
 }

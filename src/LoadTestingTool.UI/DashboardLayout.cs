@@ -1250,6 +1250,8 @@ public sealed partial class MainWindow
     private readonly ProgressBar _importBar = new() { Minimum = 0, Maximum = 1, Height = 6, IsVisible = false };
     private readonly TextBlock _importText = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = DashboardStyle.Muted };
     private bool _importing;
+    private readonly TextBox _exchangeFolder = new() { Watermark = "Folder for run files (to hand a run to someone, or to bring one in)", Tag = "history-exchange-folder" };
+    private string _upkeepMessage = "";
 
     /// <summary>The history database of the selected instance: what it holds, and the functions that fill it from old history workbooks and compare it with them.</summary>
     private Control HistoryDatabaseSection(InstanceInfo item)
@@ -1276,9 +1278,101 @@ public sealed partial class MainWindow
                 _importFolder,
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _importFrom, _importTo, import, compare } },
                 _importBar, _importText,
+                UpkeepControls(item, store),
             }
         };
         return new StackPanel { Spacing = 6, Children = { DashboardStyle.Section("History database"), DashboardStyle.Card(panel, new Thickness(12, 10)) } };
+    }
+
+    /// <summary>Retention and clean-up, one run as a file of its own, and the workbook as it was in a run.</summary>
+    private Control UpkeepControls(InstanceInfo item, SqliteHistoryStore store)
+    {
+        if (_exchangeFolder.Parent is Panel owner) owner.Children.Remove(_exchangeFolder);
+        if (string.IsNullOrWhiteSpace(_exchangeFolder.Text)) _exchangeFolder.Text = System.IO.Path.Combine(item.HistoryFolder, "Exchange");
+        var message = new TextBlock { Text = _upkeepMessage, TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = DashboardStyle.Muted, Tag = "history-upkeep-message" };
+        void Say(string text) { _upkeepMessage = text; message.Text = text; }
+        string? Shown() => DataEditor.ShownRunChoice.Get(item.ResultsFolder) ?? (store.Exists ? store.ListRuns(0, 1).FirstOrDefault()?.RunId : null);
+
+        var days = new NumericUpDown { Minimum = 0, Maximum = 36500, Increment = 1, Value = item.HistoryRetentionDays, Width = 120, FormatString = "0", Tag = "history-retention-days" };
+        var keep = DashboardStyle.Action("Save", () =>
+        {
+            item.HistoryRetentionDays = (int)(days.Value ?? 0);
+            SaveInstanceReportingSettings(item, true);
+            Say(item.HistoryRetentionDays == 0 ? "Runs are kept for ever." : $"Runs older than {item.HistoryRetentionDays} days are removed after each run.");
+        });
+        var clean = DashboardStyle.Action("Clean up now", () =>
+        {
+            try
+            {
+                var before = store.Summary().Bytes;
+                var removed = store.ApplyRetention(item.HistoryRetentionDays);
+                store.Vacuum();
+                var after = store.Summary().Bytes;
+                Say($"{removed} runs removed. Database {before / 1024.0 / 1024.0:0.0} MB → {after / 1024.0 / 1024.0:0.0} MB." + (item.HistoryRetentionDays == 0 ? " (Keep for 0 days means for ever, so no run was removed.)" : ""));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException) { Say($"Clean-up failed: {ex.Message}"); }
+            Dispatcher.UIThread.Post(RefreshArtifacts);
+        });
+        var export = DashboardStyle.Action("Export shown run", () =>
+        {
+            try
+            {
+                if (Shown() is not { } run) { Say("There is no run in the database to export."); return; }
+                Directory.CreateDirectory(_exchangeFolder.Text!);
+                var file = System.IO.Path.Combine(_exchangeFolder.Text!, $"Run_{run}.runhistory.sqlite");
+                store.ExportRun(run, file);
+                Say($"Run {run} written to {file}");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException or InvalidOperationException) { Say($"Export failed: {ex.Message}"); }
+        });
+        var import = DashboardStyle.Action("Import run files", () =>
+        {
+            try
+            {
+                var folder = _exchangeFolder.Text?.Trim() ?? "";
+                if (!Directory.Exists(folder)) { Say("That folder does not exist."); return; }
+                int added = 0, skipped = 0, bad = 0;
+                foreach (var file in Directory.GetFiles(folder, "*.runhistory.sqlite"))
+                {
+                    try { var r = store.ImportRunFile(file); added += r.Added; skipped += r.Skipped; }
+                    catch (Exception ex) when (ex is IOException or Microsoft.Data.Sqlite.SqliteException) { bad++; }
+                }
+                Say($"{added} runs added, {skipped} already there" + (bad > 0 ? $", {bad} files could not be read." : "."));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Say($"Import failed: {ex.Message}"); }
+            Dispatcher.UIThread.Post(RefreshArtifacts);
+        });
+        var restore = DashboardStyle.Action("Save the workbook as it was in the shown run", () =>
+        {
+            try
+            {
+                if (Shown() is not { } run || store.SnapshotOf(run) is null) { Say("The shown run has no workbook copy (it was made before copies were kept, or copies are off)."); return; }
+                var dir = System.IO.Path.GetDirectoryName(item.WorkbookPath)!;
+                var name = System.IO.Path.GetFileNameWithoutExtension(item.WorkbookPath);
+                var target = System.IO.Path.Combine(dir, $"{name}_as_of_{run}.xlsx");
+                if (File.Exists(target)) { Say($"{target} is already there."); return; }
+                store.RestoreSnapshot(run, target);
+                Say($"Saved {target}. The live workbook was not touched.");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException) { Say($"Could not save it: {ex.Message}"); }
+        });
+        var totals = store.SnapshotTotals();
+        return new StackPanel
+        {
+            Spacing = 8, Margin = new Thickness(0, 8, 0, 0),
+            Children =
+            {
+                DashboardStyle.Text("Upkeep", 13, true),
+                DashboardStyle.Text("Keep runs for (days, 0 = for ever). Older runs are removed after each run; “Clean up now” also gives the room back to the disk.", 12, false, DashboardStyle.Muted),
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { days, keep, clean } },
+                DashboardStyle.Text($"Workbook copies: {totals.Versions} versions, {totals.Bytes / 1024.0 / 1024.0:0.0} MB (the same content is stored once).", 12, false, DashboardStyle.Muted),
+                restore,
+                DashboardStyle.Text("One run in a file of its own, to hand over or to bring in:", 12, false, DashboardStyle.Muted),
+                _exchangeFolder,
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { export, import } },
+                message,
+            }
+        };
     }
 
     private async Task RunImportAsync(InstanceInfo item, bool compare)

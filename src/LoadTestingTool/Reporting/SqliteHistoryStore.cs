@@ -14,10 +14,14 @@ namespace LoadTestingTool.Reporting;
 public sealed class SqliteHistoryStore : IHistoryStore
 {
     public const string FileName = "history.sqlite";
-    private const int SchemaVersion = 2;
+    private const int SchemaVersion = 3;
     private readonly string _path;
 
-    public SqliteHistoryStore(string historyFolder) => _path = Path.Combine(historyFolder, FileName);
+    public SqliteHistoryStore(string historyFolder) => _path = System.IO.Path.Combine(historyFolder, FileName);
+    private SqliteHistoryStore(string file, bool _) => _path = file;
+
+    /// <summary>A history database in a file of its own (an exported run, say) instead of the history folder's <c>history.sqlite</c>.</summary>
+    public static SqliteHistoryStore FromFile(string file) => new(file, true);
 
     public string Path_ => _path;
     public bool Exists => File.Exists(_path);
@@ -58,6 +62,8 @@ public sealed class SqliteHistoryStore : IHistoryStore
                 CREATE INDEX IF NOT EXISTS state_by_row ON state(run_id, row_key);
                 CREATE TABLE IF NOT EXISTS requests(run_id TEXT NOT NULL, seq INTEGER NOT NULL, request_id TEXT, row_key TEXT NOT NULL, testcase_index INTEGER NOT NULL, testcase TEXT NOT NULL, data_id TEXT NOT NULL, iteration INTEGER NOT NULL, environment TEXT NOT NULL, step TEXT NOT NULL, step_type TEXT, result TEXT NOT NULL, http_status INTEGER NOT NULL, duration_ms INTEGER NOT NULL, started_at TEXT, error TEXT, failure_category TEXT, verb TEXT, target_url TEXT, PRIMARY KEY(run_id, seq)) WITHOUT ROWID;
                 CREATE TABLE IF NOT EXISTS request_bodies(run_id TEXT NOT NULL, seq INTEGER NOT NULL, step_config BLOB, request_headers BLOB, request_body BLOB, response_headers BLOB, response_body BLOB, PRIMARY KEY(run_id, seq)) WITHOUT ROWID;
+                CREATE TABLE IF NOT EXISTS snapshots(hash TEXT PRIMARY KEY, size INTEGER NOT NULL, created_at TEXT NOT NULL, content BLOB NOT NULL) WITHOUT ROWID;
+                CREATE TABLE IF NOT EXISTS run_snapshots(run_id TEXT PRIMARY KEY, hash TEXT NOT NULL) WITHOUT ROWID;
                 CREATE TABLE IF NOT EXISTS assertions(run_id TEXT NOT NULL, seq INTEGER NOT NULL, request_seq INTEGER NOT NULL, testcase TEXT, data_id TEXT, step TEXT, path TEXT, verb TEXT, type TEXT, meaning TEXT, expected TEXT, actual TEXT, result TEXT, message TEXT, PRIMARY KEY(run_id, seq)) WITHOUT ROWID;
                 """);
             Exec(connection, $"PRAGMA user_version={SchemaVersion};");
@@ -306,6 +312,168 @@ public sealed class SqliteHistoryStore : IHistoryStore
             }
         }
         return (rows.OrderByDescending(r => r.StartedAt).ThenBy(r => r.TestcaseIndex).ThenBy(r => r.DataId).ThenBy(r => r.Iteration).ToList(), runs.Count);
+    }
+
+    // ---- Upkeep: retention, shrinking, workbook snapshots, one run in a file of its own ----
+
+    private static readonly string[] RunTables = ["state", "steps", "rows", "requests", "request_bodies", "assertions", "run_snapshots"];
+
+    /// <summary>Removes runs (and the workbook snapshots nobody refers to any more). Returns how many runs were removed.</summary>
+    public int DeleteRuns(IEnumerable<string> runIds)
+    {
+        var ids = runIds.Distinct().ToList();
+        if (ids.Count == 0 || !Exists) return 0;
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        var removed = 0;
+        foreach (var id in ids)
+        {
+            foreach (var table in RunTables) Exec(connection, $"DELETE FROM {table} WHERE run_id=@r", ("@r", id));
+            using var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM runs WHERE run_id=@r";
+            command.Parameters.AddWithValue("@r", id);
+            removed += command.ExecuteNonQuery();
+        }
+        Exec(connection, "DELETE FROM snapshots WHERE hash NOT IN (SELECT hash FROM run_snapshots)");
+        transaction.Commit();
+        return removed;
+    }
+
+    /// <summary>
+    /// Removes the runs that started more than <paramref name="keepDays"/> days ago (0 or less keeps everything). The re-run memory of a data row is the one of the
+    /// newest run that ran it, so a row that only an old run ran loses its old data. The file does not shrink by itself: see <see cref="Vacuum"/>; the freed room is reused by later runs.
+    /// </summary>
+    public int ApplyRetention(int keepDays, DateTimeOffset? now = null)
+    {
+        if (keepDays <= 0 || !Exists) return 0;
+        var cutoff = (now ?? DateTimeOffset.UtcNow).AddDays(-keepDays).UtcTicks;
+        List<string> old = [];
+        using (var connection = Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT run_id FROM runs WHERE started_ticks < @c";
+            command.Parameters.AddWithValue("@c", cutoff);
+            using var reader = command.ExecuteReader();
+            while (reader.Read()) old.Add(reader.GetString(0));
+        }
+        return DeleteRuns(old);
+    }
+
+    /// <summary>Gives the room of removed runs back to the file system (the file is rewritten; it needs room for a copy of itself while it runs).</summary>
+    public void Vacuum()
+    {
+        if (!Exists) return;
+        using var connection = Open();
+        Exec(connection, "VACUUM;");
+        Exec(connection, "PRAGMA wal_checkpoint(TRUNCATE);");
+    }
+
+    /// <summary>Keeps the workbook as it was for this run. Identical content is stored once, however many runs used it.</summary>
+    public void SaveSnapshot(string runId, byte[] content)
+    {
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(content)).ToLowerInvariant();
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "INSERT OR IGNORE INTO snapshots(hash,size,created_at,content) VALUES(@h,@s,@c,@b)";
+            command.Parameters.AddWithValue("@h", hash); command.Parameters.AddWithValue("@s", content.LongLength); command.Parameters.AddWithValue("@c", Iso(DateTimeOffset.Now)); command.Parameters.AddWithValue("@b", content);
+            command.ExecuteNonQuery();
+        }
+        Exec(connection, "INSERT OR REPLACE INTO run_snapshots(run_id, hash) VALUES(@r,@h)", ("@r", runId), ("@h", hash));
+        Exec(connection, "DELETE FROM snapshots WHERE hash NOT IN (SELECT hash FROM run_snapshots)");
+        transaction.Commit();
+    }
+
+    /// <summary>The snapshot a run points at (its content hash and size), or null.</summary>
+    public (string Hash, long Size)? SnapshotOf(string runId)
+    {
+        if (!Exists) return null;
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT s.hash, s.size FROM run_snapshots r JOIN snapshots s ON s.hash = r.hash WHERE r.run_id=@r";
+        command.Parameters.AddWithValue("@r", runId);
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? (reader.GetString(0), reader.GetInt64(1)) : null;
+    }
+
+    /// <summary>How many different workbook versions are kept and how many bytes they take.</summary>
+    public (int Versions, long Bytes) SnapshotTotals()
+    {
+        if (!Exists) return (0, 0);
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*), COALESCE(SUM(size),0) FROM snapshots";
+        using var reader = command.ExecuteReader();
+        reader.Read();
+        return (reader.GetInt32(0), reader.GetInt64(1));
+    }
+
+    /// <summary>Writes the workbook of a run to a file (never over an existing one). False when the run has no snapshot.</summary>
+    public bool RestoreSnapshot(string runId, string destination)
+    {
+        if (!Exists) return false;
+        if (File.Exists(destination)) throw new IOException($"{destination} already exists.");
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT s.content FROM run_snapshots r JOIN snapshots s ON s.hash = r.hash WHERE r.run_id=@r";
+        command.Parameters.AddWithValue("@r", runId);
+        if (command.ExecuteScalar() is not byte[] content) return false;
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(destination))!);
+        File.WriteAllBytes(destination, content);
+        return true;
+    }
+
+    /// <summary>Copies one run, with everything it holds, into a database file of its own (to hand it to someone, or to keep it in a shared folder). An existing file is replaced.</summary>
+    public void ExportRun(string runId, string file)
+    {
+        if (!Contains(runId)) throw new InvalidOperationException($"Run {runId} is not in the database.");
+        if (File.Exists(file)) File.Delete(file);
+        FromFile(file).EnsureCreated();
+        using var connection = Open();
+        Exec(connection, "ATTACH DATABASE @f AS exported", ("@f", file));
+        try
+        {
+            using var transaction = connection.BeginTransaction();
+            Exec(connection, "INSERT INTO exported.runs SELECT * FROM main.runs WHERE run_id=@r", ("@r", runId));
+            foreach (var table in RunTables) Exec(connection, $"INSERT INTO exported.{table} SELECT * FROM main.{table} WHERE run_id=@r", ("@r", runId));
+            Exec(connection, "INSERT OR IGNORE INTO exported.snapshots SELECT * FROM main.snapshots WHERE hash IN (SELECT hash FROM main.run_snapshots WHERE run_id=@r)", ("@r", runId));
+            transaction.Commit();
+        }
+        finally { Exec(connection, "DETACH DATABASE exported"); }
+        FromFile(file).Vacuum();   // a file to hand over: one file, no -wal beside it
+    }
+
+    /// <summary>Adds the runs of an exported file that this database does not have yet (by run id). Returns how many were added and how many were already there.</summary>
+    public (int Added, int Skipped) ImportRunFile(string file)
+    {
+        if (!File.Exists(file)) throw new FileNotFoundException("The run file does not exist.", file);
+        FromFile(file).EnsureCreated();   // an older file is brought to the current layout first
+        using var connection = Open();
+        Exec(connection, "ATTACH DATABASE @f AS incoming", ("@f", file));
+        int added = 0, skipped = 0;
+        try
+        {
+            var ids = new List<string>();
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT run_id FROM incoming.runs";
+                using var reader = command.ExecuteReader();
+                while (reader.Read()) ids.Add(reader.GetString(0));
+            }
+            using var transaction = connection.BeginTransaction();
+            foreach (var id in ids)
+            {
+                if (Scalar(connection, "SELECT 1 FROM main.runs WHERE run_id=@r", ("@r", id)) is not null) { skipped++; continue; }
+                Exec(connection, "INSERT INTO main.runs SELECT * FROM incoming.runs WHERE run_id=@r", ("@r", id));
+                foreach (var table in RunTables) Exec(connection, $"INSERT INTO main.{table} SELECT * FROM incoming.{table} WHERE run_id=@r", ("@r", id));
+                added++;
+            }
+            Exec(connection, "INSERT OR IGNORE INTO main.snapshots SELECT * FROM incoming.snapshots");
+            transaction.Commit();
+        }
+        finally { Exec(connection, "DETACH DATABASE incoming"); }
+        return (added, skipped);
     }
 
     public IRunStateStore OpenRunState(string? runId) => new SqliteRunStateStore(this, runId);
