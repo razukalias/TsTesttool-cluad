@@ -19,7 +19,7 @@ public class RerunFromHistoryTests
     public void All_steps_with_old_data_is_a_plain_rerun_of_the_chosen_rows_linked_to_the_earlier_run()
     {
         var request = RerunPlanner.Build(1, "runA", [Row("d2"), Row("d2", iteration: 2), Row("d3")], Steps,
-            Steps.ToDictionary(s => s, _ => true), ["qa", "prod"], ["qa", "prod"]);
+            Steps.ToDictionary(s => s, _ => true));
 
         Assert.Equal([1], request.Testcases);
         Assert.Equal(["d2", "d3"], request.DataIds);          // one entry per data row, not per iteration
@@ -27,29 +27,39 @@ public class RerunFromHistoryTests
         Assert.True(request.Rerun);
         Assert.Null(request.RerunSteps);
         Assert.Equal("runA", request.RerunOf);
-        Assert.Null(request.Environments);                    // all environments: the instance decides
+        Assert.Equal(["qa"], request.RowsByEnvironment!.Keys);   // each row runs in the environment it ran in
+        Assert.Equal(["d2", "d3"], request.RowsByEnvironment["qa"]);
     }
 
     [Fact]
     public void Chosen_steps_and_a_mix_of_old_and_fresh_data_are_passed_per_step()
     {
         var request = RerunPlanner.Build(1, "runA", [Row("d2")], Steps,
-            new Dictionary<string, bool> { ["Create"] = true, ["Check"] = false }, ["qa", "prod"], ["prod"]);
+            new Dictionary<string, bool> { ["Create"] = true, ["Check"] = false });
 
         Assert.Equal(["Create", "Check"], request.Steps![1]);
         Assert.False(request.Rerun);
         Assert.Equal(["Create"], request.RerunSteps![1]);     // old data only where chosen; Check gets fresh values
-        Assert.Equal(["prod"], request.Environments);
     }
 
     [Fact]
     public void Fresh_data_for_every_step_asks_for_no_reuse_but_is_still_linked()
     {
-        var request = RerunPlanner.Build(1, "runA", [Row("d2")], Steps, Steps.ToDictionary(s => s, _ => false), ["qa"], ["qa"]);
+        var request = RerunPlanner.Build(1, "runA", [Row("d2")], Steps, Steps.ToDictionary(s => s, _ => false));
 
         Assert.False(request.Rerun);
         Assert.Null(request.RerunSteps);
         Assert.Equal("runA", request.RerunOf);
+    }
+
+    [Fact]
+    public void Each_ticked_row_runs_only_in_the_environment_where_it_failed()
+    {
+        var request = RerunPlanner.Build(1, "runA", [Row("d2", env: "qa"), Row("d5", env: "prod"), Row("d7", env: "qa")], Steps, Steps.ToDictionary(s => s, _ => true));
+
+        Assert.Equal(["d2", "d7"], request.RowsByEnvironment!["qa"]);
+        Assert.Equal(["d5"], request.RowsByEnvironment["prod"]);
+        Assert.Equal(["qa", "prod"], request.Environments);
     }
 
     [AvaloniaFact]
@@ -74,9 +84,8 @@ public class RerunFromHistoryTests
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
             var boxes = window.GetVisualDescendantsOf<CheckBox>().ToList();
-            var d1 = boxes.Single(b => b.Content?.ToString()!.StartsWith("d1") == true);
+            Assert.DoesNotContain(boxes, b => b.Content?.ToString()!.StartsWith("d1") == true);   // passed: not listed
             var d2 = boxes.Single(b => b.Content?.ToString()!.StartsWith("d2") == true);
-            Assert.False(d1.IsChecked);                      // passed
             Assert.True(d2.IsChecked);                       // failed: ticked by default
             Assert.Contains(window.GetVisualDescendantsOf<ComboBox>(), c => c.SelectedItem is ComboBoxItem { Tag: "runA" });
             window.Close();
@@ -113,6 +122,36 @@ public class RerunWindowPagingTests
     }
 
     [AvaloniaFact]
+    public void The_environment_filter_hides_unticked_environments_and_their_rows_and_passed_rows_are_never_listed()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "rerun-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var config = new AppConfig { HistoryFolder = folder };
+            var run = new RunResult { RunId = "runA", StartedAt = DateTimeOffset.Now, EndedAt = DateTimeOffset.Now };
+            foreach (var (data, env, status) in new[] { ("d1", "qa", 200), ("d2", "qa", 500), ("d2", "prod", 200), ("d3", "prod", 500), ("d4", "prod", 500) })
+            {
+                var testcase = new TestcaseResult { TestcaseIndex = 1, Testcase = "Order", DataId = data, Iteration = 1, Environment = env, StartedAt = DateTimeOffset.Now, EndedAt = DateTimeOffset.Now };
+                testcase.Requests.Add(new RequestResult { Testcase = "Order", StepName = "Create", HttpStatus = status });
+                run.Testcases.Add(testcase);
+            }
+            new HistoryWriter(config).Write(run, Path.Combine(folder, "runA"), "runA.xlsx");
+            var window = new RerunWindow(new TestcaseItem(new TestcaseInfo(1, "Order", ["Create"]), 2), new RerunContext(folder, ["qa", "prod"]));
+            window.Show();
+            Wait(window);
+            var list = window.GetVisualDescendantsOf<ListBox>().First(l => (string?)l.Tag == "rerun-rows");
+            Assert.Equal(3, list.ItemCount);                 // d2/qa, d3/prod, d4/prod: d1 and d2/prod passed
+            var envBoxes = window.GetVisualDescendantsOf<CheckBox>().Where(b => (string?)b.Tag == "rerun-env").ToList();
+            Assert.Equal(["qa", "prod"], envBoxes.Select(b => b.Content?.ToString()).ToArray());
+            envBoxes.Single(b => b.Content?.ToString() == "prod").IsChecked = false;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.Equal(1, list.ItemCount);                 // only d2/qa is left
+            window.Close();
+        }
+        finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+    }
+
+    [AvaloniaFact]
     public void Only_the_newest_history_files_are_read_at_first_and_older_ones_on_request()
     {
         var folder = Path.Combine(Path.GetTempPath(), "rerun-" + Guid.NewGuid().ToString("N"));
@@ -146,7 +185,7 @@ public class RerunWindowPagingTests
         try
         {
             var config = new AppConfig { HistoryFolder = folder };
-            WriteRun(config, folder, "mid", 72, DateTimeOffset.Now);   // 72 rows, 36 of them failed
+            WriteRun(config, folder, "mid", 144, DateTimeOffset.Now);   // 144 rows, 72 of them failed (only those are listed)
             var window = new RerunWindow(new TestcaseItem(new TestcaseInfo(1, "Order", ["Create"]), 2), new RerunContext(folder, ["qa"]));
             window.Show();
             Wait(window);
@@ -173,11 +212,11 @@ public class RerunWindowPagingTests
             Wait(window);
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             var list = window.GetVisualDescendantsOf<ListBox>().First(l => (string?)l.Tag == "rerun-rows");
-            Assert.Equal(3000, list.ItemCount);
+            Assert.Equal(1500, list.ItemCount);   // the failed half
             var built = window.GetVisualDescendantsOf<CheckBox>().Count(b => b.Content?.ToString()?.StartsWith('d') == true);
             Assert.InRange(built, 1, 100);   // not 3000
             var count = window.GetVisualDescendantsOf<TextBlock>().First(t => t.Text?.EndsWith("ticked") == true).Text;
-            Assert.Equal("1500 of 3000 ticked", count);   // the failed half
+            Assert.Equal("1500 of 1500 ticked", count);
             window.Close();
         }
         finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }

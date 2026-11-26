@@ -1067,3 +1067,8 @@ To add:
 ## Hidden characters
 - Done: text verbs (eq, ne, contains, notcontains, startswith, endswith, in) ignore zero-width/BOM/soft-hyphen/control characters, treat non-breaking space as space and ignore edge spaces, on both expected and actual (`AssertionEngine.CleanText`). `regex` patterns are left as written. Reported expected/actual values stay raw.
 - Not done: editor mark for cells that contain hidden characters (option 1); a setting to turn the cleaning off.
+
+## Re-run window: failed rows per environment (done)
+- The window lists only the failed rows of the chosen run. Environment checkboxes sit at the top as a filter: an unticked environment hides its failed rows and they are not run.
+- Each ticked row runs again only in the environment where it failed (`--rows-by-environment {"qa":["d2"],"prod":["d5"]}`; "" = default environment). Test: one real process run, 3 row runs served instead of 6 when every row would run in both environments.
+- Not done: if a row failed in two iterations, the runner still repeats all configured iterations of that data id in that environment.

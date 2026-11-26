@@ -16,7 +16,8 @@ public sealed class RerunWindow : Window
     private readonly TestcaseItem _testcase;
     private readonly RerunContext _context;
     private readonly ComboBox _runs = new() { MinWidth = 420 };
-    private readonly CheckBox _failedOnly = new() { Content = "Failed rows only", IsChecked = true };
+    private List<RunHistoryRow> _failedOfRun = [];
+    private StackPanel _environmentSection = new();
     private readonly ListBox _rows = new() { Height = 300, Background = Brushes.Transparent, SelectionMode = SelectionMode.Single, Tag = "rerun-rows" };   // virtualized: only the lines in view are built
     private readonly TextBlock _count = new() { FontSize = 12, Opacity = 0.8 };
     private readonly Button _more = new() { Content = "Load older runs", IsVisible = false, MinHeight = 30, Tag = "rerun-more" };
@@ -61,7 +62,6 @@ public sealed class RerunWindow : Window
         cancel.Click += (_, _) => Close();
         _run.Click += (_, _) => Accept();
         _runs.SelectionChanged += (_, _) => ShowRows();
-        _failedOnly.IsCheckedChanged += (_, _) => ShowRows();
 
         Section("Earlier run", out var runsPanel, _runs, _more);
         var all = new Button { Content = "Tick all", MinHeight = 28, Tag = "rerun-all" };
@@ -80,21 +80,22 @@ public sealed class RerunWindow : Window
             if (choice is not null) box.Bind(CheckBox.IsCheckedProperty, new Avalonia.Data.Binding(nameof(RowChoice.IsChecked)) { Mode = Avalonia.Data.BindingMode.TwoWay });
             return box;
         });
-        Section("Rows", out var rowsPanel, _failedOnly, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { all, none, _count } }, _rows);
+        Section("Failed rows", out var rowsPanel, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { all, none, _count } }, _rows);
         Section("Steps and data", out var stepsPanel, new TextBlock { Text = "Old data = the values (random numbers, GUIDs, dates, extracted responses) that run used. Fresh = made new.", Opacity = 0.7, FontSize = 12, TextWrapping = TextWrapping.Wrap }, _steps);
-        Section("Environments", out var envPanel, _environments);
+        Section("Environments (untick to hide their failed rows and leave them out)", out var envPanel, _environments);
+        _environmentSection = envPanel;
         Content = new Grid
         {
             Margin = new Thickness(18), RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"),
             Children =
             {
                 Place(new TextBlock { Text = "Pick an earlier run of this testcase. The new run is saved in history as a re-run of it; nothing is overwritten.", Opacity = 0.7, FontSize = 12, TextWrapping = TextWrapping.Wrap }, 0),
-                Place(new ScrollViewer { Content = new StackPanel { Spacing = 14, Children = { runsPanel, rowsPanel, stepsPanel, envPanel } } }, 1),
+                Place(new ScrollViewer { Content = new StackPanel { Spacing = 14, Children = { runsPanel, envPanel, rowsPanel, stepsPanel } } }, 1),
                 Place(_status, 2),
                 Place(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _run, cancel } }, 3)
             }
         };
-        BuildStepsAndEnvironments();
+        BuildSteps();
         Load();
     }
 
@@ -148,7 +149,7 @@ public sealed class RerunWindow : Window
         if (_more.IsVisible) _status.Text = $"Showing runs from the {_filesScanned} newest history files; \"Load older runs\" reads {PageSize} more.";
     }
 
-    private void BuildStepsAndEnvironments()
+    private void BuildSteps()
     {
         foreach (var step in _testcase.StepNodes.Select(n => n.Name))
         {
@@ -157,31 +158,43 @@ public sealed class RerunWindow : Window
             _stepBoxes.Add((use, data, step));
             _steps.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { use, data } });
         }
-        foreach (var environment in _context.Environments)
-        {
-            var box = new CheckBox { Content = environment, IsChecked = true };
-            _environmentBoxes.Add(box);
-            _environments.Children.Add(box);
-        }
-        if (_context.Environments.Count == 0) _environments.Children.Add(new TextBlock { Text = "This instance has no environments: the run uses its default.", Opacity = 0.7, FontSize = 12 });
     }
 
     private string? SelectedRunId => (_runs.SelectedItem as ComboBoxItem)?.Tag as string;
 
+    /// <summary>The run changed: its failed rows are the candidates, and its environments become the filter at the top.</summary>
     private void ShowRows()
     {
-        _choices = [];
-        if (SelectedRunId is { } runId)
+        _failedOfRun = SelectedRunId is { } runId ? RerunPlanner.RowsOf(_history, runId, _testcase.Index).Where(r => r.Failed).ToList() : [];
+        _environments.Children.Clear();
+        _environmentBoxes.Clear();
+        var names = _failedOfRun.Select(r => r.Environment).Where(e => !string.IsNullOrEmpty(e)).Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(e => { var i = _context.Environments.ToList().FindIndex(x => x.Equals(e, StringComparison.OrdinalIgnoreCase)); return i < 0 ? int.MaxValue : i; }).ThenBy(e => e).ToList();
+        foreach (var name in names)
         {
-            var failedOnly = _failedOnly.IsChecked.GetValueOrDefault();
-            foreach (var row in RerunPlanner.RowsOf(_history, runId, _testcase.Index))
-            {
-                var choice = new RowChoice(row) { IsChecked = !failedOnly || row.Failed };
-                choice.PropertyChanged += (_, _) => UpdateCount();
-                _choices.Add(choice);
-            }
-            _status.Text = "Every iteration and environment of a ticked data row runs again; the runner picks rows by data id.";
+            var box = new CheckBox { Content = name, IsChecked = true, Tag = "rerun-env" };
+            box.IsCheckedChanged += (_, _) => ApplyEnvironmentFilter();
+            _environmentBoxes.Add(box);
+            _environments.Children.Add(box);
         }
+        _environmentSection.IsVisible = names.Count > 0;
+        ApplyEnvironmentFilter();
+    }
+
+    /// <summary>Only failed rows of the ticked environments are listed (and so only they run again).</summary>
+    private void ApplyEnvironmentFilter()
+    {
+        var hidden = _environmentBoxes.Where(b => b.IsChecked != true).Select(b => b.Content?.ToString() ?? string.Empty).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _choices = [];
+        foreach (var row in _failedOfRun.Where(r => !hidden.Contains(r.Environment)))
+        {
+            var choice = new RowChoice(row) { IsChecked = true };
+            choice.PropertyChanged += (_, _) => UpdateCount();
+            _choices.Add(choice);
+        }
+        _status.Text = SelectedRunId is null ? string.Empty
+            : _failedOfRun.Count == 0 ? "This run has no failed rows."
+            : "Each ticked row runs again only in the environment where it failed.";
         _rows.ItemsSource = _choices;
         FitRows();
         UpdateCount();
@@ -202,9 +215,7 @@ public sealed class RerunWindow : Window
         if (rows.Count == 0) { _status.Text = "Tick at least one row to re-run."; return; }
         var steps = _stepBoxes.Where(s => s.Use.IsChecked == true).ToDictionary(s => s.Step, s => s.Data.SelectedIndex == 0);
         if (steps.Count == 0) { _status.Text = "Tick at least one step to run."; return; }
-        var environments = _environmentBoxes.Where(b => b.IsChecked == true).Select(b => b.Content?.ToString() ?? string.Empty).ToList();
-        if (_environmentBoxes.Count > 0 && environments.Count == 0) { _status.Text = "Tick at least one environment."; return; }
-        var request = RerunPlanner.Build(_testcase.Index, runId, rows, _testcase.StepNodes.Select(n => n.Name).ToList(), steps, _context.Environments, environments);
+        var request = RerunPlanner.Build(_testcase.Index, runId, rows, _testcase.StepNodes.Select(n => n.Name).ToList(), steps);
         var dataIds = rows.Select(r => r.DataId).Distinct().Count();
         Result = (request, $"a re-run of {_testcase.Name} ({dataIds} data row{(dataIds == 1 ? "" : "s")})");
         Close();

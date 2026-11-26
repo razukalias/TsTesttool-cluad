@@ -115,13 +115,20 @@ internal static class Program
             else if (rerun) Console.WriteLine(string.IsNullOrWhiteSpace(rerunOf) ? "Rerun: no history found for this workbook (it may have been cleaned up), so new values are generated." : $"Rerun: no history found for run {rerunOf} (it may have been cleaned up), so new values are generated.");
             Console.WriteLine("Selected work: " + string.Join("; ", work.Select(x => $"{x.Testcase.TestcaseIndex} [{(string.IsNullOrEmpty(x.Environment) ? "default" : x.Environment)}]: {string.Join(", ", x.Testcase.Steps.Select(s => s.StepName))}")));
             var filters = ParseDataIdSelection(dataIdSelection);
+            // --rows-by-environment {"qa":["d2","d5"],"":["d7"]}: each data row runs only in the environments listed for it (a re-run of failed rows); "" is the default environment.
+            var rowsByEnvironment = ParseRowsByEnvironment(GetCommandLineValue(args, "--rows-by-environment"));
+            if (rowsByEnvironment.Count > 0) work = work.Where(x => rowsByEnvironment.ContainsKey(x.Environment ?? string.Empty)).ToList();
+            IReadOnlyDictionary<int, IReadOnlySet<string>> FiltersOf(string? environment, int testcaseIndex)
+                => rowsByEnvironment.TryGetValue(environment ?? string.Empty, out var ids)
+                    ? new Dictionary<int, IReadOnlySet<string>>(filters) { [testcaseIndex] = ids }
+                    : filters;
             try
             {
-                if (config.RunEnvironmentsParallel) await Task.WhenAll(work.Select(x => RunTestcaseAsync(x.Testcase, x.Environment, workbook, overall, http, config, runId, selection, filters, uiLaunchId, uiLaunchAt, cancellation.Token)));
+                if (config.RunEnvironmentsParallel) await Task.WhenAll(work.Select(x => RunTestcaseAsync(x.Testcase, x.Environment, workbook, overall, http, config, runId, selection, FiltersOf(x.Environment, x.Testcase.TestcaseIndex), uiLaunchId, uiLaunchAt, cancellation.Token)));
                 else foreach (var item in work)
                 {
                     cancellation.Token.ThrowIfCancellationRequested();
-                    await RunTestcaseAsync(item.Testcase, item.Environment, workbook, overall, http, config, runId, selection, filters, uiLaunchId, uiLaunchAt, cancellation.Token);
+                    await RunTestcaseAsync(item.Testcase, item.Environment, workbook, overall, http, config, runId, selection, FiltersOf(item.Environment, item.Testcase.TestcaseIndex), uiLaunchId, uiLaunchAt, cancellation.Token);
                 }
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -307,6 +314,19 @@ internal static class Program
         if (ids.Count == 0) return "dataid_unknown.xlsx";
         var tokens = ids.Select(InternalLogger.SafeFolderName).ToList();
         return "dataid_" + string.Join("_", tokens) + ".xlsx";
+    }
+
+    private static Dictionary<string, IReadOnlySet<string>> ParseRowsByEnvironment(string? json)
+    {
+        var result = new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(json)) return result;
+        try
+        {
+            foreach (var pair in System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string[]>>(json) ?? [])
+                result[pair.Key] = pair.Value.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (System.Text.Json.JsonException ex) { throw new InvalidDataException("--rows-by-environment must be a JSON object of environment to data ids.", ex); }
+        return result;
     }
 
     private static IReadOnlyDictionary<int, IReadOnlySet<string>> ParseDataIdSelection(string? value)

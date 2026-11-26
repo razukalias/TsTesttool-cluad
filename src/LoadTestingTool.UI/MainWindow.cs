@@ -784,6 +784,7 @@ public sealed partial class MainWindow : Window
         if (request.TestcasesParallel is { } parallel) overrides.Add(("--scenarios-parallel", parallel ? "true" : "false"));
         if (!string.IsNullOrWhiteSpace(request.RerunOf)) overrides.Add(("--rerun-of", request.RerunOf));
         if (request.Environments is { Count: > 0 } chosenEnvironments) overrides.Add(("--environments-json", System.Text.Json.JsonSerializer.Serialize(chosenEnvironments)));
+        if (request.RowsByEnvironment is { Count: > 0 } rowsByEnvironment) overrides.Add(("--rows-by-environment", System.Text.Json.JsonSerializer.Serialize(rowsByEnvironment.ToDictionary(p => p.Key, p => p.Value.ToArray()))));
         item.TestcaseSelection = selection;
         item.StepSelectionJson = stepsJson;
         item.DataIdSelection = ids;

@@ -230,4 +230,26 @@ public sealed class ParallelIsolationTests : IDisposable
         (truth.Values[a], truth.Values[b]) = (truth.Values[b], truth.Values[a]);
         Assert.NotEmpty(Violations(9, "dev", run, truth));
     }
+
+    [Fact]
+    public async Task Rows_by_environment_runs_each_row_only_in_its_own_environment()
+    {
+        StartServer();
+        var truth = BuildInstance(8);
+        File.WriteAllText(Path.Combine(truth.Folder, "appsettings.json"), System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["ExcelFilePath"] = truth.Workbook, ["TemplatesFolder"] = Path.Combine(truth.Folder, "Templates"), ["LogsFolder"] = Path.Combine(truth.Folder, "Logs"),
+            ["HistoryFolder"] = Path.Combine(truth.Folder, "History"), ["ResultsFolder"] = Path.Combine(truth.Folder, "Results"), ["WorkspaceRoot"] = truth.Folder,
+            ["Environments"] = Environments, ["RunEnvironmentsParallel"] = true, ["TestcaseSelection"] = "1",
+        }));
+        var dll = typeof(AppConfig).Assembly.Location;
+        var start = new System.Diagnostics.ProcessStartInfo("dotnet") { WorkingDirectory = truth.Folder, RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var arg in new[] { dll, "--config", Path.Combine(truth.Folder, "appsettings.json"), "--testcases", "1", "--dataids", "1:I8R001,I8R002,I8R003",
+            "--rows-by-environment", "{\"dev\":[\"I8R001\"],\"prod\":[\"I8R002\",\"I8R003\"]}", "--environments-json", "[\"dev\",\"prod\"]" }) start.ArgumentList.Add(arg);
+        using var process = System.Diagnostics.Process.Start(start)!;
+        var output = await process.StandardOutput.ReadToEndAsync() + await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        Assert.True(process.ExitCode == 0, output);
+        Assert.Equal(3 * 2, _served);   // 2 steps per row run: dev x 1 row + prod x 2 rows; nothing else ran
+    }
 }

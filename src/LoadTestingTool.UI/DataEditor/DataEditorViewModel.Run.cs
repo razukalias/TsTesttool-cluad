@@ -10,7 +10,7 @@ namespace LoadTestingTool.UI.DataEditor;
 /// <param name="TestcasesParallel">Run the chosen testcases at the same time (true) or one after another (false); null keeps the instance setting.</param>
 /// <param name="RowsByTestcase">Data IDs to run per testcase index (for ticked rows across testcases); when given it takes the place of <see cref="DataIds"/>.</param>
 /// <param name="Steps">Step names to run per testcase index; null runs every enabled step. When given it must list every testcase in <see cref="Testcases"/>.</param>
-public sealed record RunRequest(IReadOnlyList<int> Testcases, IReadOnlyList<string> DataIds, string? RowsMode = null, bool? TestcasesParallel = null, IReadOnlyDictionary<int, IReadOnlyList<string>>? Steps = null, bool Rerun = false, IReadOnlyDictionary<int, IReadOnlyList<string>>? RerunSteps = null, string? RerunOf = null, IReadOnlyList<string>? Environments = null, IReadOnlyDictionary<int, IReadOnlyList<string>>? RowsByTestcase = null);
+public sealed record RunRequest(IReadOnlyList<int> Testcases, IReadOnlyList<string> DataIds, string? RowsMode = null, bool? TestcasesParallel = null, IReadOnlyDictionary<int, IReadOnlyList<string>>? Steps = null, bool Rerun = false, IReadOnlyDictionary<int, IReadOnlyList<string>>? RerunSteps = null, string? RerunOf = null, IReadOnlyList<string>? Environments = null, IReadOnlyDictionary<int, IReadOnlyList<string>>? RowsByTestcase = null, IReadOnlyDictionary<string, IReadOnlyList<string>>? RowsByEnvironment = null);
 
 /// <summary>Asks the host to run part of an instance. Returns null when the run was started, otherwise why it was not.</summary>
 public delegate Task<string?> RunHandler(RunRequest request);
