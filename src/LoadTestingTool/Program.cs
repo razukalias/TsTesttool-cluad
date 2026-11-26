@@ -106,6 +106,16 @@ internal static class Program
             Console.WriteLine($"Testcase execution order: {(config.RunEnvironmentsParallel ? "parallel" : "sequential")}");
             var selection = new RuntimeSelection { Input = string.IsNullOrWhiteSpace(expression) ? "0" : expression!, Indexes = indexes, Source = GetCommandLineValue(args, "--testcases") is not null ? "command-line" : "appsettings.json" };
             var overall = new RunResult { RunId = runId, Selection = selection, StartedAt = DateTimeOffset.Now };
+            // what an earlier runner that was killed left behind (its history was never saved) is picked up before this run starts
+            if (config.HistoryStorage != HistoryStorage.Files)
+            {
+                try
+                {
+                    var caught = RunRecovery.CatchUp(config, config.ResultsFolder, config.Environments);
+                    if (!caught.Nothing) Console.WriteLine($"[Recovery] {caught.RunsRecovered} runs rebuilt from event files, {caught.LogsRenamed} logs of dead runs renamed, {caught.LogsStored} logs stored in the history database.");
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Console.Error.WriteLine($"[Warning] Recovery of earlier runs was skipped: {ex.Message}"); }
+            }
             var work = new RunSelectionPlanner().Build(workbook, indexes, stepSelection, config.EnvironmentSelection, GetCommandLineValue(args, "--environments-json"), config.Environments);
             // A re-run (--rerun) sees the same generated values as the run it follows: the workbook is read again with the old values put back.
             // Cells that were edited since still get new ones; a run without --rerun always generates new values.

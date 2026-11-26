@@ -14,7 +14,7 @@ namespace LoadTestingTool.Reporting;
 public sealed class SqliteHistoryStore : IHistoryStore
 {
     public const string FileName = "history.sqlite";
-    private const int SchemaVersion = 4;
+    private const int SchemaVersion = 5;
     private readonly string _path;
 
     public SqliteHistoryStore(string historyFolder) => _path = System.IO.Path.Combine(historyFolder, FileName);
@@ -64,6 +64,7 @@ public sealed class SqliteHistoryStore : IHistoryStore
                 CREATE TABLE IF NOT EXISTS request_bodies(run_id TEXT NOT NULL, seq INTEGER NOT NULL, step_config BLOB, request_headers BLOB, request_body BLOB, response_headers BLOB, response_body BLOB, PRIMARY KEY(run_id, seq)) WITHOUT ROWID;
                 CREATE TABLE IF NOT EXISTS snapshots(hash TEXT PRIMARY KEY, size INTEGER NOT NULL, created_at TEXT NOT NULL, content BLOB NOT NULL) WITHOUT ROWID;
                 CREATE TABLE IF NOT EXISTS run_snapshots(run_id TEXT PRIMARY KEY, hash TEXT NOT NULL) WITHOUT ROWID;
+                CREATE TABLE IF NOT EXISTS run_notes(run_id TEXT PRIMARY KEY, note TEXT NOT NULL) WITHOUT ROWID;
                 CREATE TABLE IF NOT EXISTS logs(run_id TEXT NOT NULL, name TEXT NOT NULL, testcase TEXT NOT NULL, environment TEXT NOT NULL, result TEXT NOT NULL, size INTEGER NOT NULL, content BLOB, PRIMARY KEY(run_id, name)) WITHOUT ROWID;
                 CREATE TABLE IF NOT EXISTS assertions(run_id TEXT NOT NULL, seq INTEGER NOT NULL, request_seq INTEGER NOT NULL, testcase TEXT, data_id TEXT, step TEXT, path TEXT, verb TEXT, type TEXT, meaning TEXT, expected TEXT, actual TEXT, result TEXT, message TEXT, PRIMARY KEY(run_id, seq)) WITHOUT ROWID;
                 """);
@@ -317,7 +318,7 @@ public sealed class SqliteHistoryStore : IHistoryStore
 
     // ---- Upkeep: retention, shrinking, workbook snapshots, one run in a file of its own ----
 
-    private static readonly string[] RunTables = ["state", "steps", "rows", "requests", "request_bodies", "assertions", "run_snapshots", "logs"];
+    private static readonly string[] RunTables = ["state", "steps", "rows", "requests", "request_bodies", "assertions", "run_snapshots", "logs", "run_notes"];
 
     /// <summary>Removes runs (and the workbook snapshots nobody refers to any more). Returns how many runs were removed.</summary>
     public int DeleteRuns(IEnumerable<string> runIds)
@@ -402,6 +403,30 @@ public sealed class SqliteHistoryStore : IHistoryStore
         Exec(connection, "PRAGMA wal_checkpoint(TRUNCATE);");
     }
 
+    /// <summary>A note on a run, for example that it was rebuilt after a crash.</summary>
+    public void SetNote(string runId, string note)
+    {
+        using var connection = Open();
+        Exec(connection, "INSERT OR REPLACE INTO run_notes(run_id, note) VALUES(@r,@n)", ("@r", runId), ("@n", note));
+    }
+
+    public string? NoteOf(string runId)
+    {
+        if (!Exists) return null;
+        using var connection = Open();
+        return Scalar(connection, "SELECT note FROM run_notes WHERE run_id=@r", ("@r", runId)) as string;
+    }
+
+    public bool ContainsRun(string runId) => Contains(runId);
+
+    /// <summary>How many runs carry a note (rebuilt after a crash).</summary>
+    public int NoteCount()
+    {
+        if (!Exists) return 0;
+        using var connection = Open();
+        return Convert.ToInt32(Scalar(connection, "SELECT COUNT(*) FROM run_notes"), CultureInfo.InvariantCulture);
+    }
+
     // ---- The run's internal logs (what the step details window reads) ----
 
     /// <summary>Testcase and environment as they appear in a log file's name.</summary>
@@ -465,6 +490,14 @@ public sealed class SqliteHistoryStore : IHistoryStore
     {
         if (!Directory.Exists(logsFolder) || !Exists) return new(0, 0, 0, 0);
         var runs = ListRuns(0, int.MaxValue).Select(r => r.RunId).ToList();
+        var known = new HashSet<(string, string)>();
+        using (var connection = Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT run_id, name FROM logs";
+            using var reader = command.ExecuteReader();
+            while (reader.Read()) known.Add((reader.GetString(0), reader.GetString(1)));
+        }
         int files = 0, added = 0, skipped = 0, noRun = 0;
         foreach (var path in Directory.GetFiles(logsFolder, "*.log", SearchOption.TopDirectoryOnly))
         {
@@ -481,8 +514,7 @@ public sealed class SqliteHistoryStore : IHistoryStore
             var prefix = name[..name.IndexOf($"_{status}_", StringComparison.OrdinalIgnoreCase)];
             var environment = environments.Append("default").Select(Safe).OrderByDescending(x => x.Length).FirstOrDefault(x => prefix.EndsWith($"_{x}", StringComparison.OrdinalIgnoreCase));
             var testcase = environment is null ? prefix : prefix[..^(environment.Length + 1)];
-            using (var connection = Open())
-                if (Scalar(connection, "SELECT 1 FROM logs WHERE run_id=@r AND name=@n", ("@r", runId), ("@n", name + ".log")) is not null) { skipped++; continue; }
+            if (known.Contains((runId, name + ".log"))) { skipped++; continue; }
             string text;
             try { text = File.ReadAllText(path); } catch (IOException) { noRun++; continue; }
             SaveLog(runId, name + ".log", testcase, environment ?? "default", status, text);

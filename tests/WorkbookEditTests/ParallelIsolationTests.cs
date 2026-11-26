@@ -311,6 +311,76 @@ public sealed class ParallelIsolationTests : IDisposable
     }
 
     [Fact]
+    public async Task A_run_that_was_killed_before_saving_is_rebuilt_from_its_events_and_logs_when_the_next_run_starts()
+    {
+        StartServer();
+        var truth = BuildInstance(10);
+        var settings = new Dictionary<string, object> { ["InternalLoggingEnabled"] = true };
+        var first = await RunProcess(truth, 10, "Database", settings);
+        Assert.True(first.ExitCode == 0, first.Output);
+        var store = new LoadTestingTool.Reporting.SqliteHistoryStore(first.History);
+        var runId = store.ListRuns(0, 1).Single().RunId;
+        (string, string, string, int, int) Key(LoadTestingTool.Reporting.RequestDetail r) => (r.DataId, r.Step, r.Result, r.HttpStatus, (int)r.DurationMs);
+        var original = store.LoadRequests(runId, false).Select(Key).Order().ToList();
+        var originalAssertions = store.LoadAssertions(runId).Select(a => (a.DataId, a.Step, a.Path, a.Expected, a.Actual, a.Result)).Order().ToList();
+        Assert.NotEmpty(original);
+
+        // simulate the kill: the run never saved its history, its logs still say "running", and nothing has been written for hours
+        foreach (var file in Directory.GetFiles(first.History, "history.sqlite*")) File.Delete(file);
+        var logs = Path.Combine(truth.Folder, "Logs");
+        foreach (var log in Directory.GetFiles(logs, "*_Run_*.log")) File.Move(log, log.Replace("_passed_", "_running_").Replace("_failed_", "_running_"));
+        var old = DateTime.UtcNow.AddHours(-3);
+        foreach (var file in Directory.GetFiles(logs, "*_running_*.log").Concat(Directory.GetFiles(Path.Combine(truth.Folder, "Results"), "events_*.ndjson", SearchOption.AllDirectories))) File.SetLastWriteTimeUtc(file, old);
+        Assert.NotEmpty(Directory.GetFiles(Path.Combine(truth.Folder, "Results"), "events_*.ndjson", SearchOption.AllDirectories));
+
+        // the next run starts, and picks up what was left
+        var next = await RunProcess(truth, 10, "Database", settings);
+        Assert.True(next.ExitCode == 0, next.Output);
+        Assert.Contains("[Recovery] 1 runs rebuilt", next.Output);
+        var after = new LoadTestingTool.Reporting.SqliteHistoryStore(first.History);
+        Assert.Equal(2, after.ListRuns(0, 10).Count);
+        var rebuilt = after.ListRuns(0, 10).Single(r => r.RunId == runId);
+        Assert.Equal("cancelled", rebuilt.Result);
+        Assert.Equal(LoadTestingTool.Reporting.RunRecovery.RecoveredNote, after.NoteOf(runId));
+        Assert.Equal(original.Select(k => (k.Item1, k.Item2, k.Item3, k.Item4)).ToList(), after.LoadRequests(runId, false).Select(Key).Order().Select(k => (k.Item1, k.Item2, k.Item3, k.Item4)).ToList());   // the same steps with the same results and statuses
+        Assert.Equal(originalAssertions, after.LoadAssertions(runId).Select(a => (a.DataId, a.Step, a.Path, a.Expected, a.Actual, a.Result)).Order().ToList());
+        Assert.Empty(Directory.GetFiles(logs, "*_running_*.log"));                              // renamed: the run is dead
+        Assert.True(after.HasLogs(runId));                                                      // and its log is in the database
+        Assert.Contains("REQUEST COMPLETED", after.LoadLog(runId, Path.GetFileName(Directory.GetFiles(logs, "*_failed_*_Run_*.log").First(f => !f.EndsWith("_process.log") && f.Contains(runId[^8..]))).Split("_dev_")[0], "dev"));
+
+        // a second catch-up finds nothing more to do
+        var config = new LoadTestingTool.Domain.AppConfig { HistoryFolder = first.History, LogsFolder = logs, HistoryStorage = LoadTestingTool.Reporting.HistoryStorage.Database };
+        Assert.True(LoadTestingTool.Reporting.RunRecovery.CatchUp(config, Path.Combine(truth.Folder, "Results"), ["dev"]).Nothing);
+        Assert.Equal(1, after.NoteCount());
+    }
+
+    [Fact]
+    public async Task A_run_that_is_still_writing_or_has_its_workbooks_is_not_rebuilt()
+    {
+        StartServer();
+        var truth = BuildInstance(12);
+        var settings = new Dictionary<string, object> { ["InternalLoggingEnabled"] = true };
+        var first = await RunProcess(truth, 12, "Both", settings);                               // Both: the history workbooks exist
+        Assert.True(first.ExitCode == 0, first.Output);
+        var store = new LoadTestingTool.Reporting.SqliteHistoryStore(first.History);
+        foreach (var file in Directory.GetFiles(first.History, "history.sqlite*")) File.Delete(file);
+        var results = Path.Combine(truth.Folder, "Results");
+        var config = new LoadTestingTool.Domain.AppConfig { HistoryFolder = first.History, LogsFolder = Path.Combine(truth.Folder, "Logs"), HistoryStorage = LoadTestingTool.Reporting.HistoryStorage.Both };
+
+        // fresh files: the run might still be going
+        Assert.True(LoadTestingTool.Reporting.RunRecovery.CatchUp(config, results, ["dev"]).Nothing);
+        Assert.False(new LoadTestingTool.Reporting.SqliteHistoryStore(first.History).Exists);
+
+        // hours old, but its history workbook is there: the workbooks are the record, "Import runs" brings them in
+        var old = DateTimeOffset.Now.AddHours(3);
+        Assert.True(LoadTestingTool.Reporting.RunRecovery.CatchUp(config, results, ["dev"], now: old).RunsRecovered == 0);
+
+        // files-only instances are never touched
+        config.HistoryStorage = LoadTestingTool.Reporting.HistoryStorage.Files;
+        Assert.True(LoadTestingTool.Reporting.RunRecovery.CatchUp(config, results, ["dev"], now: old).Nothing);
+    }
+
+    [Fact]
     public async Task Storage_both_writes_workbooks_and_database_that_agree_and_database_only_writes_no_workbooks()
     {
         StartServer();

@@ -1463,6 +1463,7 @@ public sealed partial class MainWindow
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { days, DashboardStyle.Text("days, and the newest", 12, false, DashboardStyle.Muted), runs, DashboardStyle.Text("runs, and at most", 12, false, DashboardStyle.Muted), megabytes, DashboardStyle.Text("MB", 12, false, DashboardStyle.Muted), keep, clean } },
                 DashboardStyle.Text($"Workbook copies: {totals.Versions} versions, {totals.Bytes / 1024.0 / 1024.0:0.0} MB (the same content is stored once).", 12, false, DashboardStyle.Muted),
                 new WrapPanel { Children = { restore, replace } },
+                store.NoteCount() > 0 ? DashboardStyle.Text($"{store.NoteCount()} runs were rebuilt from their event files after a crash (search \"recovered\" in the History Explorer). They have no bodies, headers or generated values.", 12, false, DashboardStyle.Muted) : new Border(),
                 DashboardStyle.Text($"Logs: {logTotals.Logs} stored, {logTotals.TextBytes / 1024.0 / 1024.0:0.0} MB of text taking {logTotals.StoredBytes / 1024.0 / 1024.0:0.0} MB.", 12, false, DashboardStyle.Muted),
                 storeLogs, deleteLogs, importLogs,
                 DashboardStyle.Text("One run in a file of its own, to hand over or to bring in:", 12, false, DashboardStyle.Muted),
@@ -1730,7 +1731,7 @@ public sealed partial class MainWindow
             var requests = store.LoadRequests(run.RunId, withBodies: false).Select(r => new HistoryRequest(r.Testcase, r.DataId, r.Step, r.Result, r.DurationMs, r.HttpStatus, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty)).ToList();
             var status = run.Result.ToUpperInvariant();
             entries.Add(new HistoryEntry($"{store.Path_}#{run.RunId}", item.Name, status, run.RunId, run.Started.LocalDateTime, requests, [], run.Passed, run.Failed, run.P95Ms.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                string.Join(" ", item.Name, status, run.RunId, requests.Select(x => $"{x.Testcase} {x.DataId} {x.Step}")), InDatabase: true));
+                string.Join(" ", item.Name, status, run.RunId, store.NoteOf(run.RunId) is null ? "" : "recovered crashed", requests.Select(x => $"{x.Testcase} {x.DataId} {x.Step}")), InDatabase: true));
         }
         return entries;
     }

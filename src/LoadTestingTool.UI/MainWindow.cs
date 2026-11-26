@@ -1028,6 +1028,7 @@ public sealed partial class MainWindow : Window
     private void ShowDetails(InstanceInfo? item)
     {
         _selectedInstance = item;
+        CatchUpInBackground(item);
         UiLog($"Details selection changed. instance={item?.Name ?? "<none>"}; assertions={item?.Assertions.Count ?? 0}");
         UpdateEnvironmentFilterOptions();
         UpdateDetailsText();
