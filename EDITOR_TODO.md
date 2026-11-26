@@ -1072,3 +1072,13 @@ To add:
 - The window lists only the failed rows of the chosen run. Environment checkboxes sit at the top as a filter: an unticked environment hides its failed rows and they are not run.
 - Each ticked row runs again only in the environment where it failed (`--rows-by-environment {"qa":["d2"],"prod":["d5"]}`; "" = default environment). Test: one real process run, 3 row runs served instead of 6 when every row would run in both environments.
 - Not done: if a row failed in two iterations, the runner still repeats all configured iterations of that data id in that environment.
+
+## History in SQLite instead of Excel files (plan, not started)
+- Why: history is one `.xlsx` per run; re-run scans up to 400 workbooks and opens each `RunState` sheet (slow ClosedXML reads, 30,000-character chunking because of the 32,767-character cell limit). One portable SQLite file with indexes makes the Re-run window, run list and old-data lookup one query each; WAL mode allows several runner processes to write at once.
+- Plan:
+  1. Measure first: time the history write and the re-run read of one large run today, to know the real gain.
+  2. SQLite store for history and `RunState` (`Microsoft.Data.Sqlite`), versioned schema and migrations, retention/`VACUUM` setting.
+  3. "Export to Excel" of a run (on demand); the results workbook stays for sharing.
+  4. One-time import of existing history `.xlsx` files, or keep reading them for re-run only.
+- Keep as files: logs and `events_*.ndjson` (appended line by line, a database adds little).
+- Open questions: one database per instance or one central file; backup/corruption handling; retention default; do the dashboard history views read the database or still the workbooks.
