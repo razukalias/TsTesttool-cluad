@@ -141,6 +141,9 @@ public static class RunResultsReader
 {
     private const int MaxFailuresPerRow = 40;
 
+    /// <summary>How many older runs are looked through for the rows the newer runs did not run.</summary>
+    private const int MaxEarlierRuns = 100;
+
     /// <summary>Summarises the most recently written run, or returns null when there are no results.</summary>
     public static RunResults? ReadLatest(string resultsFolder)
     {
@@ -162,12 +165,12 @@ public static class RunResultsReader
         foreach (var file in runFiles) ReadFile(file.FullName, rows);
 
         // A rerun (or a run of a few rows or one environment) holds only what it ran. What it did not run keeps the result of the run before:
-        // look back through the older, bigger runs and add the rows and environments the newer ones lack, until a run that covered everything.
+        // look back through the older runs, newest first, and add the rows and environments the newer ones lack (the newest result of a row wins),
+        // until a run that covered everything. Reruns of different rows (A, then B) are all folded in, whatever their size.
         var older = 0;
         foreach (var previous in runs.Skip(1))
         {
-            if (++older > 10) break;
-            if (previous.Bytes <= latest.Bytes) continue;   // a run smaller than the latest cannot be what the latest is a part of
+            if (++older > MaxEarlierRuns) break;
             var oldRows = new Dictionary<(int, string), RowOutcome>();
             foreach (var file in previous.Files) ReadFile(file.FullName, oldRows);
             var complete = rows.Keys.All(oldRows.ContainsKey) && rows.All(r => r.Value.Environments.All(e => oldRows[r.Key].HasEnvironment(e)));

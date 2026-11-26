@@ -63,6 +63,32 @@ public class RerunMergeTests
     }
 
     [Fact]
+    public void Reruns_of_different_rows_one_after_the_other_each_keep_their_own_newest_result()
+    {
+        using var dir = new TempDir();
+        var results = Path.Combine(dir.Path, "Results");
+        WriteRun(results, 1, Enumerable.Range(1, 30), (n, env) => n <= 6);             // rows 1-6 fail everywhere
+        WriteRun(results, 2, [1, 2], (n, env) => false);                              // rerun of 1,2: pass now
+        WriteRun(results, 3, [3, 4, 5, 6, 7, 8, 9, 10], (n, env) => n == 4);          // a bigger rerun of other rows: only 4 still fails
+        var merged = RunResultsReader.ReadLatest(results)!;
+        Assert.Equal(RunIdOf(3), merged.RunId);
+        Assert.Equal(30, merged.Rows.Count);
+        Assert.Equal([4], merged.Rows.Where(r => !r.Value.Passed).Select(r => int.Parse(r.Key.DataId[3..])).OrderBy(n => n).ToList());   // 1,2 passed in run 2; 3,5,6 in run 3; only 4 is still failed
+    }
+
+    [Fact]
+    public void A_full_run_is_found_even_after_more_than_ten_reruns()
+    {
+        using var dir = new TempDir();
+        var results = Path.Combine(dir.Path, "Results");
+        WriteRun(results, 1, Enumerable.Range(1, 40), (n, env) => n <= 15);
+        for (var run = 2; run <= 14; run++) WriteRun(results, run, [run - 1], (n, env) => false);   // 13 reruns, one row each: rows 1..13 pass now
+        var merged = RunResultsReader.ReadLatest(results)!;
+        Assert.Equal(40, merged.Rows.Count);
+        Assert.Equal([14, 15], merged.Rows.Where(r => !r.Value.Passed).Select(r => int.Parse(r.Key.DataId[3..])).OrderBy(n => n).ToList());
+    }
+
+    [Fact]
     public void A_rerun_of_one_environment_keeps_the_other_environments_of_the_same_row()
     {
         using var dir = new TempDir();

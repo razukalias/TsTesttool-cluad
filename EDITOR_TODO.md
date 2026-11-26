@@ -1092,4 +1092,12 @@ To add:
 ## Table status after several re-runs of different rows (found by reading the code, not yet reproduced)
 - `RunResultsReader.ReadLatest` fills rows the latest run did not run from older runs, but only from runs that are BIGGER (event bytes) than the latest, at most 10 older runs back, stopping at a run that covers everything.
 - Risk: re-run row A (run 2), then re-run row B (run 3, same size or bigger): run 2 is skipped as "not bigger", so A falls back to its status from the full run 1 and the re-run of A seems lost. More than 10 re-runs after the full run: the rows lose their status.
-- Fix idea: newest result per (testcase, data id, environment) wins across the runs, ordered by time, instead of the size rule; no limit of 10 until the full run is found, or a limit by age. Add a test with run1 (all rows), run2 (A), run3 (B).
+- DONE: the size rule is gone; runs are folded in newest first (newest result of a row/environment wins) until a run that covers everything, at most 100 runs back. Tests: reruns of different rows one after the other; a full run found after 13 reruns.
+
+## Central re-run center: failed rows of all instances in one form, re-run and report (idea, not started)
+- One window (or an "All instances" tab) listing the failed row x environment pairs of every instance: Instance > Testcase > row/environment, with counts, filters (instance, testcase, environment, failure kind, text) and ticks at every level. Uses the same merged status as the table (newest result per row and environment).
+- Step choice per testcase (steps differ), with old/fresh data per step like the Re-run window; optional "same step names in all testcases".
+- Run: one runner process per instance in parallel (like `--run-all`) with `--testcases`, `--steps`, `--rows-by-environment` (all exist). The batch gets its own id that groups the child runs; each instance's Overview panel shows its own run of the batch.
+- Report when the batch ends (HTML and/or Excel, saved in a reports folder, exportable): what was selected, per instance totals, before -> after per row/environment (still failed / now passed), still-failing list with the assertion message and actual/expected values, durations.
+- Depends on: exact row+environment re-run (done), newest-result-wins merge (done), one shared run choice for table and dashboard (todo), maybe SQLite history (todo).
+- Open questions: report format and place; include a before/after comparison; per-instance approval before running; keep the batch in history so it can be repeated.
