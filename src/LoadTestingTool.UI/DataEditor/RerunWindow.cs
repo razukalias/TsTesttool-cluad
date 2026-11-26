@@ -178,6 +178,12 @@ public sealed class RerunWindow : Window
             _environments.Children.Add(box);
         }
         _environmentSection.IsVisible = names.Count > 0;
+        // Steps that failed in these rows are ticked; steps that passed everywhere are listed but unticked (tick them to run them again too). Without step results in the history, all stay ticked.
+        if (_failedOfRun.Count > 0 && _failedOfRun.All(r => r.FailedSteps is not null))
+        {
+            var failed = _failedOfRun.SelectMany(r => r.FailedSteps!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (failed.Count > 0) foreach (var (use, _, step) in _stepBoxes) use.IsChecked = failed.Contains(step);
+        }
         ApplyEnvironmentFilter();
     }
 

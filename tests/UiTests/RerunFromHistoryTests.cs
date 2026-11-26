@@ -122,6 +122,35 @@ public class RerunWindowPagingTests
     }
 
     [AvaloniaFact]
+    public void Steps_that_passed_in_the_failed_rows_are_listed_but_unticked()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "rerun-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var config = new AppConfig { HistoryFolder = folder };
+            var run = new RunResult { RunId = "runS", StartedAt = DateTimeOffset.Now, EndedAt = DateTimeOffset.Now };
+            foreach (var (data, createStatus, checkStatus) in new[] { ("d1", 200, 200), ("d2", 200, 500), ("d3", 500, 200) })
+            {
+                var testcase = new TestcaseResult { TestcaseIndex = 1, Testcase = "Order", DataId = data, Iteration = 1, Environment = "qa", StartedAt = DateTimeOffset.Now, EndedAt = DateTimeOffset.Now };
+                testcase.Requests.Add(new RequestResult { Testcase = "Order", StepName = "Create", HttpStatus = createStatus });
+                testcase.Requests.Add(new RequestResult { Testcase = "Order", StepName = "Check", HttpStatus = checkStatus });
+                testcase.Requests.Add(new RequestResult { Testcase = "Order", StepName = "Cleanup", HttpStatus = 200 });
+                run.Testcases.Add(testcase);
+            }
+            new HistoryWriter(config).Write(run, Path.Combine(folder, "runS"), "runS.xlsx");
+            var window = new RerunWindow(new TestcaseItem(new TestcaseInfo(1, "Order", ["Create", "Check", "Cleanup"]), 3), new RerunContext(folder, ["qa"]));
+            window.Show();
+            Wait(window);
+            var steps = window.GetVisualDescendantsOf<CheckBox>().Where(b => b.Content?.ToString() is "Create" or "Check" or "Cleanup").ToDictionary(b => b.Content!.ToString()!, b => b.IsChecked);
+            Assert.Equal(3, steps.Count);                       // every step is still listed
+            Assert.True(steps["Create"]); Assert.True(steps["Check"]);   // failed in d3 and d2
+            Assert.False(steps["Cleanup"]);                     // passed everywhere: unticked, can be ticked by hand
+            window.Close();
+        }
+        finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+    }
+
+    [AvaloniaFact]
     public void The_environment_filter_hides_unticked_environments_and_their_rows_and_passed_rows_are_never_listed()
     {
         var folder = Path.Combine(Path.GetTempPath(), "rerun-" + Guid.NewGuid().ToString("N"));

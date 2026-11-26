@@ -100,6 +100,10 @@ public sealed class HistoryRunStateStore : IRunStateStore
         if (!string.IsNullOrWhiteSpace(rerunOf)) Put(rowKeys[0], "run", run.RunId, "rerunof", rerunOf);
         foreach (var t in run.Testcases)
             Put(RunValueMemory.RowKey(t.TestcaseIndex, t.DataId, t.Iteration, t.Environment), "result", t.Testcase, t.StartedAt.ToString("O", System.Globalization.CultureInfo.InvariantCulture), t.Result);
+        // the result of each step of each row, so a re-run can offer the failed steps first (a step that ran several times counts as failed when any of them failed)
+        foreach (var t in run.Testcases)
+            foreach (var step in t.Requests.GroupBy(r => r.StepName, StringComparer.OrdinalIgnoreCase))
+                Put(RunValueMemory.RowKey(t.TestcaseIndex, t.DataId, t.Iteration, t.Environment), "stepresult", step.Key, "", step.Any(r => r.Result == "FAIL") ? "FAIL" : "PASS");
         foreach (var rowKey in rowKeys)
         {
             if (state is null) { Put(rowKey, "marker", rowKey, "", ""); continue; }
@@ -115,7 +119,7 @@ public sealed class HistoryRunStateStore : IRunStateStore
 }
 
 /// <summary>One data row of one run, as found in the history.</summary>
-public sealed record RunHistoryRow(string RunId, DateTimeOffset StartedAt, string? RerunOf, int TestcaseIndex, string Testcase, string DataId, int Iteration, string Environment, string Result)
+public sealed record RunHistoryRow(string RunId, DateTimeOffset StartedAt, string? RerunOf, int TestcaseIndex, string Testcase, string DataId, int Iteration, string Environment, string Result, IReadOnlySet<string>? FailedSteps = null)
 {
     public bool Failed => Result.Equals("FAILED", StringComparison.OrdinalIgnoreCase);
 }
@@ -143,12 +147,13 @@ public static class RunHistoryIndex
                 var index = ReadRunFile(file);
                 if (index is null) continue;
                 var (runId, started, rerunOf) = (index.RunId, index.Started, index.RerunOf);
+                var failedSteps = index.StepResults?.GroupBy(x => x[0]).ToDictionary(g => g.Key, g => (IReadOnlySet<string>)g.Where(x => x[2] == "FAIL").Select(x => x[1]).ToHashSet(StringComparer.OrdinalIgnoreCase));
                 foreach (var result in index.Results)
                 {
                     var (rowKey, testcase, outcome) = (result[0], result[1], result[2]);
                     var parts = rowKey.Split('|');
                     if (parts.Length < 4 || !int.TryParse(parts[0], out var number) || !int.TryParse(parts[2], out var iteration) || !seen.Add((runId, rowKey))) continue;
-                    rows.Add(new RunHistoryRow(runId, started, string.IsNullOrEmpty(rerunOf) ? null : rerunOf, number, testcase, parts[1], iteration, parts[3] == "default" ? string.Empty : parts[3], outcome));
+                    rows.Add(new RunHistoryRow(runId, started, string.IsNullOrEmpty(rerunOf) ? null : rerunOf, number, testcase, parts[1], iteration, parts[3] == "default" ? string.Empty : parts[3], outcome, failedSteps is null ? null : failedSteps.GetValueOrDefault(rowKey, new HashSet<string>())));
                 }
             }
             catch (Exception) { /* unreadable history files are skipped */ }
@@ -157,7 +162,7 @@ public static class RunHistoryIndex
     }
 
     /// <summary>What the re-run dialog needs of one history workbook, kept in a small file beside it so the workbook is opened only once.</summary>
-    internal sealed record RunFileIndex(long Length, long ModifiedTicks, string RunId, DateTimeOffset Started, string? RerunOf, List<string[]> Results);
+    internal sealed record RunFileIndex(long Length, long ModifiedTicks, string RunId, DateTimeOffset Started, string? RerunOf, List<string[]> Results, List<string[]>? StepResults = null);
 
     private static string SidecarOf(FileInfo file) => file.FullName + ".runindex.json";
 
@@ -176,6 +181,7 @@ public static class RunHistoryIndex
         if (!book.TryGetWorksheet(HistoryRunStateStore.SheetName, out var sheet)) return null;
         string? runId = null, rerunOf = null; DateTimeOffset started = default;
         var results = new List<string[]>();
+        var stepResults = new List<string[]>();
         foreach (var row in sheet.RowsUsed().Skip(1))
         {
             var kind = row.Cell(2).GetString();
@@ -186,9 +192,10 @@ public static class RunHistoryIndex
                 else if (row.Cell(4).GetString() == "rerunof") rerunOf = row.Cell(6).GetString();
             }
             else if (kind == "result") results.Add([row.Cell(1).GetString(), row.Cell(3).GetString(), row.Cell(6).GetString()]);
+            else if (kind == "stepresult") stepResults.Add([row.Cell(1).GetString(), row.Cell(3).GetString(), row.Cell(6).GetString()]);
         }
         if (string.IsNullOrEmpty(runId)) return null;
-        var index = new RunFileIndex(file.Length, file.LastWriteTimeUtc.Ticks, runId, started, rerunOf, results);
+        var index = new RunFileIndex(file.Length, file.LastWriteTimeUtc.Ticks, runId, started, rerunOf, results, stepResults.Count > 0 ? stepResults : null);
         try { File.WriteAllText(sidecar, System.Text.Json.JsonSerializer.Serialize(index)); } catch (Exception) { /* a read-only history folder just reads the workbook every time */ }
         return index;
     }
