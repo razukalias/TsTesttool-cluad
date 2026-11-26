@@ -35,6 +35,6 @@ public static class HistoryStores
     public static void SaveToDatabase(AppConfig config, RunResult run, RunValueMemory.Snapshot? state, string? rerunOf)
     {
         if (config.HistoryStorage == HistoryStorage.Files) return;
-        new SqliteHistoryStore(config.HistoryFolder).SaveRun(run, state, rerunOf);
+        new SqliteHistoryStore(config.HistoryFolder).SaveRun(run, state, rerunOf, new HistoryWriter(config).BuildDetails(run));
     }
 }

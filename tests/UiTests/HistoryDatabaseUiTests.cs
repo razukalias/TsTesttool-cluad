@@ -91,4 +91,42 @@ public class HistoryDatabaseUiTests
         }
         finally { Directory.SetCurrentDirectory(previous); try { Directory.Delete(root, true); } catch (IOException) { } }
     }
+
+    [Fact]
+    public void The_dashboard_history_explorer_lists_the_runs_of_the_database_and_loads_bodies_and_assertions_only_for_a_comparison()
+    {
+        var inst = Path.Combine(Path.GetTempPath(), "explorer_" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(inst);
+        try
+        {
+            var start = new DateTimeOffset(2026, 11, 20, 9, 0, 0, TimeSpan.Zero);
+            var config = new AppConfig { HistoryFolder = Path.Combine(inst, "History"), HistoryStorage = HistoryStorage.Database, SaveRequestBodyToHistory = true, SaveResponseBodyToHistory = true };
+            foreach (var (runId, failing) in new[] { ("run_a", false), ("run_b", true) })
+            {
+                var run = new RunResult { RunId = runId, StartedAt = start.AddHours(runId == "run_a" ? 0 : 1), EndedAt = start.AddHours(2) };
+                var t = new TestcaseResult { TestcaseIndex = 1, Testcase = "Order", DataId = "D1", Iteration = 1, Environment = "qa", StartedAt = start, EndedAt = start.AddSeconds(1) };
+                var request = new RequestResult { Testcase = "Order", TestcaseIndex = 1, DataId = "D1", StepName = "Create", Environment = "qa", HttpStatus = failing ? 500 : 200, DurationMs = 40, ResponseBody = failing ? "{\"error\":true}" : "{\"ok\":true}", StartedAt = start };
+                request.Assertions.Add(new AssertionResult { RequestId = request.RequestId, Testcase = "Order", DataId = "D1", StepName = "Create", ResponsePath = "ok", AssertionVerb = "eq", ExpectedValue = "true", ActualValue = failing ? "(none)" : "true", Result = failing ? "FAIL" : "PASS" });
+                t.Requests.Add(request);
+                run.Testcases.Add(t);
+                HistoryStores.SaveToDatabase(config, run, null, null);
+            }
+            var item = Activator.CreateInstance(typeof(LoadTestingTool.UI.MainWindow).Assembly.GetType("LoadTestingTool.UI.InstanceInfo")!, nonPublic: true)!;
+            item.GetType().GetProperty("FolderPath")!.SetValue(item, inst);
+            item.GetType().GetProperty("Name")!.SetValue(item, "Demo");
+            var read = typeof(LoadTestingTool.UI.MainWindow).GetMethod("ReadDatabaseEntries", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+            var entries = ((System.Collections.IEnumerable)read.Invoke(null, [item, 500])!).Cast<object>().ToList();
+
+            string Get(object o, string name) => Convert.ToString(o.GetType().GetProperty(name)!.GetValue(o))!;
+            Assert.Equal(["run_b", "run_a"], entries.Select(e => Get(e, "RunId")));        // newest first
+            Assert.Equal(["FAILED", "PASSED"], entries.Select(e => Get(e, "Status")));
+            Assert.All(entries, e => Assert.Equal("True", Get(e, "InDatabase")));
+            var requests = (System.Collections.IList)entries[0].GetType().GetProperty("Requests")!.GetValue(entries[0])!;
+            Assert.Single(requests);
+            Assert.Equal(string.Empty, Get(requests[0]!, "ResponseBody"));                   // a list does not read bodies
+            Assert.Empty((System.Collections.IList)entries[0].GetType().GetProperty("Assertions")!.GetValue(entries[0])!);
+            Assert.Contains("#run_b", Get(entries[0], "Path"));                              // an entry is told apart by the run, not by a file
+        }
+        finally { try { Directory.Delete(inst, true); } catch (IOException) { } }
+    }
 }

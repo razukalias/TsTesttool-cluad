@@ -282,10 +282,22 @@ public sealed class ParallelIsolationTests : IDisposable
         Assert.NotEmpty(Directory.GetFiles(both.History, "*.xlsx", SearchOption.AllDirectories));
         Assert.Empty(store.CompareWithWorkbooks(both.History));
 
+        // what the runner wrote straight into the database (requests, bodies, assertions) is what the workbooks hold: read the workbooks into a second database and compare
+        var runOfBoth = store.ScanPage(0, 10).Rows[0].RunId;
+        var viaWorkbooks = new LoadTestingTool.Reporting.SqliteHistoryStore(Path.Combine(Path.GetTempPath(), "viawb_" + Guid.NewGuid().ToString("N")[..8]));
+        Assert.Empty(viaWorkbooks.ImportWorkbooks(both.History, null, null).Problems);
+        (string, string, string, int, string, string) Key(LoadTestingTool.Reporting.RequestDetail r) => (r.DataId, r.Step, r.Result, r.HttpStatus, r.RequestBody, r.ResponseBody);
+        var direct = store.LoadRequests(runOfBoth).Select(Key).Order().ToList();
+        Assert.NotEmpty(direct);
+        Assert.Equal(direct, viaWorkbooks.LoadRequests(runOfBoth).Select(Key).Order().ToList());
+        Assert.Equal(store.LoadAssertions(runOfBoth).Select(a => (a.DataId, a.Step, a.Path, a.Verb, a.Expected, a.Actual, a.Result)).Order().ToList(),
+                     viaWorkbooks.LoadAssertions(runOfBoth).Select(a => (a.DataId, a.Step, a.Path, a.Verb, a.Expected, a.Actual, a.Result)).Order().ToList());
+
         var onlyDatabase = BuildInstance(4);
         var database = await RunProcess(onlyDatabase, 4, "Database");
         Assert.True(database.ExitCode == 0, database.Output);
         Assert.Empty(Directory.GetFiles(database.History, "*.xlsx", SearchOption.AllDirectories));
+        Assert.Contains("history.sqlite", database.Output.Split('\n').First(l => l.Contains("[Run complete]")));   // the run-complete line says where the history is
         var rows = new LoadTestingTool.Reporting.SqliteHistoryStore(database.History).ScanPage(0, 10).Rows;
         Assert.Equal(3, rows.Count);
         // a re-run with the old data of that run reads it from the database, not from workbooks

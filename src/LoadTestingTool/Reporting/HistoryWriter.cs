@@ -200,6 +200,33 @@ public sealed class HistoryWriter
     private static bool IsRequestCell(RequestResult r, string name)
         => !name.Equals("env", StringComparison.OrdinalIgnoreCase) && !name.Contains('.') && !r.Correlations.Any(c => c.Variable.Equals(name, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// The requests and assertions of a run as the history keeps them, for the database: the same masking and the same choices as the workbook (history sheets,
+    /// request and response bodies, the Load test profile that keeps detail only for failures and a sample).
+    /// </summary>
+    public HistoryDetails BuildDetails(RunResult run)
+    {
+        var all = run.Testcases.SelectMany(t => t.Requests).ToList();
+        _detailed = HistoryProfiles.DetailedRequests(_config, all);
+        var requests = new List<RequestDetail>(); var assertions = new List<AssertionDetail>();
+        var keepRequests = Enabled("RequestHistory"); var keepAssertions = Enabled("AssertionHistory");
+        foreach (var t in run.Testcases)
+            foreach (var r in t.Requests)
+            {
+                var seq = requests.Count + 1;
+                var rowKey = RunValueMemory.RowKey(t.TestcaseIndex, t.DataId, t.Iteration, t.Environment);
+                if (keepRequests)
+                    requests.Add(new RequestDetail(seq, r.RequestId, rowKey, r.TestcaseIndex, r.Testcase, r.DataId, r.Iteration, r.Environment, r.StepName, r.StepType, r.Result, r.HttpStatus, r.DurationMs, r.StartedAt, r.ErrorMessage, r.FailureCategory, r.Verb, r.TargetUrl,
+                        Mask(r.StepConfig), MaskVariableContent(r.RequestHeaders, r.RedactedVariables, r.Variables),
+                        _config.SaveRequestBodyToHistory && Detailed(r) ? MaskVariableContent(r.RequestBody, r.RedactedVariables, r.Variables) : "[omitted]", Mask(r.ResponseHeaders),
+                        _config.SaveResponseBodyToHistory && Detailed(r) ? Mask(r.ResponseBody) : "[omitted]"));
+                if (keepRequests && keepAssertions && Detailed(r))
+                    foreach (var a in r.Assertions)
+                        assertions.Add(new AssertionDetail(assertions.Count + 1, seq, a.Testcase, a.DataId, a.StepName, a.ResponsePath, a.AssertionVerb, a.AssertionType, a.AssertionMeaning, a.ExpectedValue, a.ActualValue, a.Result, a.FailureMessage));
+            }
+        return new HistoryDetails(requests, assertions);
+    }
+
     private HashSet<RequestResult>? _detailed;
 
     /// <summary>Whether a request keeps its full detail in history: always, unless the Load test profile keeps it only for failures and a sample.</summary>

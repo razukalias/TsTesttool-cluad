@@ -1380,9 +1380,12 @@ public sealed partial class MainWindow
         _historyRefreshing = true;
         try
         {
-            var sources = _instances.Where(x => Directory.Exists(x.HistoryFolder)).Select(x => (Item: x, Paths: Directory.GetFiles(x.HistoryFolder, "*.xlsx", SearchOption.AllDirectories).Where(path => !Path.GetFileName(path).StartsWith("~$", StringComparison.OrdinalIgnoreCase)).OrderByDescending(File.GetLastWriteTimeUtc).ToArray())).ToArray();
-            var loaded = await Task.Run(() => sources.SelectMany(source => source.Paths.Select(path => (source.Item, Path: path))).Select(source => { try { return ReadHistoryEntry(source.Item, source.Path); } catch { return null; } }).Where(x => x is not null).Cast<HistoryEntry>().ToList());
-            _historyEntries.Clear(); _historyEntries.AddRange(loaded); _historySelected.RemoveWhere(path => !File.Exists(path));
+            // An instance that keeps its history in the database only is listed from there (a run is one entry); the others from their history workbooks.
+            var inDatabase = _instances.Where(x => x.HistoryStorage == HistoryStorage.Database).ToArray();
+            var sources = _instances.Where(x => x.HistoryStorage != HistoryStorage.Database && Directory.Exists(x.HistoryFolder)).Select(x => (Item: x, Paths: Directory.GetFiles(x.HistoryFolder, "*.xlsx", SearchOption.AllDirectories).Where(path => !Path.GetFileName(path).StartsWith("~$", StringComparison.OrdinalIgnoreCase)).OrderByDescending(File.GetLastWriteTimeUtc).ToArray())).ToArray();
+            var loaded = await Task.Run(() => sources.SelectMany(source => source.Paths.Select(path => (source.Item, Path: path))).Select(source => { try { return ReadHistoryEntry(source.Item, source.Path); } catch { return null; } }).Where(x => x is not null).Cast<HistoryEntry>()
+                .Concat(inDatabase.SelectMany(item => { try { return ReadDatabaseEntries(item); } catch (Exception ex) when (ex is IOException or Microsoft.Data.Sqlite.SqliteException) { UiLog($"History database could not be read. instance={item.Name}; error={ex.Message}"); return []; } })).ToList());
+            _historyEntries.Clear(); _historyEntries.AddRange(loaded); _historySelected.RemoveWhere(path => !File.Exists(path) && !IsDatabaseEntry(path));
         }
         catch (Exception ex)
         {
@@ -1427,7 +1430,7 @@ public sealed partial class MainWindow
             check.IsCheckedChanged += (_, _) => { if (check.IsChecked == true) _historySelected.Add(entry.Path); else _historySelected.Remove(entry.Path); _historyCompare.Text = $"{_historySelected.Count} history file(s) selected; choose exactly two to compare."; };
             var title = DashboardStyle.Text($"{entry.Instance}  ·  {entry.Status}  ·  {entry.RunId}", 13, true); title.TextWrapping = TextWrapping.Wrap;
             var summary = DashboardStyle.Text($"{entry.Started:yyyy-MM-dd HH:mm:ss}  ·  {entry.Requests.Count} step rows  ·  {entry.Passed} passed  ·  {entry.Failed} failed  ·  p95 {entry.P95Ms} ms", 11, false, DashboardStyle.Muted); summary.TextWrapping = TextWrapping.Wrap;
-            var open = DashboardStyle.Action("Open workbook", () => OpenExcelFile(entry.Path, "history workbook"));
+            Control open = entry.InDatabase ? DashboardStyle.Text("in the database", 11, false, DashboardStyle.Muted) : DashboardStyle.Action("Open workbook", () => OpenExcelFile(entry.Path, "history workbook"));
             var details = new StackPanel { Spacing = 4, Children = { title, summary } };
             foreach (var row in entry.Requests.Take(8)) { var line = DashboardStyle.Text($"{row.Result,-5}  {row.Testcase} / {row.DataId} / {row.Step}  {row.DurationMs} ms  HTTP {row.HttpStatus}", 11, false, row.Result == "FAIL" ? DashboardStyle.Red : DashboardStyle.Muted); line.TextWrapping = TextWrapping.Wrap; details.Children.Add(line); }
             var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("30,*,Auto"), Children = { check, details, open } }; Grid.SetColumn(details, 1); Grid.SetColumn(open, 2);
@@ -1442,13 +1445,14 @@ public sealed partial class MainWindow
     {
         var selected = _historyEntries.Where(x => _historySelected.Contains(x.Path)).ToList();
         if (selected.Count != 2) { _historyCompare.Text = "Select exactly two history files first."; return; }
-        var left = selected[0]; var right = selected[1];
+        var left = FullEntry(selected[0]); var right = FullEntry(selected[1]);   // a run from the database is read again with its bodies and assertions
         var byKey = left.Requests.Concat(right.Requests).GroupBy(x => $"{x.Testcase}|{x.DataId}|{x.Step}", StringComparer.OrdinalIgnoreCase).OrderBy(x => x.Key);
-        var changed = 0; var requestLines = new List<string> { $"Comparison: {Path.GetFileName(left.Path)}  vs  {Path.GetFileName(right.Path)}" };
+        var changed = 0; var requestLines = new List<string> { $"Comparison: {EntryLabel(left)}  vs  {EntryLabel(right)}" };
         var responseLines = new List<string>(); var configLines = new List<string>(); var assertionLines = new List<string>();
-        var variableLines = CompareSheet(left.Path, right.Path, "Variables");
-        var dataRowLines = CompareSheet(left.Path, right.Path, "DataEngineRequestRows");
-        configLines.AddRange(CompareSheet(left.Path, right.Path, "DataEngineConfig"));
+        var sheets = !left.InDatabase && !right.InDatabase;   // the Variables, DataEngine rows and DataEngineConfig sheets exist only in the workbooks
+        var variableLines = sheets ? CompareSheet(left.Path, right.Path, "Variables") : [];
+        var dataRowLines = sheets ? CompareSheet(left.Path, right.Path, "DataEngineRequestRows") : [];
+        if (sheets) configLines.AddRange(CompareSheet(left.Path, right.Path, "DataEngineConfig"));
         foreach (var group in byKey)
         {
             var a = group.FirstOrDefault(x => left.Requests.Contains(x)); var b = group.FirstOrDefault(x => right.Requests.Contains(x));
@@ -1520,6 +1524,35 @@ public sealed partial class MainWindow
         catch { return []; }
     }
 
+    private static bool IsDatabaseEntry(string path) => path.Contains(SqliteHistoryStore.FileName + "#", StringComparison.Ordinal);
+
+    private static string EntryLabel(HistoryEntry entry) => entry.InDatabase ? $"{entry.Instance} · {entry.RunId}" : Path.GetFileName(entry.Path);
+
+    /// <summary>The runs of an instance's history database as History Explorer entries (newest first). A list shows no bodies or assertions; <see cref="FullEntry"/> loads them.</summary>
+    internal static List<HistoryEntry> ReadDatabaseEntries(InstanceInfo item, int limit = 500)
+    {
+        var store = new SqliteHistoryStore(item.HistoryFolder);
+        var entries = new List<HistoryEntry>();
+        foreach (var run in store.ListRuns(0, limit))
+        {
+            var requests = store.LoadRequests(run.RunId, withBodies: false).Select(r => new HistoryRequest(r.Testcase, r.DataId, r.Step, r.Result, r.DurationMs, r.HttpStatus, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty)).ToList();
+            var status = run.Result.ToUpperInvariant();
+            entries.Add(new HistoryEntry($"{store.Path_}#{run.RunId}", item.Name, status, run.RunId, run.Started.LocalDateTime, requests, [], run.Passed, run.Failed, run.P95Ms.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                string.Join(" ", item.Name, status, run.RunId, requests.Select(x => $"{x.Testcase} {x.DataId} {x.Step}")), InDatabase: true));
+        }
+        return entries;
+    }
+
+    /// <summary>A database entry with its bodies and assertions (what a comparison needs); a workbook entry already has everything.</summary>
+    private HistoryEntry FullEntry(HistoryEntry entry)
+    {
+        if (!entry.InDatabase || _instances.FirstOrDefault(i => i.Name == entry.Instance) is not { } item) return entry;
+        var store = new SqliteHistoryStore(item.HistoryFolder);
+        var requests = store.LoadRequests(entry.RunId).Select(r => new HistoryRequest(r.Testcase, r.DataId, r.Step, r.Result, r.DurationMs, r.HttpStatus, r.RequestBody, r.ResponseBody, r.RequestHeaders, r.ResponseHeaders, r.StepConfig)).ToList();
+        var assertions = store.LoadAssertions(entry.RunId).Select(a => new HistoryAssertion(a.Testcase, a.DataId, a.Step, a.Path, a.Verb, a.Type, a.Meaning, a.Expected, a.Actual, a.Result)).ToList();
+        return entry with { Requests = requests, Assertions = assertions };
+    }
+
     private static HistoryEntry ReadHistoryEntry(InstanceInfo item, string path)
     {
         using var workbook = new XLWorkbook(path); var summary = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("RunSummary", StringComparison.OrdinalIgnoreCase)); var metrics = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("Metrics", StringComparison.OrdinalIgnoreCase)); var requestSheet = workbook.Worksheets.FirstOrDefault(x => x.Name.Equals("RequestHistory", StringComparison.OrdinalIgnoreCase));
@@ -1568,7 +1601,7 @@ internal sealed record RunPlanSummary(int Testcases, int SelectedSteps, int Rows
 };
 internal sealed record HistoryRequest(string Testcase, string DataId, string Step, string Result, long DurationMs, int HttpStatus, string RequestBody, string ResponseBody, string RequestHeaders, string ResponseHeaders, string StepConfig);
 internal sealed record HistoryAssertion(string Testcase, string DataId, string Step, string Path, string Verb, string Type, string Meaning, string Expected, string Actual, string Result);
-internal sealed record HistoryEntry(string Path, string Instance, string Status, string RunId, DateTime Started, IReadOnlyList<HistoryRequest> Requests, IReadOnlyList<HistoryAssertion> Assertions, int Passed, int Failed, string P95Ms, string SearchText);
+internal sealed record HistoryEntry(string Path, string Instance, string Status, string RunId, DateTime Started, IReadOnlyList<HistoryRequest> Requests, IReadOnlyList<HistoryAssertion> Assertions, int Passed, int Failed, string P95Ms, string SearchText, bool InDatabase = false);
 internal sealed class LatencyChart(double[] values) : Control
 {
     public override void Render(DrawingContext context)

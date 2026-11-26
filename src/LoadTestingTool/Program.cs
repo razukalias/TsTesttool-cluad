@@ -157,6 +157,7 @@ internal static class Program
                         historyFiles = historyFiles.Append(historyWriter.Write(overall, aggregateFolder, aggregateName, workbook)).ToArray();
                     }
                     historyPath = historyFiles.FirstOrDefault() ?? string.Empty;
+                    if (historyPath.Length == 0 && config.HistoryStorage != HistoryStorage.Files) historyPath = new SqliteHistoryStore(config.HistoryFolder).Path_;   // Database only: say where the history is
                 }
                 catch (Exception ex) { runEvents.WriteIssue("Warning", "History", ex.Message); Console.Error.WriteLine($"[Warning] History generation failed: {ex.Message}"); }
                 if (config.GenerateResults) WriteMetrics(config.ResultsFolder, runId, overall);
