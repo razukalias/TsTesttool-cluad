@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Styling;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -92,6 +93,8 @@ public sealed class CentralRerunWindow : Window
         _rows.ItemsSource = _shown;
         _rows.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<RowChoice>((choice, _) => choice is null ? new Border() : Card(choice));
         Styles.Add(new Style(x => x.OfType<ListBoxItem>().Class("central-line")) { Setters = { new Setter(ListBoxItem.PaddingProperty, new Thickness(0, 0, 0, 0)), new Setter(ListBoxItem.MarginProperty, new Thickness(0, 0, 0, 8)), new Setter(ListBoxItem.BackgroundProperty, Brushes.Transparent) } });
+        Styles.Add(new Style(x => x.OfType<ListBoxItem>().Class("central-line").Class(":selected").Template().OfType<ContentPresenter>()) { Setters = { new Setter(ContentPresenter.BackgroundProperty, Brushes.Transparent) } });
+        Styles.Add(new Style(x => x.OfType<ListBoxItem>().Class("central-line").Class(":pointerover").Template().OfType<ContentPresenter>()) { Setters = { new Setter(ContentPresenter.BackgroundProperty, Brushes.Transparent) } });
         _rows.ContainerPrepared += (_, e) => { if (e.Container is ListBoxItem item) item.Classes.Add("central-line"); };
         _instance.SelectionChanged += (_, _) => { if (!_filling) { FillTestcases(); ApplyFilter(); } };
         foreach (var combo in new[] { _testcase, _environment, _kind }) combo.SelectionChanged += (_, _) => { if (!_filling) ApplyFilter(); };

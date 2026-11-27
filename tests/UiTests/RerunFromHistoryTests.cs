@@ -84,8 +84,8 @@ public class RerunFromHistoryTests
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
             var boxes = window.GetVisualDescendantsOf<CheckBox>().ToList();
-            Assert.DoesNotContain(boxes, b => b.Content?.ToString()!.StartsWith("d1") == true);   // passed: not listed
-            var d2 = boxes.Single(b => b.Content?.ToString()!.StartsWith("d2") == true);
+            Assert.DoesNotContain(boxes, b => (string?)b.Tag == "row:d1");   // passed: not listed
+            var d2 = boxes.Single(b => (string?)b.Tag == "row:d2");
             Assert.True(d2.IsChecked);                       // failed: ticked by default
             Assert.Contains(window.GetVisualDescendantsOf<ComboBox>(), c => c.SelectedItem is ComboBoxItem { Tag: "runA" });
             window.Close();
@@ -246,8 +246,8 @@ public class RerunWindowPagingTests
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             var list = window.GetVisualDescendantsOf<ListBox>().First(l => (string?)l.Tag == "rerun-rows");
             Assert.Equal(72, list.ItemCount); Assert.True(list.Height >= 72 * 26, $"the list is {list.Height} high");
-            var built = window.GetVisualDescendantsOf<CheckBox>().Count(b => b.Content?.ToString()?.StartsWith('d') == true);
-            Assert.InRange(built, 8, 72);   // the lines in view are built; the rest come as the window is scrolled (the list itself no longer scrolls)
+            var built = window.GetVisualDescendantsOf<CheckBox>().Count(b => ((string?)b.Tag)?.StartsWith("row:") == true);
+            Assert.InRange(built, 3, 72);   // the lines in view are built; the rest come as the window is scrolled (the list itself no longer scrolls)
             window.Close();
         }
         finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
@@ -267,7 +267,7 @@ public class RerunWindowPagingTests
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             var list = window.GetVisualDescendantsOf<ListBox>().First(l => (string?)l.Tag == "rerun-rows");
             Assert.Equal(1500, list.ItemCount);   // the failed half
-            var built = window.GetVisualDescendantsOf<CheckBox>().Count(b => b.Content?.ToString()?.StartsWith('d') == true);
+            var built = window.GetVisualDescendantsOf<CheckBox>().Count(b => ((string?)b.Tag)?.StartsWith("row:") == true);
             Assert.InRange(built, 1, 100);   // not 3000
             var count = window.GetVisualDescendantsOf<TextBlock>().First(t => t.Text?.EndsWith("ticked") == true).Text;
             Assert.Equal("1500 of 1500 ticked", count);
