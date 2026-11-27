@@ -1277,7 +1277,10 @@ public sealed partial class MainWindow
     private readonly TextBlock _importText = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = DashboardStyle.Muted };
     private bool _importing;
     private readonly TextBox _exchangeFolder = new() { Watermark = "Folder for run files (to hand a run to someone, or to bring one in)", Tag = "history-exchange-folder" };
-    private string _upkeepMessage = "";
+    // what was typed / said is kept per instance (the controls are rebuilt for whichever instance is selected)
+    private readonly Dictionary<string, string> _exchangeFolders = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _upkeepMessages = new(StringComparer.OrdinalIgnoreCase);
+    private string? _exchangeOwner;
 
     /// <summary>The history database of the selected instance: what it holds, and the functions that fill it from old history workbooks and compare it with them.</summary>
     private Control HistoryDatabaseSection(InstanceInfo item)
@@ -1316,9 +1319,12 @@ public sealed partial class MainWindow
     private Control UpkeepControls(InstanceInfo item, SqliteHistoryStore store)
     {
         if (_exchangeFolder.Parent is Panel owner) owner.Children.Remove(_exchangeFolder);
-        if (string.IsNullOrWhiteSpace(_exchangeFolder.Text)) _exchangeFolder.Text = System.IO.Path.Combine(item.HistoryFolder, "Exchange");
-        var message = new TextBlock { Text = _upkeepMessage, TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = DashboardStyle.Muted, Tag = "history-upkeep-message" };
-        void Say(string text) { _upkeepMessage = text; message.Text = text; }
+        // the one text box is shared: what is in it belongs to the instance it was last filled for, and is kept for that instance before it is filled for this one
+        if (_exchangeOwner is not null) _exchangeFolders[_exchangeOwner] = _exchangeFolder.Text ?? "";
+        _exchangeOwner = item.FolderPath;
+        _exchangeFolder.Text = _exchangeFolders.TryGetValue(item.FolderPath, out var typed) && !string.IsNullOrWhiteSpace(typed) ? typed : System.IO.Path.Combine(item.HistoryFolder, "Exchange");
+        var message = new TextBlock { Text = _upkeepMessages.GetValueOrDefault(item.FolderPath, ""), TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = DashboardStyle.Muted, Tag = "history-upkeep-message" };
+        void Say(string text) { _upkeepMessages[item.FolderPath] = text; message.Text = text; }
         string? Shown() => DataEditor.ShownRunChoice.Get(item.ResultsFolder) ?? (store.Exists ? store.ListRuns(0, 1).FirstOrDefault()?.RunId : null);
 
         var days = new NumericUpDown { Minimum = 0, Maximum = 36500, Increment = 1, Value = item.HistoryRetentionDays, Width = 120, FormatString = "0", Tag = "history-retention-days" };

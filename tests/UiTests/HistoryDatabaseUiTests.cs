@@ -93,6 +93,47 @@ public class HistoryDatabaseUiTests
     }
 
     [AvaloniaFact]
+    public void The_exchange_folder_and_the_message_belong_to_the_instance_that_is_selected()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "twoinst_" + Guid.NewGuid().ToString("N")[..8]);
+        try
+        {
+            var a = new LoadTestingTool.UI.InstanceInfo { Name = "A", FolderPath = Path.Combine(root, "A") };
+            var b = new LoadTestingTool.UI.InstanceInfo { Name = "B", FolderPath = Path.Combine(root, "B") };
+            Directory.CreateDirectory(a.FolderPath); Directory.CreateDirectory(b.FolderPath);
+            var main = new LoadTestingTool.UI.MainWindow();
+            var build = typeof(LoadTestingTool.UI.MainWindow).GetMethod("UpkeepControls", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            Avalonia.Controls.Control Build(LoadTestingTool.UI.InstanceInfo item) => (Avalonia.Controls.Control)build.Invoke(main, [item, new SqliteHistoryStore(item.HistoryFolder)])!;
+            static Avalonia.Controls.TextBox Folder(Avalonia.Controls.Control c) => c.GetVisualDescendants().OfType<Avalonia.Controls.TextBox>().Single(t => (string?)t.Tag == "history-exchange-folder");
+            static string Message(Avalonia.Controls.Control c) => c.GetVisualDescendants().OfType<Avalonia.Controls.TextBlock>().Single(t => (string?)t.Tag == "history-upkeep-message").Text ?? "";
+            static void Click(Avalonia.Controls.Control c, string label) { c.GetVisualDescendants().OfType<Avalonia.Controls.Button>().First(x => x.Content?.ToString() == label).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent)); Avalonia.Threading.Dispatcher.UIThread.RunJobs(); }
+
+            var first = Build(a);
+            var host = new Avalonia.Controls.Window { Content = first }; host.Show();
+            Assert.Equal(Path.Combine(a.HistoryFolder, "Exchange"), Folder(first).Text);
+            Click(first, "Export shown run");                                                  // nothing to export: says so, for A
+            Assert.Contains("no run", Message(first));
+            Folder(first).Text = Path.Combine(root, "typed for A");
+
+            // selecting B: its own default folder and no message from A
+            host.Content = null;
+            var second = Build(b);
+            host.Content = second;
+            Assert.Equal(Path.Combine(b.HistoryFolder, "Exchange"), Folder(second).Text);
+            Assert.Equal("", Message(second));
+
+            // back to A: what was typed for A is still there, and so is its message
+            host.Content = null;
+            var again = Build(a);
+            host.Content = again;
+            Assert.Equal(Path.Combine(root, "typed for A"), Folder(again).Text);
+            Assert.Contains("no run", Message(again));
+            host.Close();
+        }
+        finally { try { Directory.Delete(root, true); } catch (IOException) { } }
+    }
+
+    [AvaloniaFact]
     public async Task The_Artifacts_tab_cleans_up_exports_imports_and_restores_the_workbook_of_a_run()
     {
         var root = Path.Combine(Path.GetTempPath(), "upkeep_" + Guid.NewGuid().ToString("N")[..8]);
