@@ -31,6 +31,7 @@ public sealed partial class DataEditorViewModel
             if (ShowBugColumns) on.Add("Bug columns");
             if (ShowPassedColumns) on.Add("Passed columns");
             if (ShowMissingColumns) on.Add("Missing columns");
+            if (ShowDifferingColumns) on.Add("Differing columns");
             if (ShowFailedCells) on.Add("Failed cells");
             return on.Count == 0 ? "Show: default ▾" : "Show: " + string.Join(", ", on) + " ▾";
         }
@@ -57,6 +58,8 @@ public sealed partial class DataEditorViewModel
 
     /// <summary>Raised when <see cref="FailedColumnCells"/> or the option changed, so the grid can hide or show columns.</summary>
     public event EventHandler? FailedColumnsChanged;
+
+    private void RaiseFailedColumnsChanged() => FailedColumnsChanged?.Invoke(this, EventArgs.Empty);
 
     /// <summary>"Bug columns only": the table shows only the expected-value columns that carry a known-bug tag in the rows shown. Can be combined with Failed columns only.</summary>
     [ObservableProperty] private bool _showBugColumns;

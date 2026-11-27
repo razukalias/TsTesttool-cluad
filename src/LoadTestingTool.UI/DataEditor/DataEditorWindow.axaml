@@ -456,11 +456,13 @@
                       <CheckBox Content="Bug columns only" IsChecked="{Binding ShowBugColumns, Mode=TwoWay}" ToolTip.Tip="Show only the expected-value columns that carry a known-bug tag (&lt;bug: …&gt;) in the rows shown. Combine with Failed columns only to see both" />
                       <CheckBox Content="Passed columns only" IsChecked="{Binding ShowPassedColumns, Mode=TwoWay}" ToolTip.Tip="Show only the expected-value columns that passed in the rows shown (the cell shows the value the response had). Can be combined with the other column options" />
                       <CheckBox Content="Missing columns only" IsChecked="{Binding ShowMissingColumns, Mode=TwoWay}" ToolTip.Tip="Show only the expected-value columns whose field was not in the response (yellow cells). Can be combined with the other column options" />
+                      <CheckBox Content="Differing columns (selected rows)" Tag="differing-columns" IsChecked="{Binding ShowDifferingColumns, Mode=TwoWay}" ToolTip.Tip="Select two or more rows, and only the columns where their values are not all the same stay. Compares what the table shows (the workbook values). Combined with Failed / Bug / Passed / Missing columns only it narrows them: the failed columns that differ." />
                       <CheckBox Content="Failed cells only" IsChecked="{Binding ShowFailedCells, Mode=TwoWay}" IsEnabled="{Binding HasResults}" ToolTip.Tip="List only the expected-value cells that failed in the latest run, each with its header, what was expected and what the run got, and a button to assign the actual value" />
                       </StackPanel>
                     </Flyout>
                   </Button.Flyout>
                 </Button>
+                <TextBlock Tag="differing-columns-text" Text="{Binding DifferingColumnsText}" IsVisible="{Binding ShowDifferingColumns}" Foreground="#F6C76B" VerticalAlignment="Center" />
                 <ComboBox Tag="environment-filter" ItemsSource="{Binding EnvironmentOptions}" SelectedItem="{Binding EnvironmentChoice, Mode=TwoWay}" IsVisible="{Binding HasEnvironmentChoice}" IsEnabled="{Binding HasResults}" MinWidth="150" ToolTip.Tip="Which environment the failed rows, columns and cells and the red marks refer to. The run covers several environments; All environments mixes them" />
               </StackPanel>
               <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,14,8" VerticalAlignment="Center" IsVisible="{Binding HasRunOptions}">

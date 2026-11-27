@@ -375,6 +375,7 @@ public sealed partial class DataEditorViewModel : ObservableObject
 
     private void OnCellEdited(DataRowViewModel row, int cellIndex, string value)
     {
+        if (ShowDifferingColumns) Avalonia.Threading.Dispatcher.UIThread.Post(RefreshDifferingColumns);   // after the edit is in: the columns that differ may have changed
         if (cellIndex == 0 && value == row.CurrentDataId) return;
         if (cellIndex > 0)
         {

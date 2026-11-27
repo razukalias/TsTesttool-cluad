@@ -156,6 +156,11 @@ public partial class DataEditorWindow : Window
         UpdateEditOnlyTitle();
         _subscribed.ColumnsChanged += OnColumnsChanged;
         _subscribed.FailedColumnsChanged += OnFailedColumnsChanged;
+        if (this.FindControl<DataGrid>("Grid") is { } selectionGrid && !_selectionHooked)
+        {
+            _selectionHooked = true;
+            selectionGrid.SelectionChanged += (_, _) => _shell?.Current?.SetCompareRows(selectionGrid.SelectedItems.OfType<DataRowViewModel>().ToList());
+        }
         _subscribed.ExtraColumnsChanged += OnExtraColumnsChanged;
         _subscribed.SheetColumnsChanged += OnSheetColumnsChanged;
         _subscribed.StepColumnsChanged += OnStepColumnsChanged;
@@ -470,6 +475,7 @@ public partial class DataEditorWindow : Window
     }
 
     /// <summary>Hides the columns without a failure while "Failed columns only" is on; the Data ID, tick and result columns always stay.</summary>
+    private bool _selectionHooked;
     private void OnFailedColumnsChanged(object? sender, EventArgs e) => ApplyColumnVisibility();
 
     private const string ExtraColumnTag = "extra";
@@ -537,9 +543,15 @@ public partial class DataEditorWindow : Window
     {
         if (this.FindControl<DataGrid>("Grid") is not { } grid || _shell?.Current is not { } editor) return;
         foreach (var column in grid.Columns)
-            column.IsVisible = column.Tag is EnvsColumnTag ? editor.HasEnvColumn : !editor.ColumnFilterOn || column.Tag is not int cell || cell < 1
+        {
+            if (column.Tag is EnvsColumnTag) { column.IsVisible = editor.HasEnvColumn; continue; }
+            var cell = column.Tag is int number ? number : 0;
+            var byColumnOptions = !editor.ColumnFilterOn || cell < 1
                 || editor.ShowFailedColumns && editor.FailedColumnCells.Contains(cell) || editor.ShowBugColumns && editor.BugColumnCells.Contains(cell)
                 || editor.ShowPassedColumns && editor.PassedColumnCells.Contains(cell) || editor.ShowMissingColumns && editor.MissingColumnCells.Contains(cell);
+            // "Differing columns" narrows what the other column options keep (failed columns that differ), it does not add to them
+            column.IsVisible = byColumnOptions && (!editor.DifferingColumnsActive || cell < 1 || editor.DifferingColumnCells.Contains(cell));
+        }
         StretchLastColumn(grid);
     }
 
