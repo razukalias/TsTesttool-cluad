@@ -14,6 +14,22 @@ public sealed record FailedPair(string Instance, int TestcaseIndex, string Testc
     public string EnvironmentText => Environment.Length == 0 ? "default" : Environment;
 }
 
+/// <summary>One step of a failed row in the re-run: whether it runs and, when it does, whether it uses the old data of the run it follows (false = fresh data).</summary>
+public sealed record RowStep(string Name, bool Run, bool OldData);
+
+/// <summary>The default step choice of a failed row: the steps before the failure do not run (their old values are put back for the later steps), the step
+/// that failed runs again with its old data, every step after it runs with fresh data. A row without a known failed step runs every step with fresh data.</summary>
+public static class RowStepDefaults
+{
+    public static List<RowStep> For(FailedPair pair, IReadOnlyList<string> allSteps)
+    {
+        var failed = pair.FailedSteps.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var first = allSteps.ToList().FindIndex(failed.Contains);
+        if (first < 0) return [.. allSteps.Select(name => new RowStep(name, true, false))];
+        return [.. allSteps.Select((name, i) => new RowStep(name, i >= first, failed.Contains(name)))];
+    }
+}
+
 /// <summary>Finds the failed row x environment pairs of an instance from the same merged status the table shows (newest result per row and environment).</summary>
 public static class CentralRerunSource
 {
@@ -72,6 +88,52 @@ public static class CentralRerunPlanner
         var all = Request(pairs, chosenSteps, catalog);
         if (Expand(all).SetEquals(pairs.Select(KeyOf))) return [all];
         return [.. pairs.GroupBy(p => p.TestcaseIndex).OrderBy(g => g.Key).Select(g => Request([.. g], chosenSteps, catalog))];
+    }
+
+    /// <summary>
+    /// The runs for failed rows with their own step choice. Rows of one testcase with the same steps and the same old-data choice make one run; one request carries
+    /// several testcases only when every testcase has a single choice and the ticked rows are exactly the combinations that request would run.
+    /// The steps ticked as old data go to the runner as the re-run steps: they and every step before them reuse the values of the run they follow, so a skipped
+    /// step's values are still there for the later ones. Rows without any step ticked are not planned.
+    /// </summary>
+    public static IReadOnlyList<RunRequest> PlanRows(IReadOnlyList<(FailedPair Pair, IReadOnlyList<RowStep> Steps)> rows, IReadOnlyList<TestcaseOption> catalog)
+    {
+        var usable = rows.Where(r => r.Steps.Any(s => s.Run)).ToList();
+        if (usable.Count == 0) return [];
+        var configs = usable.GroupBy(r => (r.Pair.TestcaseIndex, Key(r.Steps)))
+            .OrderBy(g => g.Key.TestcaseIndex).ThenBy(g => g.Key.Item2, StringComparer.Ordinal)
+            .Select(g => (Index: g.Key.TestcaseIndex, Pairs: g.Select(x => x.Pair).ToList(), Steps: g.First().Steps)).ToList();
+        if (configs.Select(c => c.Index).Distinct().Count() == configs.Count)
+        {
+            var all = BuildRows(configs, catalog);
+            if (Expand(all).SetEquals(usable.Select(r => KeyOf(r.Pair)))) return [all];
+        }
+        return [.. configs.Select(c => BuildRows([c], catalog))];
+    }
+
+    private static string Key(IReadOnlyList<RowStep> steps) => string.Join("|", steps.Where(s => s.Run).Select(s => s.Name.ToUpperInvariant() + (s.OldData ? "*" : string.Empty)));
+
+    private static RunRequest BuildRows(List<(int Index, List<FailedPair> Pairs, IReadOnlyList<RowStep> Steps)> configs, IReadOnlyList<TestcaseOption> catalog)
+    {
+        var pairs = configs.SelectMany(c => c.Pairs).ToList();
+        var testcases = configs.Select(c => c.Index).Distinct().Order().ToList();
+        var byTestcase = pairs.GroupBy(p => p.TestcaseIndex).ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(p => p.DataId).Distinct(StringComparer.OrdinalIgnoreCase).ToList());
+        var byEnvironment = pairs.GroupBy(p => p.Environment, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(p => p.DataId).Distinct(StringComparer.OrdinalIgnoreCase).ToList(), StringComparer.OrdinalIgnoreCase);
+        var steps = new Dictionary<int, IReadOnlyList<string>>();
+        var oldData = new Dictionary<int, IReadOnlyList<string>>();
+        var restricted = false;
+        foreach (var config in configs)
+        {
+            var every = catalog.FirstOrDefault(c => c.Index == config.Index)?.Steps.Where(s => s.Enabled).Select(s => s.Name).ToList() ?? [];
+            var run = every.Where(name => config.Steps.Any(s => s.Run && s.Name.Equals(name, StringComparison.OrdinalIgnoreCase))).ToList();
+            steps[config.Index] = run;
+            if (run.Count != every.Count) restricted = true;
+            var old = run.Where(name => config.Steps.Any(s => s.OldData && s.Name.Equals(name, StringComparison.OrdinalIgnoreCase))).ToList();
+            if (old.Count > 0) oldData[config.Index] = old;
+        }
+        return new RunRequest(testcases, [], Steps: restricted ? steps : null, RerunSteps: oldData.Count > 0 ? oldData : null,
+            Environments: byEnvironment.Keys.ToList(), RowsByTestcase: byTestcase, RowsByEnvironment: byEnvironment);
     }
 
     private static (int, string, string) KeyOf(FailedPair p) => (p.TestcaseIndex, p.Environment.ToUpperInvariant(), p.DataId.ToUpperInvariant());

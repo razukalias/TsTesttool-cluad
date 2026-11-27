@@ -20,7 +20,7 @@ public interface ICentralRerunHost
 }
 
 /// <summary>One ticked pair after the batch ran.</summary>
-public sealed record BatchRow(FailedPair Before, string After, IReadOnlyList<FailureDetail> AfterFailures, long DurationMs)
+public sealed record BatchRow(FailedPair Before, string After, IReadOnlyList<FailureDetail> AfterFailures, long DurationMs, string StepsText = "")
 {
     public const string NowPassed = "Now passed";
     public const string StillFailed = "Still failed";
@@ -34,8 +34,33 @@ public sealed record BatchResult(string BatchId, DateTime Started, DateTime Fini
 /// <summary>Runs the ticked pairs of every instance (one runner per instance, all at the same time) and compares them with the status before.</summary>
 public static class CentralRerunBatch
 {
-    public static async Task<BatchResult> RunAsync(ICentralRerunHost host, IReadOnlyList<FailedPair> ticked, IReadOnlyDictionary<(string Instance, int Testcase), IReadOnlyList<string>> steps,
+    public static Task<BatchResult> RunAsync(ICentralRerunHost host, IReadOnlyList<FailedPair> ticked, IReadOnlyDictionary<(string Instance, int Testcase), IReadOnlyList<string>> steps,
         Action<string>? progress = null, CancellationToken cancellation = default)
+        => RunCoreAsync(host, ticked, (instance, group) =>
+        {
+            var chosen = steps.Where(s => s.Key.Instance.Equals(instance.Name, StringComparison.OrdinalIgnoreCase)).ToDictionary(s => s.Key.Testcase, s => s.Value);
+            return CentralRerunPlanner.Plan([.. group], chosen, instance.Catalog);
+        }, steps.ToDictionary(s => $"{s.Key.Instance} › {s.Key.Testcase}", s => s.Value), _ => string.Empty, progress, cancellation);
+
+    /// <summary>Runs failed rows that each have their own steps (and old or fresh data per step). Rows with the same choice run together.</summary>
+    public static Task<BatchResult> RunAsync(ICentralRerunHost host, IReadOnlyList<(FailedPair Pair, IReadOnlyList<RowStep> Steps)> rows,
+        Action<string>? progress = null, CancellationToken cancellation = default)
+    {
+        var usable = rows.Where(r => r.Steps.Any(s => s.Run)).ToList();
+        var byKey = usable.ToDictionary(r => r.Pair.Key, r => r.Steps);
+        var stepsByTestcase = new Dictionary<string, IReadOnlyList<string>>();
+        foreach (var group in usable.GroupBy(r => $"{r.Pair.Instance} › {r.Pair.Testcase}"))
+            stepsByTestcase[group.Key] = group.SelectMany(r => r.Steps.Where(s => s.Run).Select(s => s.Name)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return RunCoreAsync(host, [.. usable.Select(r => r.Pair)], (instance, group) =>
+            CentralRerunPlanner.PlanRows([.. group.Select(p => (p, byKey[p.Key]))], instance.Catalog),
+            stepsByTestcase, pair => StepsText(byKey[pair.Key]), progress, cancellation);
+    }
+
+    /// <summary>"Create (old data) › Verify (fresh data)": the steps a row ran and with which data.</summary>
+    public static string StepsText(IReadOnlyList<RowStep> steps) => string.Join(" › ", steps.Where(s => s.Run).Select(s => $"{s.Name} ({(s.OldData ? "old data" : "fresh data")})"));
+
+    private static async Task<BatchResult> RunCoreAsync(ICentralRerunHost host, IReadOnlyList<FailedPair> ticked, Func<CentralInstance, IReadOnlyList<FailedPair>, IReadOnlyList<RunRequest>> plan,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> stepsByTestcase, Func<FailedPair, string> stepsText, Action<string>? progress, CancellationToken cancellation)
     {
         var started = DateTime.Now;
         var problems = new System.Collections.Concurrent.ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -44,8 +69,7 @@ public static class CentralRerunBatch
         {
             var instance = host.Instances.FirstOrDefault(i => i.Name.Equals(group.Key, StringComparison.OrdinalIgnoreCase));
             if (instance is null) { problems[group.Key] = "The instance is no longer there."; return; }
-            var chosen = steps.Where(s => s.Key.Instance.Equals(instance.Name, StringComparison.OrdinalIgnoreCase)).ToDictionary(s => s.Key.Testcase, s => s.Value);
-            var requests = CentralRerunPlanner.Plan([.. group], chosen, instance.Catalog);
+            var requests = plan(instance, [.. group]);
             var number = 0;
             foreach (var request in requests)
             {
@@ -64,9 +88,8 @@ public static class CentralRerunBatch
             var instance = host.Instances.FirstOrDefault(i => i.Name.Equals(group.Key, StringComparison.OrdinalIgnoreCase));
             RunResults? after = null;
             if (instance is not null) { try { after = RunResultsReader.ReadLatest(instance.ResultsFolder); } catch (IOException) { } }
-            foreach (var pair in group) rows.Add(Compare(pair, after, instance, problems.ContainsKey(group.Key)));
+            foreach (var pair in group) rows.Add(Compare(pair, after, instance, problems.ContainsKey(group.Key)) with { StepsText = stepsText(pair) });
         }
-        var stepsByTestcase = steps.ToDictionary(s => $"{s.Key.Instance} › {s.Key.Testcase}", s => s.Value);
         return new BatchResult($"{started:yyyyMMdd_HHmmss}", started, DateTime.Now, rows, new Dictionary<string, string>(problems, StringComparer.OrdinalIgnoreCase), stepsByTestcase);
     }
 

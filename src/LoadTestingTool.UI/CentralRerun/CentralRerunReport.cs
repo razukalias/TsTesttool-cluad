@@ -51,10 +51,10 @@ public static class CentralRerunReport
             sb.Append("</table>");
         }
 
-        sb.Append("<h2>Before and after</h2><table><tr><th>Instance</th><th>Testcase</th><th>Row</th><th>Environment</th><th>Before</th><th>After</th><th>Slowest step</th></tr>");
+        sb.Append("<h2>Before and after</h2><table><tr><th>Instance</th><th>Testcase</th><th>Row</th><th>Environment</th><th>Before</th><th>After</th><th>Steps run</th><th>Slowest step</th></tr>");
         foreach (var r in rows.OrderBy(r => r.Before.Instance, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Before.TestcaseIndex).ThenBy(r => r.Before.DataId, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Before.Environment, StringComparer.OrdinalIgnoreCase))
             sb.Append("<tr><td>").Append(E(r.Before.Instance)).Append("</td><td>").Append(E(r.Before.Testcase)).Append("</td><td>").Append(E(r.Before.DataId)).Append("</td><td>").Append(E(r.Before.EnvironmentText)).Append("</td><td>").Append(E(r.Before.Kind)).Append("</td><td class=\"")
-              .Append(r.After == BatchRow.NowPassed ? "ok" : r.After == BatchRow.StillFailed ? "bad" : "mute").Append("\">").Append(E(r.After)).Append("</td><td>").Append(r.DurationMs > 0 ? r.DurationMs + " ms" : "").Append("</td></tr>");
+              .Append(r.After == BatchRow.NowPassed ? "ok" : r.After == BatchRow.StillFailed ? "bad" : "mute").Append("\">").Append(E(r.After)).Append("</td><td>").Append(E(r.StepsText)).Append("</td><td>").Append(r.DurationMs > 0 ? r.DurationMs + " ms" : "").Append("</td></tr>");
         sb.Append("</table>");
 
         var still = rows.Where(r => r.IsStillFailed).ToList();
@@ -98,13 +98,13 @@ public static class CentralRerunReport
         summary.Columns().AdjustToContents();
 
         var rows = book.AddWorksheet("Rows");
-        string[] rowHeaders = ["Instance", "Testcase", "Row", "Environment", "Before", "Reason before", "After", "Slowest step (ms)"];
+        string[] rowHeaders = ["Instance", "Testcase", "Row", "Environment", "Before", "Reason before", "After", "Steps run", "Slowest step (ms)"];
         for (var i = 0; i < rowHeaders.Length; i++) { rows.Cell(1, i + 1).Value = rowHeaders[i]; rows.Cell(1, i + 1).Style.Font.Bold = true; }
         var r1 = 2;
         foreach (var r in batch.Rows.OrderBy(r => r.Before.Instance, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Before.TestcaseIndex).ThenBy(r => r.Before.DataId, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Before.Environment, StringComparer.OrdinalIgnoreCase))
         {
             rows.Cell(r1, 1).Value = r.Before.Instance; rows.Cell(r1, 2).Value = r.Before.Testcase; rows.Cell(r1, 3).Value = r.Before.DataId; rows.Cell(r1, 4).Value = r.Before.EnvironmentText;
-            rows.Cell(r1, 5).Value = r.Before.Kind; rows.Cell(r1, 6).Value = r.Before.Reason; rows.Cell(r1, 7).Value = r.After; rows.Cell(r1, 8).Value = r.DurationMs;
+            rows.Cell(r1, 5).Value = r.Before.Kind; rows.Cell(r1, 6).Value = r.Before.Reason; rows.Cell(r1, 7).Value = r.After; rows.Cell(r1, 8).Value = r.StepsText; rows.Cell(r1, 9).Value = r.DurationMs;
             rows.Cell(r1, 7).Style.Font.FontColor = r.After == BatchRow.NowPassed ? XLColor.DarkGreen : r.After == BatchRow.StillFailed ? XLColor.Red : XLColor.Gray;
             r1++;
         }

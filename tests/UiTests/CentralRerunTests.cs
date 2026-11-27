@@ -121,6 +121,88 @@ public class CentralRerunTests
         Assert.Equal(["Create", "Verify"], only.Steps[2]);   // every testcase of the run is listed
     }
 
+    private static IReadOnlyList<TestcaseOption> ThreeSteps(params int[] testcases)
+        => testcases.Select(i => new TestcaseOption(i, "T" + i, [new TestStepOption("Step1", "HTTP", true, []), new TestStepOption("Step2", "HTTP", true, []), new TestStepOption("Step3", "HTTP", true, [])])).ToList();
+
+    [Fact]
+    public void A_row_by_default_skips_the_steps_before_the_failure_reruns_the_failed_step_with_old_data_and_the_ones_after_with_fresh_data()
+    {
+        string[] steps = ["Step1", "Step2", "Step3"];
+        FailedPair Failed(params string[] failedSteps) => new("A", 1, "T1", "R1", "dev", "FAIL", "x", [], failedSteps, null);
+        Assert.Equal([new RowStep("Step1", false, false), new RowStep("Step2", true, true), new RowStep("Step3", true, false)], RowStepDefaults.For(Failed("Step2"), steps));
+        Assert.Equal([new RowStep("Step1", true, true), new RowStep("Step2", true, false), new RowStep("Step3", true, false)], RowStepDefaults.For(Failed("Step1"), steps));
+        // two failed steps: both take old data, the steps from the first failure on run
+        Assert.Equal([new RowStep("Step1", false, false), new RowStep("Step2", true, true), new RowStep("Step3", true, true)], RowStepDefaults.For(Failed("Step2", "Step3"), steps));
+        // no failed step known (an error before any step): every step runs, with fresh data
+        Assert.All(RowStepDefaults.For(Failed(), steps), s => { Assert.True(s.Run); Assert.False(s.OldData); });
+    }
+
+    [Fact]
+    public void Rows_with_the_same_step_choice_run_together_and_the_old_data_steps_go_to_the_runner()
+    {
+        var catalog = ThreeSteps(1, 2);
+        string[] steps = ["Step1", "Step2", "Step3"];
+        FailedPair P(int tc, string id, string env, params string[] failed) => new("A", tc, "T" + tc, id, env, "FAIL", "x", [], failed, null);
+        (FailedPair, IReadOnlyList<RowStep>) Row(FailedPair pair) => (pair, RowStepDefaults.For(pair, steps));
+
+        // all rows fail at Step2: one request; Step1 does not run, Step2 reuses the old data (and so Step1's values), Step3 is fresh
+        var same = new[] { Row(P(1, "R1", "dev", "Step2")), Row(P(1, "R2", "dev", "Step2")), Row(P(2, "R1", "dev", "Step2")), Row(P(2, "R2", "dev", "Step2")) };
+        var one = Assert.Single(CentralRerunPlanner.PlanRows(same, catalog));
+        Assert.Equal(["Step2", "Step3"], one.Steps![1]); Assert.Equal(["Step2", "Step3"], one.Steps[2]);
+        Assert.Equal(["Step2"], one.RerunSteps![1]); Assert.Equal(["Step2"], one.RerunSteps[2]);
+
+        // rows that fail at different steps are separate runs
+        var mixed = new[] { Row(P(1, "R1", "dev", "Step1")), Row(P(1, "R2", "dev", "Step3")) };
+        var split = CentralRerunPlanner.PlanRows(mixed, catalog);
+        Assert.Equal(2, split.Count);
+        Assert.Null(split.Single(r => r.RowsByTestcase![1].Contains("R1")).Steps);                       // Step1 fails: every step runs
+        Assert.Equal(["Step3"], split.Single(r => r.RowsByTestcase![1].Contains("R2")).Steps![1]);       // Step3 fails: only Step3 runs
+        Assert.Equal(["Step3"], split.Single(r => r.RowsByTestcase![1].Contains("R2")).RerunSteps![1]);
+
+        // a row with no step ticked is not planned
+        var none = new (FailedPair, IReadOnlyList<RowStep>)[] { (P(1, "R9", "dev"), steps.Select(n => new RowStep(n, false, false)).ToList()) };
+        Assert.Empty(CentralRerunPlanner.PlanRows(none, catalog));
+        // nothing old: no re-run steps at all
+        var fresh = new (FailedPair, IReadOnlyList<RowStep>)[] { (P(1, "R1", "dev"), steps.Select(n => new RowStep(n, true, false)).ToList()) };
+        var freshRequest = Assert.Single(CentralRerunPlanner.PlanRows(fresh, catalog));
+        Assert.Null(freshRequest.RerunSteps); Assert.Null(freshRequest.Steps);
+    }
+
+    [Fact]
+    public void Whatever_rows_and_steps_are_chosen_the_planned_runs_run_exactly_the_ticked_rows_with_their_own_steps()
+    {
+        var catalog = ThreeSteps(1, 2, 3);
+        string[] steps = ["Step1", "Step2", "Step3"];
+        var random = new Random(11);
+        string[] envs = ["dev", "test", "prod", ""];
+        for (var round = 0; round < 300; round++)
+        {
+            var rows = new List<(FailedPair, IReadOnlyList<RowStep>)>();
+            foreach (var tc in new[] { 1, 2, 3 }) foreach (var env in envs) for (var n = 1; n <= 4; n++)
+                if (random.Next(5) == 0)
+                {
+                    var pair = new FailedPair("A", tc, "T" + tc, $"R{n}", env, "FAIL", "x", [], [steps[random.Next(3)]], null);
+                    var chosen = RowStepDefaults.For(pair, steps).Select(s => random.Next(6) == 0 ? s with { Run = !s.Run } : s).ToList();
+                    rows.Add((pair, chosen));
+                }
+            var usable = rows.Where(r => r.Item2.Any(s => s.Run)).ToList();
+            var requests = CentralRerunPlanner.PlanRows(rows, catalog);
+            var expected = usable.Select(r => (r.Item1.TestcaseIndex, r.Item1.Environment.ToUpperInvariant(), r.Item1.DataId.ToUpperInvariant())).ToHashSet();
+            var planned = requests.SelectMany(r => CentralRerunPlanner.Expand(r)).ToList();
+            Assert.True(expected.SetEquals(planned) && planned.Count == expected.Count, $"round {round}: ticked {expected.Count}, planned runs {planned.Count}");
+            // every planned run uses the steps its rows chose
+            foreach (var request in requests)
+                foreach (var (tc, env, id) in CentralRerunPlanner.Expand(request))
+                {
+                    var row = usable.Single(r => r.Item1.TestcaseIndex == tc && r.Item1.Environment.ToUpperInvariant() == env && r.Item1.DataId.ToUpperInvariant() == id);
+                    var wantedRun = row.Item2.Where(s => s.Run).Select(s => s.Name).ToList();
+                    var ranSteps = request.Steps is { } byTestcase ? byTestcase[tc] : steps.ToList();
+                    Assert.Equal(wantedRun, ranSteps);
+                    Assert.Equal(row.Item2.Where(s => s.Run && s.OldData).Select(s => s.Name).ToList(), request.RerunSteps is { } old && old.TryGetValue(tc, out var names) ? names : []);
+                }
+        }
+    }
+
     internal sealed class FakeHost : ICentralRerunHost
     {
         public required IReadOnlyList<CentralInstance> Instances { get; init; }
