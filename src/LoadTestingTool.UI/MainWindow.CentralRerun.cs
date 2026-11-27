@@ -13,7 +13,9 @@ public partial class MainWindow
         var window = new CentralRerunWindow(new CentralHost(this));
         window.Closed += (_, _) => { if (ReferenceEquals(_centralRerun, window)) _centralRerun = null; };
         _centralRerun = window;
-        window.Show(this);
+        // The dashboard is often hidden (the data editor is the only window) and a hidden window cannot own one: use the editor, else no owner.
+        var owner = Host;
+        if (owner.IsVisible) window.Show(owner); else window.Show();
         return window;
     }
 

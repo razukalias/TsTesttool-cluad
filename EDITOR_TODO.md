@@ -1153,3 +1153,7 @@ To add:
 
 ## Fix 2026-11-27: Artifacts upkeep showed the first instance's exchange folder for every instance
 - [x] The folder text box and the message of the "History database" upkeep section were shared by all instances, so after selecting another instance in the tree the box still held the first instance's `…\History\Exchange` (export, import and "Delete shown run" use the box, so an export could have gone to the wrong folder). Both are now kept per instance (text typed is kept for the instance it was typed for, the default is that instance's own `History\Exchange`). Test: `HistoryDatabaseUiTests.The_exchange_folder_and_the_message_belong_to_the_instance_that_is_selected`.
+
+## Re-run center did not open (fixed 2026-11-27)
+- Cause (from the user's UI log): `Window.Show(this)` with the dashboard window as owner throws "Cannot show window with non-visible owner" when the data editor is the only visible window. Fix: owner is `Host` (the editor while open), no owner when nothing is visible. Test: `The_re_run_center_opens_when_the_dashboard_window_is_hidden`.
+- Still open: the window's instance list re-reads every workbook on the UI thread (`ReloadWorkbookCatalog` in `CentralHost.Instances`); move it to the background if it feels slow. Errors while opening are only in the UI log.

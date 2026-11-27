@@ -42,6 +42,17 @@ public class CentralRerunWindowTests
     }
 
     [AvaloniaFact]
+    public void The_re_run_center_opens_when_the_dashboard_window_is_hidden()
+    {
+        // The data editor is the only visible window; the dashboard that owns the button is never shown (it used to throw "non-visible owner").
+        var main = new LoadTestingTool.UI.MainWindow();
+        Assert.False(main.IsVisible);
+        var window = main.OpenRerunCenter();
+        try { Assert.True(window.IsVisible); Assert.Same(window, main.OpenRerunCenter()); }
+        finally { window.Close(); }
+    }
+
+    [AvaloniaFact]
     public async Task The_window_lists_the_failed_rows_of_all_instances_and_the_filters_narrow_the_list()
     {
         using var dir = new TempDir();
