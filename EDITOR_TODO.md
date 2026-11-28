@@ -1228,8 +1228,9 @@ DONE: "Add variable..." for C# conditions (`cs:`): puts `var name = "_column_";`
 - [ ] NOT DONE: Preview is text (sheet / column / array names are typed, not clicked); no response-array picker that lists the fields of an earlier step's response (type `<From_response_Step.path_r>` by hand); no Excel row range by cell address (use Skip/Take).
 - [ ] TODO (asked 2026-11-28): File step that WRITES files of types Excel (.xlsx), Word (.docx), PDF, JSON and CSV (today it reads, copies and writes plain/binary content): content from a template or from earlier responses, rows from a data source, with help text and examples.
 
-## File step: read and write many file types, and metadata (DESIGN agreed 2026-11-28, NOT BUILT)
-- [ ] Read with "Return as": Excel/CSV → Rows (JSON, default) | CSV text | Text | Binary; sheet, header yes/no, cell range, delimiter, `maxrows` (default 10000). Word → Text (default) | Paragraphs (JSON, with style) | Tables (JSON) | Markdown. PDF → Text (whole or per page).
-- [ ] Write: rows (JSON) or CSV text → Excel, Word table, PDF, CSV, JSON file; "read Excel as CSV, then write" works without a converter.
-- [ ] Metadata of any file (images too): `action=info` returns name, size, dates, extension, MIME type, SHA-256; images: width, height, DPI, EXIF (camera, date taken, GPS); Excel: sheets, row/column counts, author, created/modified; Word/PDF: author, title, pages, created/modified; JSON/CSV: row count, columns.
-- [ ] Help text with examples in the step form, the step guide and docs.
+## File step: read and write many file types, and metadata (DONE 2026-11-28)
+- [x] Read with "Return as": Excel/CSV → rows (JSON, default) | csv | text; Word → text | paragraphs | tables | markdown; PDF → text | pages. Sheet, cell range, header, delimiter, Max rows.
+- [x] Write builds .xlsx, .docx, .pdf, .csv from rows JSON, CSV text or plain text.
+- [x] Info action: size, dates, MIME type, SHA-256, image size and EXIF (GPS only on request), Excel sheets, Word/PDF pages and author, CSV/JSON rows and columns.
+- [x] Help in the step form, the step guide and `docs/FILE_FORMATS.md`.
+- [ ] NOT DONE: old binary Word `.doc`, Excel `.xls` and `.pptx`; PDF tables and scanned (image-only) PDFs (no OCR); Word/PDF styling when writing (fonts, colours, images, several sheets in one Excel file); Excel formulas are read as their shown values; Write cannot append a sheet to an existing workbook; no editor Preview for these files yet.

@@ -103,10 +103,16 @@ public sealed class StepTypeSection : UserControl
                     new Spec("Source", "Command file", Kind.Path, Hint: "Optional. Overrides the template.", Folder: "Queries"), new Spec("Parameters", "Parameters", Kind.Json), new Spec("Outputs", "Outputs", Kind.Json, Hint: "Output name → variable name"));
                 break;
             case "file":
-                AddAll(new Spec("Action", "Action", Kind.Combo, ["Read", "Json", "ReadBinary", "Write", "Append", "WriteBinary", "AppendBinary"]));
+                AddAll(new Spec("Action", "Action", Kind.Combo, ["Read", "Json", "Info", "ReadBinary", "Write", "Append", "WriteBinary", "AppendBinary"]));
                 _body.Children.Add(FileSourceField());
                 AddAll(new Spec("Path", "File", Kind.Path),
-                    new Spec("Content", "Content", Kind.Multi, Visible: c => Writes(c)), new Spec("JsonPath", "JSON path", Kind.Text, Visible: c => Is(c, "Action", "Json")),
+                    new Spec("Content", "Content", Kind.Multi, Visible: c => Writes(c)), new Spec("JsonPath", "JSON path", Kind.Text, Visible: c => Is(c, "Action", "Json")), new Spec("Gps", "Include GPS position", Kind.Combo, ["no", "yes"], Visible: c => Is(c, "Action", "Info")),
+                    new Spec("ReturnAs", "Return as", Kind.Combo, ["", "rows", "csv", "text", "paragraphs", "tables", "markdown", "pages"], Hint: "Read of Excel/CSV: rows (JSON list of objects, default for Excel), csv, text. Word: text (default), paragraphs, tables, markdown. PDF: text (default), pages. Empty = plain text for text files.", Visible: c => Is(c, "Action", "Read")),
+                    new Spec("Sheet", "Sheet (Excel)", Kind.Text, Hint: "Read: name or number, empty = first sheet. Write: the name of the new sheet (default Sheet1)", Visible: c => Is(c, "Action", "Read") || Is(c, "Action", "Write")),
+                    new Spec("Range", "Cell range (Excel)", Kind.Text, Hint: "For example A1:D20; empty = all used cells", Visible: c => Is(c, "Action", "Read")),
+                    new Spec("Header", "First row has names", Kind.Combo, ["yes", "no"], Visible: c => Is(c, "Action", "Read")),
+                    new Spec("Delimiter", "Delimiter (CSV)", Kind.Text, Hint: "Empty = found by itself", Visible: c => Is(c, "Action", "Read")),
+                    new Spec("MaxRows", "Max rows", Kind.Number, Hint: "Default 10000; a bigger sheet fails with a message (use a ForEach with Skip/Take instead)", Visible: c => Is(c, "Action", "Read")),
                     new Spec("OutputVariable", "Output variable", Kind.Text), new Spec("OutputMode", "Output mode", Kind.Combo, ["Reference", "Value", "Base64"]),
                     new Spec("ContentType", "Content type", Kind.Combo, ContentTypes), new Spec("MaxBytes", "Max bytes", Kind.Number));
                 break;

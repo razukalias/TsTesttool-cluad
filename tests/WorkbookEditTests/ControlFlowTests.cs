@@ -456,6 +456,25 @@ public class ControlFlowTests
     }
 
     [Fact]
+    public async Task A_file_step_reading_excel_or_info_gives_values_later_steps_can_use()
+    {
+        var dir = new TempDir();
+        Directory.CreateDirectory(dir.Combine("Files"));
+        using (var book = new ClosedXML.Excel.XLWorkbook())
+        {
+            var sheet = book.AddWorksheet("S"); sheet.Cell(1, 1).Value = "name"; sheet.Cell(2, 1).Value = "Ann"; sheet.Cell(3, 1).Value = "Bo";
+            book.SaveAs(System.IO.Path.Combine(dir.Combine("Files"), "p.xlsx"));
+        }
+        File.WriteAllText(System.IO.Path.Combine(dir.Combine("Files"), "d.json"), "[{\"x\":1}]");
+        var result = await RunAsync(Build(dir,
+            new Step("Rd", "File", Config: "{\"Action\":\"Read\",\"Path\":\"p.xlsx\"}"),
+            new Step("Inf", "File", Config: "{\"Action\":\"Info\",\"Path\":\"d.json\"}"),
+            new Step("U", Url: "/u/<From_response_Rd.rows[1].name_r>/<From_response_Inf.rows_r>/<From_response_Inf.sizeBytes_r>")), Ok);
+        Assert.True(result.Paths.Count > 0, string.Join(" | ", result.Run.Testcases.SelectMany(t => t.Requests).Select(r => r.StepName + ": " + r.ErrorMessage)));
+        Assert.Equal(["/u/Bo/1/9"], result.Paths);
+    }
+
+    [Fact]
     public async Task While_repeats_until_the_condition_is_false_and_waits_for_a_step_inside_it_the_first_time()
     {
         var polls = 0;

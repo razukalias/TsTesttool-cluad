@@ -133,7 +133,7 @@ public sealed class FileStepExecutor : IStepExecutor
             // Reading is open: a bare name comes from the instance's Files folder, and any other path (also outside the instance) is read as it is.
             // Writing stays inside the workspace.
             var wanted = request.Context.Resolve(options.Path);
-            var path = action is "read" or "json" or "readbinary" ? FileTokens.Find(request.WorkspaceRoot, wanted) ?? WorkspaceGuard.Resolve(request.WorkspaceRoot, wanted) : WorkspaceGuard.Resolve(request.WorkspaceRoot, wanted);
+            var path = action is "read" or "json" or "readbinary" or "info" ? FileTokens.Find(request.WorkspaceRoot, wanted) ?? WorkspaceGuard.Resolve(request.WorkspaceRoot, wanted) : WorkspaceGuard.Resolve(request.WorkspaceRoot, wanted);
             var binaryAction = action is "readbinary" or "writebinary" or "appendbinary";
             result.RequestText = JsonSerializer.Serialize(new { action = options.Action, path, content = binaryAction ? "[binary content omitted]" : options.Content is null ? null : request.Context.Resolve(options.Content) });
             result.LogMethod = options.Action;
@@ -141,6 +141,14 @@ public sealed class FileStepExecutor : IStepExecutor
             result.LogDetails["path"] = path;
             switch (action)
             {
+                case "read" when FileContent.Handles(path, request.Context.Resolve(options.ReturnAs)):
+                {
+                    var (value, text) = FileContent.Read(path, new FileContent.Options(request.Context.Resolve(options.ReturnAs), request.Context.Resolve(options.Sheet), !request.Context.Resolve(options.Header).Trim().Equals("no", StringComparison.OrdinalIgnoreCase),
+                        request.Context.Resolve(options.Range), request.Context.Resolve(options.Delimiter), options.MaxRows));
+                    result.ResponseText = text;
+                    result.Outputs[request.Context.Resolve(options.OutputVariable)] = value;
+                    break;
+                }
                 case "read":
                 case "json":
                     result.ResponseText = await File.ReadAllTextAsync(path, request.CancellationToken);
@@ -152,6 +160,13 @@ public sealed class FileStepExecutor : IStepExecutor
                     }
                     result.Outputs[request.Context.Resolve(options.OutputVariable)] = output;
                     break;
+                case "info":
+                {
+                    var nested = FileMetadata.Nest(FileMetadata.Read(path, (options.Gps ?? string.Empty).Trim().ToLowerInvariant() is "yes" or "true"));
+                    result.ResponseText = JsonSerializer.Serialize(nested, new JsonSerializerOptions { WriteIndented = true });
+                    result.Outputs[request.Context.Resolve(options.OutputVariable)] = nested;
+                    break;
+                }
                 case "readbinary":
                     var info = new FileInfo(path);
                     EnsureSize(info.Length, options.MaxBytes, path);
@@ -167,6 +182,9 @@ public sealed class FileStepExecutor : IStepExecutor
                         result.Outputs[request.Context.Resolve(options.OutputVariable)] = reference;
                         result.ResponseText = JsonSerializer.Serialize(reference);
                     }
+                    break;
+                case "write" when FileWriter.Handles(path, request.Context.Resolve(options.Content ?? string.Empty)):
+                    result.ResponseText = FileWriter.Write(path, request.Context.Resolve(options.Content ?? string.Empty), request.Context.Resolve(options.Sheet));
                     break;
                 case "write":
                     Directory.CreateDirectory(Path.GetDirectoryName(path)!);

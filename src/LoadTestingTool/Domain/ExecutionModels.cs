@@ -141,6 +141,15 @@ public sealed class FileStepOptions
     public string OutputMode { get; set; } = "Reference";
     public long MaxBytes { get; set; } = 52428800;
     public string ContentType { get; set; } = "application/octet-stream";
+    /// <summary>info: yes adds the GPS position of a photo (off by default so it does not end up in reports).</summary>
+    public string? Gps { get; set; }
+    /// <summary>read: the shape of an Excel, CSV, Word or PDF file: rows (default for Excel), csv, text, paragraphs, tables, markdown, pages.</summary>
+    public string ReturnAs { get; set; } = string.Empty;
+    public string Sheet { get; set; } = string.Empty;
+    public string Header { get; set; } = "yes";
+    public string Range { get; set; } = string.Empty;
+    public string Delimiter { get; set; } = string.Empty;
+    public int MaxRows { get; set; } = 10000;
 }
 
 public sealed class BinaryFileReference

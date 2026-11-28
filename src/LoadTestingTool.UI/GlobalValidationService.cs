@@ -173,7 +173,7 @@ internal static class GlobalValidationService
             var fullPath = WorkspaceGuard.Resolve(item.FolderPath, path);
             var normalized = Path.GetFullPath(fullPath);
             var createsFile = action.Equals("write", StringComparison.OrdinalIgnoreCase) || action.Equals("append", StringComparison.OrdinalIgnoreCase) || action.Equals("writebinary", StringComparison.OrdinalIgnoreCase) || action.Equals("appendbinary", StringComparison.OrdinalIgnoreCase);
-            var readsFile = action.Equals("read", StringComparison.OrdinalIgnoreCase) || action.Equals("json", StringComparison.OrdinalIgnoreCase) || action.Equals("readbinary", StringComparison.OrdinalIgnoreCase) || action.Equals("copy", StringComparison.OrdinalIgnoreCase) || action.Equals("upload", StringComparison.OrdinalIgnoreCase);
+            var readsFile = action.Equals("read", StringComparison.OrdinalIgnoreCase) || action.Equals("json", StringComparison.OrdinalIgnoreCase) || action.Equals("readbinary", StringComparison.OrdinalIgnoreCase) || action.Equals("info", StringComparison.OrdinalIgnoreCase) || action.Equals("copy", StringComparison.OrdinalIgnoreCase) || action.Equals("upload", StringComparison.OrdinalIgnoreCase);
             if (createsFile)
             {
                 generatedArtifacts.Add(normalized);

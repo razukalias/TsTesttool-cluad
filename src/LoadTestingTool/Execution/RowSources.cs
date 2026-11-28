@@ -20,6 +20,8 @@ public sealed class RowSourceOptions
     public string JsonPath { get; set; } = "$";
     /// <summary>Only this column: the loop variable then holds its plain value.</summary>
     public string Column { get; set; } = string.Empty;
+    /// <summary>excel: only these cells, for example A1:D20 (the first row of the range is the header when Header is yes).</summary>
+    public string Range { get; set; } = string.Empty;
     public int Skip { get; set; }
     public int Take { get; set; }
 }
@@ -215,7 +217,9 @@ public static class RowSources
         else if (workbook.TryGetWorksheet(options.Sheet, out var named)) sheet = named;
         else if (int.TryParse(options.Sheet, out var number) && number >= 1 && number <= workbook.Worksheets.Count) sheet = workbook.Worksheet(number);
         else throw new InvalidDataException($"There is no sheet '{options.Sheet}' in {Path.GetFileName(file)}. The sheets are: {string.Join(", ", workbook.Worksheets.Select(w => w.Name))}.");
-        var used = sheet.RangeUsed();
+        IXLRange? used;
+        try { used = options.Range.Length > 0 ? sheet.Range(options.Range) : sheet.RangeUsed(); }
+        catch (ArgumentException) { throw new InvalidDataException($"'{options.Range}' is not a cell range. Write it like A1:D20."); }
         if (used is null) return ([], []);
         var first = used.FirstColumn().ColumnNumber(); var last = used.LastColumn().ColumnNumber();
         var table = new List<List<string>>();
