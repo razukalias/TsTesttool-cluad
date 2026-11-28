@@ -27,12 +27,14 @@ steps:
       --junit "$(Build.ArtifactStagingDirectory)/validation_junit.xml"
     displayName: Validate workbook
 
+  # Optional extra arguments for the run below: --notify-url "$(TEAMS_WEBHOOK)" --notify-format text --notify-on failure
+  #   and --fail-on new --compare-with "$(Pipeline.Workspace)/previous/summary.json" (fail only on steps that did not fail before).
   # 2. Run. --fail-on any (default): a failed test or error fails the pipeline; a known bug passes.
   #    Exit codes: 0 passed · 1 workbook/settings unusable · 2 failed · 3 cancelled · 4 timed out.
   - pwsh: >
       dotnet run --project LoadTestingTool.csproj -c Release --no-launch-profile --
       --instance MyInstance --settings appsettings.json
-      --environments qa --fail-on any --timeout-minutes 30
+      --environments qa --fail-on any --retry 1 --timeout-minutes 30
       --results "$(Build.ArtifactStagingDirectory)/Results"
       --junit "$(Build.ArtifactStagingDirectory)/junit.xml"
       --summary "$(Build.ArtifactStagingDirectory)/summary.json"

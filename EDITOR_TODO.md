@@ -1011,7 +1011,7 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 ## CI/CD support (first slice DONE 2026-11-28: Azure DevOps, Windows agent; see docs/CI_CD.md and ci/azure-pipelines.yml)
 - [x] JUnit XML + `summary.json` in `Results/Run_<id>/` (`--junit`, `--summary`); `${NAME}` / `${NAME:-default}` in appsettings.json and workbook cells with `--set NAME=value` / environment variables, masked in logs and reports; `--validate-only` (exit 1 on errors); `--fail-on any|errors|bugs`; `--timeout-minutes` (exit 4); settings found next to the program when started from another folder; sample pipeline.
 - [x] Also done 2026-11-28: masking of ${NAME} values in the history and live events (request/response text, errors, extracted values, assertion values); settings-file folders resolve against the settings file when no instance is used; "Pipeline help" button in the instance Configuration panel.
-- [ ] NOT DONE (later): compare with previous run, retry, webhooks, text export.
+- [x] Done 2026-11-28 too: `--retry N` (flaky rows), compare with previous run (`--compare-with`, `--fail-on new`), `report.md` / `--text`, `--notify-url` webhook (`--notify-format`, `--notify-on`). Not covered by an automated test: the retry loop itself (checked by hand with a failing sample).
 (original plan below)
 Already there: headless runner CLI (`--config --instance --testcases --environments --dataids --steps --run-id --results --logs --history --run-all --serve`), exit codes 0 pass / 1 fatal-validation / 2 failed / 3 cancelled (known bugs count as pass), mock server, masking in logs.
 First slice (do together):

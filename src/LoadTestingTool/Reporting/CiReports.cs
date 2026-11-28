@@ -9,7 +9,7 @@ namespace LoadTestingTool.Reporting;
 public static class CiReports
 {
     /// <summary>0 passed · 1 workbook or settings unusable · 2 failed · 3 cancelled · 4 timed out. <paramref name="failOn"/>: any (default: a failed test or error), errors (only runtime errors) or bugs (a known bug counts as a failure too).</summary>
-    public static int ExitCode(RunResult run, string failOn = "any", bool timedOut = false)
+    public static int ExitCode(RunResult run, string failOn = "any", bool timedOut = false, RunComparison? comparison = null)
     {
         if (timedOut) return 4;
         if (run.Cancelled) return 3;
@@ -17,6 +17,7 @@ public static class CiReports
         var failed = (failOn?.Trim().ToLowerInvariant()) switch
         {
             "errors" => steps.Any(r => r.ErrorMessage.Length > 0),
+            "new" => comparison is null ? run.Testcases.Any(t => t.Result == "FAILED") : comparison.NewlyFailing.Count > 0,   // only what did not fail in the previous run
             "bugs" => run.Testcases.Any(t => t.Result == "FAILED") || steps.SelectMany(r => r.Assertions).Any(a => a.KnownBug),
             _ => run.Testcases.Any(t => t.Result == "FAILED"),
         };
@@ -81,7 +82,7 @@ public static class CiReports
     }
 
     /// <summary>The numbers of a run and its exit code, as JSON a pipeline step can read.</summary>
-    public static void WriteSummary(string path, RunResult run, int exitCode, string failOn)
+    public static void WriteSummary(string path, RunResult run, int exitCode, string failOn, RunComparison? comparison = null, IReadOnlyList<string>? flaky = null, int retries = 0)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         var steps = run.Testcases.SelectMany(t => t.Requests).ToList();
@@ -94,6 +95,9 @@ public static class CiReports
             rows = new { total = run.Testcases.Count, passed = run.Testcases.Count(t => t.Result == "PASSED"), failed = run.Testcases.Count(t => t.Result == "FAILED"), skipped = run.Testcases.Count(t => t.Result == "SKIPPED") },
             steps = new { total = steps.Count, passed = steps.Count(r => r.Result == "PASS"), failed = steps.Count(r => r.Result == "FAIL"), errors = steps.Count(r => r.ErrorMessage.Length > 0) },
             assertions = new { failed = steps.SelectMany(r => r.Assertions).Count(a => a.Result == "FAIL"), knownBugs = steps.SelectMany(r => r.Assertions).Count(a => a.KnownBug) },
+            retries, flaky = flaky ?? [],
+            comparison = comparison is null ? null : new { previousRunId = comparison.PreviousRunId, newlyFailing = comparison.NewlyFailing, fixedSteps = comparison.Fixed, newSteps = comparison.NewSteps, slower = comparison.Slower },
+            stepResults = RunComparison.Snapshot(run),
             failures = failedSteps,
         };
         File.WriteAllText(path, JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));

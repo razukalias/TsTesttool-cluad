@@ -144,3 +144,74 @@ public class CiPathTests
         Directory.Delete(dir, true);
     }
 }
+
+public class CiCompareTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "cic_" + Guid.NewGuid().ToString("N"));
+    public CiCompareTests() { Directory.CreateDirectory(_dir); Secrets.ResetForTests(); }
+    public void Dispose() { Secrets.ResetForTests(); try { Directory.Delete(_dir, true); } catch { } }
+
+    private static RunResult Run(string runId, params (string Step, bool Fail, long Ms)[] steps)
+    {
+        var run = new RunResult { RunId = runId, StartedAt = DateTimeOffset.Now.AddSeconds(-2), EndedAt = DateTimeOffset.Now };
+        var row = new TestcaseResult { RunId = runId, TestcaseIndex = 1, Testcase = "Orders", DataId = "d1", Environment = "qa" };
+        foreach (var (step, fail, ms) in steps)
+            row.Requests.Add(new RequestResult { StepName = step, DurationMs = ms, HttpStatus = 200, ExpectedStatusMatched = true, ErrorMessage = fail ? "boom" : "" });
+        run.Testcases.Add(row);
+        return run;
+    }
+
+    [Fact]
+    public void A_run_is_compared_with_the_previous_summary()
+    {
+        var before = Run("old", ("A", false, 100), ("B", true, 100), ("C", false, 100));
+        var oldPath = Path.Combine(_dir, "Run_old", "summary.json");
+        CiReports.WriteSummary(oldPath, before, 2, "any");
+        var now = Run("new", ("A", true, 100), ("B", false, 100), ("C", false, 1200), ("D", true, 10));
+        var found = RunComparison.FindPrevious(_dir, "new", null);
+        Assert.Equal(oldPath, found);
+        var comparison = RunComparison.Compare(now, found)!;
+        Assert.Equal(["Orders [qa] d1 / A", "Orders [qa] d1 / D"], comparison.NewlyFailing);
+        Assert.Equal(["Orders [qa] d1 / B"], comparison.Fixed);
+        Assert.Equal(1, comparison.NewSteps);
+        Assert.Single(comparison.Slower);
+        Assert.Equal(2, CiReports.ExitCode(now, "new", comparison: comparison));
+        Assert.Equal(0, CiReports.ExitCode(Run("same", ("B", true, 100)), "new", comparison: RunComparison.Compare(Run("same", ("B", true, 100)), found)));   // B failed before too
+    }
+
+    [Fact]
+    public void Without_a_previous_run_new_means_any_failure()
+    {
+        Assert.Null(RunComparison.Compare(Run("x", ("A", true, 1)), null));
+        Assert.Equal(2, CiReports.ExitCode(Run("x", ("A", true, 1)), "new"));
+    }
+
+    [Fact]
+    public void The_text_report_lists_failures_flaky_rows_and_the_comparison_without_secrets()
+    {
+        Secrets.SetOverrides(new Dictionary<string, string> { ["T"] = "tok-123456" }); Secrets.Expand("${T}");
+        var run = Run("r", ("A", true, 5)); run.Testcases[0].Requests[0].ErrorMessage = "401 for tok-123456";
+        var text = CiText.Markdown(run, 2, new RunComparison { PreviousRunId = "old" }, ["Orders [qa] d9 (passed on retry 1)"], 2);
+        Assert.Contains("FAILED", text); Assert.Contains("Flaky", text); Assert.Contains("Compared with run old", text); Assert.Contains("401 for ***", text);
+        Assert.DoesNotContain("tok-123456", text);
+    }
+
+    [Fact]
+    public async Task The_webhook_gets_the_summary_or_a_text_message()
+    {
+        var handler = new Capture();
+        Assert.Null(await CiText.NotifyAsync("http://hook.test/x", "json", "{\"result\":\"failed\"}", "# md", handler));
+        Assert.Equal("{\"result\":\"failed\"}", handler.Body);
+        Assert.Null(await CiText.NotifyAsync("http://hook.test/x", "text", "{}", "# md", handler));
+        Assert.Equal("{\"text\":\"# md\"}", handler.Body);
+        handler.Status = System.Net.HttpStatusCode.BadRequest;
+        Assert.Contains("400", await CiText.NotifyAsync("http://hook.test/x", "json", "{}", "m", handler));
+    }
+
+    private sealed class Capture : HttpMessageHandler
+    {
+        public string Body = ""; public System.Net.HttpStatusCode Status = System.Net.HttpStatusCode.OK;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        { Body = await request.Content!.ReadAsStringAsync(cancellationToken); return new HttpResponseMessage(Status); }
+    }
+}

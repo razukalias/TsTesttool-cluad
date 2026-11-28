@@ -16,12 +16,18 @@ EXIT CODES
   2  a test failed or a step had an error
   3  cancelled
   4  stopped because --timeout-minutes was reached
---fail-on any (default) = any failed test or error fails the run. errors = only runtime errors (connection, script). bugs = known bugs fail the run too.
+--fail-on any (default) = any failed test or error fails the run. errors = only runtime errors (connection, script). bugs = known bugs fail the run too. new = only steps that did not fail in the previous run fail the run.
 
 REPORTS (in Results/Run_<id>/)
   junit.xml     one suite per testcase and environment, one test case per step, with the failure text. Azure DevOps shows it on the Tests tab (PublishTestResults@2).
   summary.json  result, exit code, counts, duration and the failed steps.
   --junit <file> and --summary <file> write them somewhere else.
+
+RETRY, COMPARE, REPORT, WEBHOOK
+  --retry 2                       failed rows run again up to 2 more times; a row that passes then is listed as flaky and does not fail the run
+  --fail-on new                   compares with the previous run (newest Run_* folder in Results, or --compare-with <summary.json>) and fails only on steps that did not fail before
+  report.md / --text <file>       readable report: counts, flaky rows, comparison, failed steps with expected and actual values (on Azure DevOps it is attached to the run page)
+  --notify-url ""${{WEBHOOK}}""      posts the result when the run ends; --notify-format json|text (text = Slack/Teams message), --notify-on failure
 
 SECRETS AND SETTINGS FROM THE PIPELINE
   Write ${{NAME}} in appsettings.json or in any workbook cell, for example a header cell   Authorization: Bearer ${{API_TOKEN}}   or a URL   ${{BASE_URL}}/orders

@@ -40,7 +40,8 @@ internal static class Program
             config.ResultsFolder = GetCommandLineValue(args, "--results") ?? config.ResultsFolder;
             if (args.Any(a => a.Equals("--validate-only", StringComparison.OrdinalIgnoreCase))) return CiReports.ValidateOnly(workbookPath, GetCommandLineValue(args, "--junit") ?? Path.Combine(config.ResultsFolder, "validation_junit.xml"));
             var failOn = (GetCommandLineValue(args, "--fail-on") ?? "any").Trim().ToLowerInvariant();
-            if (failOn is not ("any" or "errors" or "bugs")) throw new InvalidOperationException("--fail-on must be any, errors or bugs.");
+            if (failOn is not ("any" or "errors" or "bugs" or "new")) throw new InvalidOperationException("--fail-on must be any, errors, bugs or new.");
+            var retries = int.TryParse(GetCommandLineValue(args, "--retry"), out var retryCount) ? Math.Clamp(retryCount, 0, 5) : 0;
             var timeoutMinutes = double.TryParse(GetCommandLineValue(args, "--timeout-minutes"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var minutes) && minutes > 0 ? minutes : 0;
             config.TemplatesFolder = GetCommandLineValue(args, "--templates") ?? config.TemplatesFolder;
             config.HistoryFolder = GetCommandLineValue(args, "--history") ?? config.HistoryFolder;
@@ -137,6 +138,8 @@ internal static class Program
             }
             else if (rerun) Console.WriteLine(string.IsNullOrWhiteSpace(rerunOf) ? "Rerun: no history found for this workbook (it may have been cleaned up), so new values are generated." : $"Rerun: no history found for run {rerunOf} (it may have been cleaned up), so new values are generated.");
             Console.WriteLine("Selected work: " + string.Join("; ", work.Select(x => $"{x.Testcase.TestcaseIndex} [{(string.IsNullOrEmpty(x.Environment) ? "default" : x.Environment)}]: {string.Join(", ", x.Testcase.Steps.Select(s => s.StepName))}")));
+            var flaky = new List<string>();   // rows that failed and passed on a retry
+            RunComparison? comparison = null;
             var filters = ParseDataIdSelection(dataIdSelection);
             // --rows-by-environment {"qa":["d2","d5"],"":["d7"]}: each data row runs only in the environments listed for it (a re-run of failed rows); "" is the default environment.
             var rowsByEnvironment = ParseRowsByEnvironment(GetCommandLineValue(args, "--rows-by-environment"));
@@ -152,6 +155,31 @@ internal static class Program
                 {
                     cancellation.Token.ThrowIfCancellationRequested();
                     await RunTestcaseAsync(item.Testcase, item.Environment, workbook, overall, http, config, runId, selection, FiltersOf(item.Environment, item.Testcase.TestcaseIndex), uiLaunchId, uiLaunchAt, cancellation.Token);
+                }
+                // --retry N: the rows that failed run again, up to N more times; a row that passes then is reported as flaky and replaces its failed result
+                for (var attempt = 1; attempt <= retries && !cancellation.IsCancellationRequested; attempt++)
+                {
+                    var failedRows = overall.Testcases.Where(t => t.Result == "FAILED").GroupBy(t => (t.TestcaseIndex, Environment: t.Environment ?? string.Empty)).ToList();
+                    if (failedRows.Count == 0) break;
+                    Console.WriteLine($"Retry {attempt} of {retries}: {failedRows.Sum(g => g.Select(t => t.DataId).Distinct().Count())} failed rows run again.");
+                    foreach (var group in failedRows)
+                    {
+                        var definition = workbook.Testcases.FirstOrDefault(x => x.TestcaseIndex == group.Key.TestcaseIndex);
+                        if (definition is null) continue;
+                        var ids = group.Select(t => t.DataId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                        var retryRun = new RunResult { RunId = runId, Selection = selection, StartedAt = DateTimeOffset.Now, Environment = group.Key.Environment };
+                        await RunTestcaseAsync(definition, group.Key.Environment, workbook, retryRun, http, config, runId, selection, new Dictionary<int, IReadOnlySet<string>> { [group.Key.TestcaseIndex] = ids }, uiLaunchId, uiLaunchAt, cancellation.Token);
+                        lock (overall.Testcases)
+                            foreach (var id in ids)
+                            {
+                                var again = retryRun.Testcases.Where(t => string.Equals(t.DataId, id, StringComparison.OrdinalIgnoreCase)).ToList();
+                                if (again.Count == 0) continue;
+                                overall.Testcases.RemoveAll(t => t.TestcaseIndex == group.Key.TestcaseIndex && (t.Environment ?? string.Empty) == group.Key.Environment && string.Equals(t.DataId, id, StringComparison.OrdinalIgnoreCase));
+                                overall.Testcases.AddRange(again);
+                                var label = $"{definition.Testcase} [{(string.IsNullOrEmpty(group.Key.Environment) ? "default" : group.Key.Environment)}] {id} (passed on retry {attempt})";
+                                if (again.All(t => t.Result != "FAILED") && !flaky.Contains(label)) flaky.Add(label);
+                            }
+                    }
                 }
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -191,10 +219,28 @@ internal static class Program
                     var ciFolder = Path.Combine(config.ResultsFolder, $"Run_{InternalLogger.SafeFolderName(runId)}");
                     var junitPath = GetCommandLineValue(args, "--junit") ?? (config.GenerateResults ? Path.Combine(ciFolder, "junit.xml") : null);
                     var summaryPath = GetCommandLineValue(args, "--summary") ?? (config.GenerateResults ? Path.Combine(ciFolder, "summary.json") : null);
+                    var textPath = GetCommandLineValue(args, "--text") ?? (config.GenerateResults ? Path.Combine(ciFolder, "report.md") : null);
+                    comparison = RunComparison.Compare(overall, RunComparison.FindPrevious(config.ResultsFolder, runId, GetCommandLineValue(args, "--compare-with")));
+                    var exitNow = CiReports.ExitCode(overall, failOn, timedOut, comparison);
                     if (junitPath is not null) CiReports.WriteJUnit(junitPath, overall);
-                    if (summaryPath is not null) CiReports.WriteSummary(summaryPath, overall, CiReports.ExitCode(overall, failOn, timedOut), failOn);
+                    if (summaryPath is not null) CiReports.WriteSummary(summaryPath, overall, exitNow, failOn, comparison, flaky, retries);
+                    var markdown = CiText.Markdown(overall, exitNow, comparison, flaky, retries);
+                    if (textPath is not null)
+                    {
+                        CiText.Write(textPath, markdown);
+                        if (Environment.GetEnvironmentVariable("TF_BUILD") is "True" or "true") Console.WriteLine($"##vso[task.uploadsummary]{Path.GetFullPath(textPath)}");   // shown on the Azure DevOps run page
+                    }
+                    if (comparison is not null) Console.WriteLine($"[Compared with {comparison.PreviousRunId}] newly failing={comparison.NewlyFailing.Count}; fixed={comparison.Fixed.Count}; new steps={comparison.NewSteps}; slower={comparison.Slower.Count}");
+                    if (flaky.Count > 0) Console.WriteLine($"[Flaky] {flaky.Count} rows passed only on a retry.");
+                    var notifyUrl = GetCommandLineValue(args, "--notify-url");
+                    if (!string.IsNullOrWhiteSpace(notifyUrl) && (exitNow != 0 || !string.Equals(GetCommandLineValue(args, "--notify-on"), "failure", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var summaryText = summaryPath is not null && File.Exists(summaryPath) ? File.ReadAllText(summaryPath) : "{}";
+                        var problem = await CiText.NotifyAsync(Secrets.Expand(notifyUrl, "--notify-url"), GetCommandLineValue(args, "--notify-format") ?? "json", summaryText, markdown);
+                        Console.WriteLine(problem is null ? "[Notified] The result was sent to the webhook." : $"[Warning] The webhook was not reached: {Secrets.Mask(problem)}");
+                    }
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException) { Console.Error.WriteLine($"[Warning] The CI report could not be written: {ex.Message}"); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException or InvalidDataException) { Console.Error.WriteLine($"[Warning] The CI report could not be written: {ex.Message}"); }
                 runEvents.WriteRunCompleted(overall, historyPath);
                 Console.WriteLine($"[Run complete] result={(overall.Cancelled ? "CANCELLED" : overall.Testcases.Any(t => t.Result == "FAILED") ? "FAILED" : "PASSED")}; requests={overall.Metrics.TotalRequests}; p95={overall.Metrics.P95DurationMs}ms; rps={overall.Metrics.RequestsPerSecond:F2}; historyFiles={historyFiles.Length}; history={historyPath}");
                 try { if (File.Exists(stopFile)) File.Delete(stopFile); } catch { }
@@ -202,7 +248,7 @@ internal static class Program
                 await stopMonitor;
                 Console.CancelKeyPress -= cancelHandler;
             }
-            return CiReports.ExitCode(overall, failOn, timedOut);
+            return CiReports.ExitCode(overall, failOn, timedOut, comparison);
         }
         catch (Exception ex)
         {

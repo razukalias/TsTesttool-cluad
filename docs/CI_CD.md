@@ -11,7 +11,7 @@ A sample pipeline is in `ci/azure-pipelines.yml`. Everything below works from an
 | 3 | Cancelled |
 | 4 | Stopped by `--timeout-minutes` |
 
-`--fail-on any` (default) fails on any failed test or error · `errors` fails only on runtime errors (connection, script) · `bugs` also fails on known bugs.
+`--fail-on any` (default) fails on any failed test or error · `errors` fails only on runtime errors (connection, script) · `bugs` also fails on known bugs · `new` fails only on steps that did not fail in the previous run (see "Compare with the previous run").
 
 ## Reports (written to `Results/Run_<id>/`)
 * `junit.xml` – one suite per testcase and environment, one test case per step (loop rounds get their own) with the failure text. Use `PublishTestResults@2`.
@@ -33,3 +33,15 @@ dotnet LoadTestingTool.dll --instance Shop --environments qa --fail-on any --tim
   --set API_TOKEN=$TOKEN --set BASE_URL=https://qa.example.com
 ```
 Started from another folder, the runner looks for `appsettings.json` next to the program when there is none in the current folder.
+
+## Retry failed rows
+`--retry 2` runs the rows that failed again, up to 2 more times (maximum 5). A row that passes on a retry replaces its failed result and is listed as *flaky* in `summary.json`, `report.md` and the console; it does not fail the pipeline. Rows that still fail after the last retry stay failed.
+
+## Compare with the previous run
+After every run the newest other `Run_*/summary.json` in the results folder (or the file given with `--compare-with previous/summary.json`) is compared with this run: newly failing steps, fixed steps, new steps and steps that became more than twice as slow (and over 500 ms). The result is in `summary.json` (`comparison`), `report.md` and the console. `--fail-on new` then fails the pipeline only for newly failing steps, so failures that are already known do not block it. Without a previous run, `new` behaves like `any`. On an agent that starts empty, download the previous `summary.json` artifact and pass it with `--compare-with`.
+
+## Text report
+`report.md` in `Results/Run_<id>/` (or `--text <file>`): result, counts, flaky rows, comparison and every failed step with expected and actual values. On Azure DevOps (`TF_BUILD` is set) it is attached to the run page automatically.
+
+## Webhook
+`--notify-url '${TEAMS_WEBHOOK}'` posts the result when the run ends (the URL is filled in like any `${NAME}` and never printed). `--notify-format json` (default) sends `summary.json`; `--notify-format text` sends `{"text": "<report.md>"}` which Slack and Teams incoming webhooks show as a message. `--notify-on failure` posts only when the exit code is not 0. A webhook that cannot be reached is a warning and does not change the exit code.
