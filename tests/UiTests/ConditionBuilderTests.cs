@@ -127,6 +127,15 @@ public class ConditionBuilderTests
     }
 
     [Fact]
+    public void ForEach_offers_the_file_settings_with_examples_in_its_help()
+    {
+        var keys = ControlStepSettings.For("ForEach").Select(s => s.Key).ToList();
+        foreach (var key in new[] { "file", "sheet", "column", "path", "header", "delimiter", "skip", "take" }) Assert.Contains(key, keys);
+        Assert.Contains("_item.email_", LoopSettingsView.Examples("ForEach"));
+        Assert.Contains("$.data.users", LoopSettingsView.Examples("ForEach"));
+    }
+
+    [Fact]
     public void For_and_ForEach_offer_stop_when_and_skip_when_as_settings()
     {
         foreach (var type in new[] { "For", "ForEach" })

@@ -88,7 +88,7 @@ public class ControlFlowTests
     {
         var model = new WorkbookReader().Read(path);
         var server = new Server(answer, status);
-        var runner = new TestRunner(new HttpClient(server), new AssertionEngine(), System.IO.Path.Combine(System.IO.Path.GetDirectoryName(path)!, "Templates"), 30);
+        var runner = new TestRunner(new HttpClient(server), new AssertionEngine(), System.IO.Path.Combine(System.IO.Path.GetDirectoryName(path)!, "Templates"), 30, features: new FeatureConfig { WorkspaceRoot = System.IO.Path.GetDirectoryName(path)! });
         var run = new RunResult { RunId = "r", StartedAt = DateTimeOffset.Now };
         await runner.RunAsync(model.Testcases[0], model, run, CancellationToken.None, selectedDataIds: new HashSet<string> { "D1" }, executionMode: "sequential");
         return (run.Testcases.SelectMany(t => t.Requests).Select(r => r.StepName).ToList(), server.Paths, run);
@@ -392,6 +392,67 @@ public class ControlFlowTests
 
         var fromText = await RunAsync(Build(new TempDir(), new Step("Each", "ForEach", Config: "items=a, b ,c;var=name"), new Step("Item", Parent: "Each", Url: "/n/_name_")), Ok);
         Assert.Equal(["/n/a", "/n/b", "/n/c"], fromText.Paths);
+    }
+
+    [Fact]
+    public async Task ForEach_reads_the_rows_of_a_csv_file_with_item_column_variables()
+    {
+        var dir = new TempDir();
+        Directory.CreateDirectory(dir.Combine("Files"));
+        File.WriteAllText(System.IO.Path.Combine(dir.Combine("Files"), "users.csv"), "id,email\n1,a@x.io\n2,\"b,b@x.io\"\n3,c@x.io\n");
+        var result = await RunAsync(Build(dir, new Step("Each", "ForEach", Config: "file=users.csv;skip=1;take=2"), new Step("U", Parent: "Each", Url: "/u/_item.id_/_index_")), Ok);
+        Assert.Equal(["/u/2/0", "/u/3/1"], result.Paths);
+        var one = await RunAsync(Build(dir, new Step("Each", "ForEach", Config: "file=users.csv;column=id"), new Step("U", Parent: "Each", Url: "/n/_item_")), Ok);
+        Assert.Equal(["/n/1", "/n/2", "/n/3"], one.Paths);
+    }
+
+    [Fact]
+    public async Task ForEach_reads_an_excel_sheet_and_a_json_array_path_and_objects_of_a_response()
+    {
+        var dir = new TempDir();
+        Directory.CreateDirectory(dir.Combine("Files"));
+        using (var book = new ClosedXML.Excel.XLWorkbook())
+        {
+            book.AddWorksheet("Other").Cell(1, 1).Value = "x";
+            var sheet = book.AddWorksheet("People");
+            sheet.Cell(1, 1).Value = "name"; sheet.Cell(1, 2).Value = "age"; sheet.Cell(2, 1).Value = "Ann"; sheet.Cell(2, 2).Value = 31; sheet.Cell(3, 1).Value = "Bo"; sheet.Cell(3, 2).Value = 40;
+            book.SaveAs(System.IO.Path.Combine(dir.Combine("Files"), "p.xlsx"));
+        }
+        File.WriteAllText(System.IO.Path.Combine(dir.Combine("Files"), "d.json"), "{\"data\":{\"users\":[{\"id\":7,\"n\":\"q\"},{\"id\":8,\"n\":\"r\"}]}}");
+        var excel = await RunAsync(Build(dir, new Step("Each", "ForEach", Config: "file=p.xlsx;sheet=People"), new Step("U", Parent: "Each", Url: "/p/_item.name_/_item.age_")), Ok);
+        Assert.Equal(["/p/Ann/31", "/p/Bo/40"], excel.Paths);
+        var json = await RunAsync(Build(dir, new Step("Each", "ForEach", Config: "file=d.json;path=$.data.users"), new Step("U", Parent: "Each", Url: "/j/_item.id_/_item.n_")), Ok);
+        Assert.Equal(["/j/7/q", "/j/8/r"], json.Paths);
+        var objects = await RunAsync(Build(new TempDir(), new Step("List", Url: "/list"), new Step("Each", "ForEach", Config: "items=<From_response_List.people_r>"), new Step("U", Parent: "Each", Url: "/o/_item.id_")),
+            p => p == "/list" ? "{\"people\":[{\"id\":5},{\"id\":6}]}" : "{}");
+        Assert.Equal(["/list", "/o/5", "/o/6"], objects.Paths);
+    }
+
+    [Fact]
+    public async Task ForEach_file_problems_are_said_in_plain_words()
+    {
+        var dir = new TempDir();
+        Directory.CreateDirectory(dir.Combine("Files"));
+        File.WriteAllText(System.IO.Path.Combine(dir.Combine("Files"), "u.csv"), "id\n1\n");
+        foreach (var (config, expect) in new[] { ("file=none.csv", "was not found"), ("file=u.csv;column=zip", "There is no column 'zip'") })
+        {
+            var result = await RunAsync(Build(dir, new Step("Each", "ForEach", Config: config), new Step("U", Parent: "Each", Url: "/u")), Ok);
+            Assert.Contains(result.Run.Testcases.SelectMany(t => t.Requests), r => (r.ErrorMessage ?? "").Contains(expect));
+        }
+    }
+
+    [Fact]
+    public void RowSources_inspect_tells_sheets_columns_rows_and_json_lists_for_the_browse_preview()
+    {
+        var dir = new TempDir();
+        Directory.CreateDirectory(dir.Combine("Files"));
+        File.WriteAllText(System.IO.Path.Combine(dir.Combine("Files"), "d.json"), "{\"a\":{\"list\":[{\"x\":1}]},\"b\":[{\"x\":2},{\"x\":3}]}");
+        var info = RowSources.Inspect(dir.Path, "d.json", new RowSourceOptions { JsonPath = "$.b" });
+        Assert.Equal(2, info.TotalRows);
+        Assert.Equal(["x"], info.Columns);
+        Assert.Contains("$.a.list", info.Arrays); Assert.Contains("$.b", info.Arrays);
+        var bad = Assert.Throws<InvalidDataException>(() => RowSources.Inspect(dir.Path, "d.json", new RowSourceOptions { JsonPath = "$.nope" }));
+        Assert.Contains("no array at $.nope", bad.Message);
     }
 
     [Fact]

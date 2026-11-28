@@ -376,8 +376,10 @@ public sealed class TestRunner
                         try { return await RunSequenceAsync(Inside(false)) ? 0 : onFailure switch { "continue" => 0, "break" => 1, _ => 2 }; }
                         finally { if (scope is not null) scope.Round = outer; endOfLastRound = new Dictionary<string, string>(S().Correlation, StringComparer.OrdinalIgnoreCase); }
                     }
-                    async Task<bool> LoopAsync(string variable, IEnumerable<string> values, string? indexName)
+                    async Task<bool> LoopAsync(string variable, IEnumerable<string> values, string? indexName, IReadOnlyList<IReadOnlyDictionary<string, string>>? records = null, IReadOnlyList<string>? fields = null)
                     {
+                        var fieldNames = (fields ?? []).Select(f => variable + "." + f).ToList();
+                        var savedFields = fieldNames.ToDictionary(n => n, n => S().LoopVars.TryGetValue(n, out var old) ? old : null);
                         S().LoopVars.TryGetValue(variable, out var savedValue);
                         var savedIndex = indexName is not null && S().LoopVars.TryGetValue(indexName, out var oldIndex) ? oldIndex : null;
                         try
@@ -390,6 +392,8 @@ public sealed class TestRunner
                             foreach (var value in values)
                             {
                                 S().LoopVars[variable] = value;
+                                if (records is not null && position < records.Count)
+                                    foreach (var field in fields ?? []) S().LoopVars[variable + "." + field] = records[position].GetValueOrDefault(field) ?? string.Empty;
                                 if (indexName is not null) S().LoopVars[indexName] = position.ToString(System.Globalization.CultureInfo.InvariantCulture);
                                 position++;
                                 if (await MetAsync(skipWhen)) { _logger.Info($"LOOP SKIP | step={control.StepName} | {variable}={value} | skipwhen={skipWhen}"); continue; }
@@ -407,6 +411,7 @@ public sealed class TestRunner
                         finally
                         {
                             if (savedValue is null) S().LoopVars.Remove(variable); else S().LoopVars[variable] = savedValue;
+                            foreach (var (name, old) in savedFields) { if (old is null) S().LoopVars.Remove(name); else S().LoopVars[name] = old; }
                             if (indexName is not null) { if (savedIndex is null) S().LoopVars.Remove(indexName); else S().LoopVars[indexName] = savedIndex; }
                         }
                     }
@@ -439,16 +444,40 @@ public sealed class TestRunner
                             }
                             case StepType.ForEach:
                             {
-                                var source = await TextAsync(config.TryGetValue("items", out var itemsText) ? itemsText : throw new InvalidDataException("'items' is missing in the step config (a JSON array, a <From_response_...> reference or a comma list)."));
                                 var values = new List<string>();
-                                if (source.StartsWith('['))
+                                IReadOnlyList<IReadOnlyDictionary<string, string>>? records = null; IReadOnlyList<string>? fields = null;
+                                if (config.TryGetValue("file", out var fileText) && !string.IsNullOrWhiteSpace(fileText))
                                 {
-                                    using var document = JsonDocument.Parse(source);
-                                    foreach (var element in document.RootElement.EnumerateArray()) values.Add(element.ValueKind == JsonValueKind.String ? element.GetString() ?? string.Empty : element.GetRawText());
+                                    // rows of a CSV / Excel / JSON file: item.<column> per round
+                                    var options = new RowSourceOptions
+                                    {
+                                        Format = await TextAsync(config.GetValueOrDefault("format", "")), Sheet = await TextAsync(config.GetValueOrDefault("sheet", "")),
+                                        Delimiter = await TextAsync(config.GetValueOrDefault("delimiter", "")), Column = await TextAsync(config.GetValueOrDefault("column", "")),
+                                        JsonPath = await TextAsync(config.GetValueOrDefault("path", "$")),
+                                        Header = !(await TextAsync(config.GetValueOrDefault("header", "yes"))).Trim().ToLowerInvariant().Equals("no"),
+                                        Skip = int.TryParse(await TextAsync(config.GetValueOrDefault("skip", "0")), out var skip) ? skip : 0,
+                                        Take = int.TryParse(await TextAsync(config.GetValueOrDefault("take", "0")), out var take) ? take : 0
+                                    };
+                                    RowSet rows;
+                                    try { rows = RowSources.FromFile(_features.WorkspaceRoot, (await TextAsync(fileText)).Trim(), options); }
+                                    catch (InvalidDataException ex) { return FailControl(ex.Message); }
+                                    values.AddRange(rows.Values); records = rows.Records; fields = rows.Columns;
                                 }
-                                else values.AddRange(source.Split(config.GetValueOrDefault("separator", ","), StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                                else
+                                {
+                                    var source = await TextAsync(config.TryGetValue("items", out var itemsText) ? itemsText : throw new InvalidDataException("'items' is missing in the step config (a JSON array, a <From_response_...> reference, a comma list, or 'file' to read a CSV / Excel / JSON file)."));
+                                    if (source.StartsWith('['))
+                                    {
+                                        using var document = JsonDocument.Parse(source);
+                                        foreach (var element in document.RootElement.EnumerateArray()) values.Add(element.ValueKind == JsonValueKind.String ? element.GetString() ?? string.Empty : element.GetRawText());
+                                        // objects in the array also give item.<field> per round
+                                        var set = RowSources.FromJsonArray(document.RootElement);
+                                        if (set.Records is not null && set.Records.Count == values.Count) { records = set.Records; fields = set.Columns; }
+                                    }
+                                    else values.AddRange(source.Split(config.GetValueOrDefault("separator", ","), StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                                }
                                 if (values.Count > max) return FailControl($"The list has {values.Count} items, more than 'max' ({max}).");
-                                return await LoopAsync(config.GetValueOrDefault("var", "item"), values, config.GetValueOrDefault("index", "index"));
+                                return await LoopAsync(config.GetValueOrDefault("var", "item"), values, config.GetValueOrDefault("index", "index"), records, fields);
                             }
                             default:   // While
                             {
