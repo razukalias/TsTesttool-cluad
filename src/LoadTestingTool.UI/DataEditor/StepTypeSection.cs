@@ -102,7 +102,9 @@ public sealed class StepTypeSection : UserControl
                     new Spec("Source", "Command file", Kind.Path, Hint: "Optional. Overrides the template.", Folder: "Queries"), new Spec("Parameters", "Parameters", Kind.Json), new Spec("Outputs", "Outputs", Kind.Json, Hint: "Output name → variable name"));
                 break;
             case "file":
-                AddAll(new Spec("Action", "Action", Kind.Combo, ["Read", "Json", "ReadBinary", "Write", "Append", "WriteBinary", "AppendBinary"]), new Spec("Path", "File", Kind.Path),
+                AddAll(new Spec("Action", "Action", Kind.Combo, ["Read", "Json", "ReadBinary", "Write", "Append", "WriteBinary", "AppendBinary"]));
+                _body.Children.Add(FileSourceField());
+                AddAll(new Spec("Path", "File", Kind.Path),
                     new Spec("Content", "Content", Kind.Multi, Visible: c => Writes(c)), new Spec("JsonPath", "JSON path", Kind.Text, Visible: c => Is(c, "Action", "Json")),
                     new Spec("OutputVariable", "Output variable", Kind.Text), new Spec("OutputMode", "Output mode", Kind.Combo, ["Reference", "Value", "Base64"]),
                     new Spec("ContentType", "Content type", Kind.Combo, ContentTypes), new Spec("MaxBytes", "Max bytes", Kind.Number));
@@ -193,7 +195,18 @@ public sealed class StepTypeSection : UserControl
                         error.Text = first is null ? string.Empty : $"line {first.Line}, column {first.Column}: {first.Message}";
                         error.IsVisible = first is not null;
                     };
-                    input = new StackPanel { Spacing = 4, Children = { box, assist.Signature, assist.Suggestions } };
+                    var addVariable = new Button { Content = "Add variable…", HorizontalAlignment = HorizontalAlignment.Left, Tag = "script-add-variable" };
+                    ToolTip.SetTip(addVariable, "Adds a line like  var orderId = \"_orderId_\";  at the top of the script, filled from a request column or a value of an earlier step");
+                    addVariable.Click += async (_, _) =>
+                    {
+                        if (_step.Editor is not { } editor || TopLevel.GetTopLevel(this) is not Window owner) return;
+                        var sources = editor.MenuSources();
+                        var chosen = await new ScriptVariableWindow(sources.RequestHeaders, editor.ReferenceTargets(_step.CurrentName), box.Text ?? string.Empty).ShowDialog<(string Name, string Placeholder)?>(owner);
+                        if (chosen is not { } pick) return;
+                        box.Text = LoadTestingTool.Editing.ScriptVariableLines.AddToTop(box.Text, pick.Name, pick.Placeholder);
+                        Commit(spec, box.Text, error);
+                    };
+                    input = new StackPanel { Spacing = 4, Children = { addVariable, box, assist.Signature, assist.Suggestions } };
                 }
                 else input = box;
                 break;
@@ -221,6 +234,24 @@ public sealed class StepTypeSection : UserControl
         }
         else _config[spec.Key] = text;
         Save();
+    }
+
+    /// <summary>"Fixed path" or "The data row": the second sets the file to <c>_file_</c> and gives the step a request column <c>Step.file</c>, one file per data row.</summary>
+    private Control FileSourceField()
+    {
+        bool FromRow() => string.Equals(_config["Path"]?.ToString()?.Trim(), "_file_", StringComparison.OrdinalIgnoreCase);
+        var combo = new ComboBox { ItemsSource = new[] { "Fixed path", "The data row" }, SelectedIndex = FromRow() ? 1 : 0, HorizontalAlignment = HorizontalAlignment.Stretch, Tag = "file-source" };
+        combo.SelectionChanged += (_, _) =>
+        {
+            var wantRow = combo.SelectedIndex == 1;
+            if (wantRow == FromRow()) return;
+            if (wantRow) { _config["Path"] = "_file_"; _step.Editor?.AddFileColumn(_step.CurrentName); }
+            else _config.Remove("Path");
+            Save();
+            Rebuild();
+        };
+        var note = Note("Fixed path: one file for every row. The data row: each row of the request sheet names its own file in the column " + _step.CurrentName + ".file (a bare name is read from the instance's Files folder).");
+        return new StackPanel { Spacing = 4, Children = { new TextBlock { Text = "File comes from", FontSize = 12, Foreground = Muted }, combo, note } };
     }
 
     private Control WsdlButton()

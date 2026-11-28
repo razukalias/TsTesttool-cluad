@@ -93,6 +93,19 @@ public sealed partial class DataEditorViewModel
         return AddResponseBodyColumns(step, wanted, ResponseFill.None, null, _ => null);
     }
 
+    /// <summary>Gives a File step its request column <c>Step.file</c> (one file per data row) when the sheet lacks it.</summary>
+    public bool AddFileColumn(string step)
+    {
+        var header = $"{step}.file";
+        if (_document.Request.FindColumn(header) >= 0) return false;
+        Record($"add column {header}");
+        _document.Request.EnsureColumn(header);
+        MarkChanged();
+        BuildRows();
+        ShowStatus($"Added the request column {header}: put a file name or path in it on each data row.", isError: false);
+        return true;
+    }
+
     public ObservableCollection<ResponseHeaderChoice> ResponseHeaderChoices { get; } = [];
     [ObservableProperty] private string _responseHeadersNote = string.Empty;
 

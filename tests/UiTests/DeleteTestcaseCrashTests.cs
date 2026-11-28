@@ -229,3 +229,15 @@ public class ControlOutputColumnTests
         Assert.False(vm.ResponseColumnExists("Gate", "index"));
     }
 }
+
+public class FileStepColumnTests
+{
+    [Fact]
+    public void A_file_step_can_take_its_file_from_a_request_column_once()
+    {
+        using var dir = new TempDir();
+        var vm = new DataEditorViewModel(Samples.Copy(dir, "DataEngine-all-parameters.xlsx"));
+        Assert.True(vm.AddFileColumn("ReadPdf"));
+        Assert.False(vm.AddFileColumn("ReadPdf"));
+    }
+}

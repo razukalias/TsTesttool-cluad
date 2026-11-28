@@ -240,7 +240,11 @@ public static class StepConfig
         {
             var name = match.Value.Trim('_', '*');
             if (!variables.TryGetValue(name, out var value)) return match.Value;
-            return json ? JsonEncodedText.Encode(value, System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping).ToString() : value;
+            if (!json) return value;
+            // A placeholder between quotes inside a script ("_x_" written as \"_x_\" in the JSON) sits in a C# string: escape the value for C# first.
+            var before = config.AsSpan(0, match.Index); var after = config.AsSpan(match.Index + match.Length);
+            var quoted = (before.EndsWith("\\\"") && after.StartsWith("\\\"")) || (before.EndsWith("\\u0022", StringComparison.OrdinalIgnoreCase) && after.StartsWith("\\u0022", StringComparison.OrdinalIgnoreCase));
+            return JsonEncodedText.Encode(quoted ? LoadTestingTool.Editing.ScriptVariableLines.EscapeForString(value) : value, System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping).ToString();
         });
     }
 
