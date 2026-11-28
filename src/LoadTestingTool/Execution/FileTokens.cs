@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using LoadTestingTool.Domain;
 
 namespace LoadTestingTool.Execution;
 
@@ -9,20 +10,39 @@ namespace LoadTestingTool.Execution;
 /// </summary>
 public static class FileTokens
 {
-    private static readonly Regex Pattern = new(@"^\s*<from_filepath(?<b64>_base64)?>(?<path>.+?)\s*$", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex Pattern = new(@"^\s*<from_filepath(?<m>_base64|_binary|_json)?>(?<path>.+?)\s*$", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
 
     public const string FilesFolder = "Files";
 
-    public static bool TryParse(string? cellText, out bool base64, out string path)
+    /// <summary>How the file is read: text as it is, Base64 of its bytes, a binary reference that streams, or JSON (optionally <c>file.json|$.path</c>).</summary>
+    public enum Mode { Text, Base64, Binary, Json }
+
+    public static string Prefix(Mode mode) => mode switch { Mode.Base64 => "<from_filepath_base64>", Mode.Binary => "<from_filepath_binary>", Mode.Json => "<from_filepath_json>", _ => "<from_filepath>" };
+
+    public static bool TryParse(string? cellText, out Mode mode, out string path, out string selector)
     {
-        base64 = false; path = string.Empty;
+        mode = Mode.Text; path = string.Empty; selector = string.Empty;
         if (string.IsNullOrWhiteSpace(cellText)) return false;
         var match = Pattern.Match(cellText);
         if (!match.Success) return false;
-        base64 = match.Groups["b64"].Success;
+        mode = match.Groups["m"].Value.ToLowerInvariant() switch { "_base64" => Mode.Base64, "_binary" => Mode.Binary, "_json" => Mode.Json, _ => Mode.Text };
         path = match.Groups["path"].Value.Trim();
+        if (mode == Mode.Json && path.IndexOf('|') is var bar and > 0) { selector = path[(bar + 1)..].Trim(); path = path[..bar].Trim(); }
         return path.Length > 0;
     }
+
+    /// <summary>A binary reference to the file (path, size, SHA-256, content type from the extension); nothing is read into memory.</summary>
+    public static async Task<BinaryFileReference> ReferenceAsync(string instanceFolder, string path, CancellationToken cancellationToken)
+    {
+        var file = Find(instanceFolder, path) ?? throw new FileNotFoundException(NotFound(path));
+        var info = new FileInfo(file);
+        await using var stream = File.OpenRead(file);
+        var hash = await System.Security.Cryptography.SHA256.HashDataAsync(stream, cancellationToken);
+        var type = Path.GetExtension(file).ToLowerInvariant() switch { ".pdf" => "application/pdf", ".png" => "image/png", ".jpg" or ".jpeg" => "image/jpeg", ".json" => "application/json", ".xml" => "application/xml", ".txt" => "text/plain", ".zip" => "application/zip", _ => "application/octet-stream" };
+        return new BinaryFileReference { Path = file, SizeBytes = info.Length, Sha256 = Convert.ToHexString(hash).ToLowerInvariant(), ContentType = type };
+    }
+
+    private static string NotFound(string path) => $"The file '{path}' was not found (looked in the instance's {FilesFolder} folder{(Path.IsPathRooted(path) ? " and at that path" : " and the instance folder")}).";
 
     /// <summary>The existing file the path points at, or null. Names are matched without regard to letter case.</summary>
     public static string? Find(string instanceFolder, string path)
@@ -60,13 +80,20 @@ public static class FileTokens
         return File.Exists(current) ? current : null;
     }
 
-    /// <summary>Reads the file for a cell: its text as it is, or its bytes as base64. Throws <see cref="FileNotFoundException"/> when the file is missing.</summary>
-    public static async Task<(string Value, int Bytes, string FileName)> LoadAsync(string instanceFolder, bool base64, string path, CancellationToken cancellationToken)
+    /// <summary>Reads the file for a cell: its text as it is, its bytes as Base64, or (JSON) the whole text or the value at the selector. Throws <see cref="FileNotFoundException"/> when the file is missing.</summary>
+    public static async Task<(string Value, int Bytes, string FileName)> LoadAsync(string instanceFolder, Mode mode, string path, CancellationToken cancellationToken, string selector = "")
     {
-        var file = Find(instanceFolder, path) ?? throw new FileNotFoundException($"The file '{path}' was not found (looked in the instance's {FilesFolder} folder{(Path.IsPathRooted(path) ? " and at that path" : " and the instance folder")}).", path);
+        var file = Find(instanceFolder, path) ?? throw new FileNotFoundException(NotFound(path));
         var bytes = await File.ReadAllBytesAsync(file, cancellationToken);
-        if (base64) return (Convert.ToBase64String(bytes), bytes.Length, Path.GetFileName(file));
+        if (mode == Mode.Base64) return (Convert.ToBase64String(bytes), bytes.Length, Path.GetFileName(file));
         var text = new System.Text.UTF8Encoding(false).GetString(bytes);
-        return (text.Length > 0 && text[0] == '﻿' ? text[1..] : text, bytes.Length, Path.GetFileName(file));
+        if (text.Length > 0 && text[0] == '\uFEFF') text = text[1..];
+        if (mode == Mode.Json && selector.Length > 0)
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(text);
+            var picked = JsonPath.Select(document.RootElement, selector);
+            text = picked is string str ? str : System.Text.Json.JsonSerializer.Serialize(picked);
+        }
+        return (text, bytes.Length, Path.GetFileName(file));
     }
 }

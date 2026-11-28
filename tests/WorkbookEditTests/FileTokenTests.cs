@@ -12,8 +12,8 @@ public class FileTokenTests
     [InlineData("<from_filepath_base64>logo.png", true, "logo.png")]
     public void The_token_is_the_whole_cell_and_carries_the_path(string cell, bool base64, string path)
     {
-        Assert.True(FileTokens.TryParse(cell, out var isBase64, out var parsed));
-        Assert.Equal(base64, isBase64);
+        Assert.True(FileTokens.TryParse(cell, out var mode, out var parsed, out _));
+        Assert.Equal(base64, mode == FileTokens.Mode.Base64);
         Assert.Equal(path, parsed);
     }
 
@@ -23,7 +23,7 @@ public class FileTokenTests
     [InlineData("prefix <from_filepath>a.txt")]       // only the whole cell counts
     [InlineData("<from_filepath>")]                   // no path
     [InlineData("<From_request_title_r>")]
-    public void Other_text_is_not_a_file_token(string cell) => Assert.False(FileTokens.TryParse(cell, out _, out _));
+    public void Other_text_is_not_a_file_token(string cell) => Assert.False(FileTokens.TryParse(cell, out _, out _, out _));
 
     [Fact]
     public void A_bare_name_is_read_from_the_Files_folder_without_regard_to_letter_case()
@@ -65,12 +65,12 @@ public class FileTokenTests
         byte[] binary = [0, 1, 2, 250, 251, 252, 255];
         File.WriteAllBytes(dir.Combine("Files", "x.bin"), binary);
 
-        var asText = await FileTokens.LoadAsync(dir.Path, base64: false, "t.json", CancellationToken.None);
+        var asText = await FileTokens.LoadAsync(dir.Path, FileTokens.Mode.Text, "t.json", CancellationToken.None);
         Assert.Equal(text, asText.Value);                       // not trimmed, variables and tokens left alone, BOM dropped
-        var asBase64 = await FileTokens.LoadAsync(dir.Path, base64: true, "x.bin", CancellationToken.None);
+        var asBase64 = await FileTokens.LoadAsync(dir.Path, FileTokens.Mode.Base64, "x.bin", CancellationToken.None);
         Assert.Equal(Convert.ToBase64String(binary), asBase64.Value);
         Assert.Equal(7, asBase64.Bytes);
-        await Assert.ThrowsAsync<FileNotFoundException>(() => FileTokens.LoadAsync(dir.Path, false, "missing.txt", CancellationToken.None));
+        await Assert.ThrowsAsync<FileNotFoundException>(() => FileTokens.LoadAsync(dir.Path, FileTokens.Mode.Text, "missing.txt", CancellationToken.None));
     }
 
     [Fact]
@@ -124,6 +124,25 @@ public class FileReferenceThroughRequestColumnTests
         var context = Context(dir, out _); Directory.CreateDirectory(other.Path);
         Assert.Null(LoadTestingTool.Execution.TestRunner.PrepareStreamingBinaryTemplate("{\"a\":\"_payload_\"}", "json", new Dictionary<string, string> { ["payload"] = "hello" }, context, dir.Path));
         var variables = new Dictionary<string, string> { ["payload"] = "_*ReadPdf.output*_" };
-        Assert.Throws<UnauthorizedAccessException>(() => LoadTestingTool.Execution.TestRunner.PrepareStreamingBinaryTemplate("{\"a\":\"_payload_\"}", "json", variables, context, other.Path));
+        // Reading is open: a file outside the workspace still streams (the author named it).
+        Assert.NotNull(LoadTestingTool.Execution.TestRunner.PrepareStreamingBinaryTemplate("{\"a\":\"_payload_\"}", "json", variables, context, other.Path));
+    }
+}
+
+public class FileTokenModesTests
+{
+    [Fact]
+    public async Task The_token_reads_text_base64_binary_and_a_json_value()
+    {
+        using var dir = new TempDir(); var files = Path.Combine(dir.Path, "Files"); Directory.CreateDirectory(files);
+        File.WriteAllText(Path.Combine(files, "d.json"), "{\"a\":{\"b\":\"hi\"}}");
+        Assert.True(FileTokens.TryParse("<from_filepath_json>d.json|$.a.b", out var mode, out var path, out var selector));
+        Assert.Equal((FileTokens.Mode.Json, "d.json", "$.a.b"), (mode, path, selector));
+        Assert.Equal("hi", (await FileTokens.LoadAsync(dir.Path, mode, path, default, selector)).Value);
+        Assert.Equal(Convert.ToBase64String(File.ReadAllBytes(Path.Combine(files, "d.json"))), (await FileTokens.LoadAsync(dir.Path, FileTokens.Mode.Base64, "d.json", default)).Value);
+        var reference = await FileTokens.ReferenceAsync(dir.Path, "d.json", default);
+        Assert.Equal("application/json", reference.ContentType);
+        Assert.True(FileTokens.TryParse("<from_filepath_binary>x.pdf", out var m2, out _, out _) && m2 == FileTokens.Mode.Binary);
+        Assert.True(FileTokens.TryParse("<from_filepath>x.txt", out var m3, out _, out _) && m3 == FileTokens.Mode.Text);
     }
 }

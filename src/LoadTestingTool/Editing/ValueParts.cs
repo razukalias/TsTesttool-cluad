@@ -28,15 +28,21 @@ public sealed record ValuePart(ValuePartKind Kind, string Raw)
     public static ValuePart Script(string template, IEnumerable<(string Name, string Value)>? parameters = null)
         => new(ValuePartKind.Script, ScriptTemplates.Token(template, parameters ?? []));
 
-    public static ValuePart File(string path, bool base64 = false) => new(ValuePartKind.File, (base64 ? "<from_filepath_base64>" : "<from_filepath>") + path);
+    public static ValuePart File(string path, bool base64 = false) => File(path, base64 ? LoadTestingTool.Execution.FileTokens.Mode.Base64 : LoadTestingTool.Execution.FileTokens.Mode.Text);
+    public static ValuePart File(string path, LoadTestingTool.Execution.FileTokens.Mode mode) => new(ValuePartKind.File, LoadTestingTool.Execution.FileTokens.Prefix(mode) + path);
 
     public string Label => Kind switch
     {
         ValuePartKind.Text => Raw,
         ValuePartKind.Script => ScriptLabel(Raw),
-        ValuePartKind.File => Raw.StartsWith("<from_filepath_base64>", StringComparison.OrdinalIgnoreCase) ? "file (Base64): " + Raw["<from_filepath_base64>".Length..] : "file: " + Raw["<from_filepath>".Length..],
+        ValuePartKind.File => FileLabel(Raw),
         _ => Raw.Trim('<', '>'),
     };
+
+    private static string FileLabel(string raw)
+        => LoadTestingTool.Execution.FileTokens.TryParse(raw, out var mode, out var path, out var selector)
+            ? (mode switch { LoadTestingTool.Execution.FileTokens.Mode.Base64 => "file (Base64): ", LoadTestingTool.Execution.FileTokens.Mode.Binary => "file (binary): ", LoadTestingTool.Execution.FileTokens.Mode.Json => "file (JSON): ", _ => "file: " }) + path + (selector.Length > 0 ? " | " + selector : string.Empty)
+            : raw;
 
     private static string ScriptLabel(string raw)
         => ScriptTemplates.ParseToken(raw) is { } t ? "⚙ " + t.Template + (t.Parameters.Count == 0 ? string.Empty : "(" + string.Join(", ", t.Parameters.Select(p => p.Name + "=" + p.Value)) + ")") : "⚙ " + raw.Trim('<', '>');
@@ -49,7 +55,7 @@ public static class ValueParts
         @"<From_(?:request_|response_|config_)?[^_>]+_(?:r|\d+)>|<From_[^_>]+_\d+>|<randomnumber(?::[^>]*|_\d+)?>|<guid(?::[NnDdBbPp])?>|<(?:datum|currentdatum|currenttime|currentdatetime|currenttimestamp)(?::[^>]*)?>",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
-    private static readonly Regex FileCell = new(@"^\s*<from_filepath(?:_base64)?>.+$", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex FileCell = new(@"^\s*<from_filepath(?:_base64|_binary|_json)?>.+$", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     public static List<ValuePart> Parse(string? value)
     {

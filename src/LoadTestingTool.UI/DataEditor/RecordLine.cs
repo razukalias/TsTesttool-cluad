@@ -196,7 +196,7 @@ public static class RecordMenu
     public sealed record ScriptHooks(Action<Action<ValuePart>> UseTemplate, Action<Action<ValuePart>> NewTemplate);
 
     /// <summary>Picks a file (text or Base64) and hands over a part whose path keeps working when the application folder is moved.</summary>
-    public sealed record FileHooks(Action<bool, Action<ValuePart>> Pick);
+    public sealed record FileHooks(Action<LoadTestingTool.Execution.FileTokens.Mode, Action<ValuePart>> Pick);
 
     public static IReadOnlyList<MenuNode> Root(Sources sources, ScriptHooks? scripts = null, FileHooks? files = null) =>
     [
@@ -207,10 +207,13 @@ public static class RecordMenu
         new() { Title = "Date and time", Children = DateFormats },
         new() { Title = "File", Children = () => [
             .. (files is null ? Array.Empty<MenuNode>() :
-            [new MenuNode { Title = "Pick a file as text…", Open = add => files.Pick(false, add) },
-             new MenuNode { Title = "Pick a file as Base64…", Open = add => files.Pick(true, add) }]),
+            [new MenuNode { Title = "Pick a file as text…", Open = add => files.Pick(LoadTestingTool.Execution.FileTokens.Mode.Text, add) },
+             new MenuNode { Title = "Pick a file as Base64…", Open = add => files.Pick(LoadTestingTool.Execution.FileTokens.Mode.Base64, add) },
+             new MenuNode { Title = "Pick a file as binary (streams)…", Open = add => files.Pick(LoadTestingTool.Execution.FileTokens.Mode.Binary, add) }]),
             new MenuNode { Title = "File content as text", Prompt = "File name or path", FromInput = p => p.Trim().Length == 0 ? null : ValuePart.File(p.Trim()) },
-            new MenuNode { Title = "File content as Base64", Prompt = "File name or path", FromInput = p => p.Trim().Length == 0 ? null : ValuePart.File(p.Trim(), base64: true) } ] },
+            new MenuNode { Title = "File content as Base64", Prompt = "File name or path", FromInput = p => p.Trim().Length == 0 ? null : ValuePart.File(p.Trim(), base64: true) },
+            new MenuNode { Title = "File content as binary (streams)", Prompt = "File name or path", FromInput = p => p.Trim().Length == 0 ? null : ValuePart.File(p.Trim(), LoadTestingTool.Execution.FileTokens.Mode.Binary) },
+            new MenuNode { Title = "A value from a JSON file", Prompt = "File name or path, then | and a JSON path, e.g. data.json|$.user.id", FromInput = p => p.Trim().Length == 0 ? null : ValuePart.File(p.Trim(), LoadTestingTool.Execution.FileTokens.Mode.Json) } ] },
         .. (scripts is null ? Array.Empty<MenuNode>() : [new MenuNode { Title = "Script", Children = () => [
             new MenuNode { Title = "Use an existing script…", Open = scripts.UseTemplate },
             new MenuNode { Title = "Write a new script template…", Open = scripts.NewTemplate } ] }]),

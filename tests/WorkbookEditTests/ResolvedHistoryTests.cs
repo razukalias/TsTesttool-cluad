@@ -93,7 +93,7 @@ public class LongValueTests
         var file = cell["<from_filepath>".Length..];
         Assert.Equal(big, File.ReadAllText(file));           // the full value is kept
         Assert.Contains(Path.Combine("_values", "r1"), file);
-        Assert.True(FileTokens.TryParse(cell, out _, out var parsed) && File.Exists(parsed));   // and the token reads it back
+        Assert.True(FileTokens.TryParse(cell, out _, out var parsed, out _) && File.Exists(parsed));   // and the token reads it back
     }
 
     [Fact]

@@ -174,7 +174,7 @@ public sealed class StepTypeSection : UserControl
                 if (spec.Kind == Kind.Path)
                 {
                     var browse = new Button { Content = "Browse…", Margin = new Thickness(6, 0, 0, 0) };
-                    browse.Click += async (_, _) => { if (await PickFileAsync(spec.Folder) is { } picked) { box.Text = picked; Commit(spec, picked, error); } };
+                    browse.Click += async (_, _) => { if (await PickFileAsync(spec.Folder, spec.Key == "Path") is { } picked) { box.Text = picked; Commit(spec, picked, error); } };
                     var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
                     row.Children.Add(box); Grid.SetColumn(browse, 1); row.Children.Add(browse);
                     input = row;
@@ -374,7 +374,7 @@ public sealed class StepTypeSection : UserControl
     // ---- helpers -------------------------------------------------------------------------------
 
     /// <summary>Opens the picker in the instance's folder for this kind of file (Files, Queries or Scripts); the path comes back relative to the instance, copying a file from elsewhere in first.</summary>
-    private async Task<string?> PickFileAsync(string folderName)
+    private async Task<string?> PickFileAsync(string folderName, bool openPath = false)
     {
         var provider = TopLevel.GetTopLevel(this)?.StorageProvider;
         if (provider is null) return null;
@@ -391,6 +391,9 @@ public sealed class StepTypeSection : UserControl
         if (instance is null) return path.Replace('\\', '/');
         try
         {
+            // The File step reads from anywhere: a file outside the instance keeps its full path (writing still stays inside the workspace).
+            var inside = System.IO.Path.GetFullPath(path).StartsWith(System.IO.Path.GetFullPath(instance).TrimEnd(System.IO.Path.DirectorySeparatorChar) + System.IO.Path.DirectorySeparatorChar, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+            if (openPath && !inside) { _step.Editor?.Notify("The file is outside this instance, so the step keeps its full path. Reading works from anywhere; writing is limited to the workspace.", false); return System.IO.Path.GetFullPath(path).Replace('\\', '/'); }
             var (relative, note) = PickedFile.PrepareForStep(instance, path, folderName);
             if (note is not null) _step.Editor?.Notify(note, false);
             return relative;

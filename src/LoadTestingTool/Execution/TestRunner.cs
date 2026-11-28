@@ -193,20 +193,28 @@ public sealed class TestRunner
                         foreach (var key in variables.Keys.ToList())
                         {
                             // <from_filepath>name / <from_filepath_base64>name: the whole cell is the content of a file, read now.
-                            if (cellVariables.Contains(key) && FileTokens.TryParse(variables[key], out var asBase64, out var filePath))
+                            if (cellVariables.Contains(key) && FileTokens.TryParse(variables[key], out var fileMode, out var filePath, out var fileSelector))
                             {
                                 var cellText = variables[key];
                                 try
                                 {
-                                    var loaded = await FileTokens.LoadAsync(_features.WorkspaceRoot, asBase64, filePath, token);
+                                    (string Value, int Bytes, string FileName) loaded;
+                                    if (fileMode == FileTokens.Mode.Binary)
+                                    {
+                                        // A binary reference that streams: the cell becomes the marker, the typed reference sits in the context.
+                                        var reference = await FileTokens.ReferenceAsync(_features.WorkspaceRoot, filePath, token);
+                                        executionContext.Set(key, reference, VariableScope.Iteration);
+                                        loaded = ($"_*{key}*_", (int)reference.SizeBytes, Path.GetFileName(reference.Path));
+                                    }
+                                    else loaded = await FileTokens.LoadAsync(_features.WorkspaceRoot, fileMode, filePath, token, fileSelector);
                                     variables[key] = loaded.Value;
                                     fileVariables.Add(key);
                                     fileCells[key] = cellText.Trim();
-                                    _logger.Info($"FILE VALUE | step={request.StepName} | variable={key} | file={loaded.FileName} | {(asBase64 ? "base64 of " : string.Empty)}{loaded.Bytes} bytes | content not logged");
+                                    _logger.Info($"FILE VALUE | step={request.StepName} | variable={key} | file={loaded.FileName} | {(fileMode == FileTokens.Mode.Base64 ? "base64 of " : string.Empty)}{loaded.Bytes} bytes | content not logged");
                                 }
                                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                                 {
-                                    throw new RuntimeReferenceException(key, $"{(asBase64 ? "<from_filepath_base64>" : "<from_filepath>")}{filePath}", ex.Message);
+                                    throw new RuntimeReferenceException(key, $"{FileTokens.Prefix(fileMode)}{filePath}", ex.Message);
                                 }
                                 continue;
                             }
@@ -915,7 +923,6 @@ public sealed class TestRunner
             var lookupName = viaColumn is { Success: true } ? viaColumn.Groups[1].Value : candidateName;
             if (context.TryGet(lookupName, out var candidateValue) && candidateValue is BinaryFileReference candidateFile)
             {
-                if (workspaceRoot is not null) WorkspaceGuard.Resolve(workspaceRoot, candidateFile.Path);
                 match = candidate;
                 file = candidateFile;
                 break;

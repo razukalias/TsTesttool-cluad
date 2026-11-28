@@ -129,8 +129,11 @@ public sealed class FileStepExecutor : IStepExecutor
         try
         {
             var options = StepConfig.Read<FileStepOptions>(request.Step, request.TemplateText);
-            var path = WorkspaceGuard.Resolve(request.WorkspaceRoot, request.Context.Resolve(options.Path));
             var action = options.Action.Trim().ToLowerInvariant();
+            // Reading is open: a bare name comes from the instance's Files folder, and any other path (also outside the instance) is read as it is.
+            // Writing stays inside the workspace.
+            var wanted = request.Context.Resolve(options.Path);
+            var path = action is "read" or "json" or "readbinary" ? FileTokens.Find(request.WorkspaceRoot, wanted) ?? WorkspaceGuard.Resolve(request.WorkspaceRoot, wanted) : WorkspaceGuard.Resolve(request.WorkspaceRoot, wanted);
             var binaryAction = action is "readbinary" or "writebinary" or "appendbinary";
             result.RequestText = JsonSerializer.Serialize(new { action = options.Action, path, content = binaryAction ? "[binary content omitted]" : options.Content is null ? null : request.Context.Resolve(options.Content) });
             result.LogMethod = options.Action;

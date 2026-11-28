@@ -376,9 +376,9 @@ public sealed class RecordLineView : Border
 
     /// <summary>
     /// Opens the file picker in the instance's Files folder and hands over a path that survives moving the application: relative to Files, to the instance, or to it with ../ for files
-    /// elsewhere in the application. A file outside the application is copied into Files, so the cell never holds a path that only works on this computer.
+    /// elsewhere in the application. A file outside the application is used where it is (an absolute path, not copied).
     /// </summary>
-    private async Task PickFileAsync(bool base64, Action<ValuePart> add)
+    private async Task PickFileAsync(LoadTestingTool.Execution.FileTokens.Mode mode, Action<ValuePart> add)
     {
         if (TopLevel.GetTopLevel(this) is not { } top) return;
         try
@@ -387,10 +387,10 @@ public sealed class RecordLineView : Border
             var files = Path.Combine(instance, LoadTestingTool.Execution.FileTokens.FilesFolder);
             Directory.CreateDirectory(files);
             var start = await top.StorageProvider.TryGetFolderFromPathAsync(files);
-            var picked = await top.StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions { Title = base64 ? "Choose a file (sent as Base64)" : "Choose a file (sent as text)", SuggestedStartLocation = start, AllowMultiple = false });
+            var picked = await top.StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions { Title = mode switch { LoadTestingTool.Execution.FileTokens.Mode.Base64 => "Choose a file (sent as Base64)", LoadTestingTool.Execution.FileTokens.Mode.Binary => "Choose a file (streamed as binary)", _ => "Choose a file (sent as text)" }, SuggestedStartLocation = start, AllowMultiple = false });
             if (picked.Count == 0 || picked[0].TryGetLocalPath() is not { } file) return;
             var (path, note) = PickedFile.Prepare(instance, file);
-            add(ValuePart.File(path, base64));
+            add(ValuePart.File(path, mode));
             if (note is not null) _editor.Notify(note, false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _editor.Notify($"Could not use that file: {ex.Message}", true); }
@@ -404,7 +404,7 @@ public sealed class RecordLineView : Border
         var hooks = new RecordMenu.ScriptHooks(
             add => { flyout.Hide(); _ = AddScriptAsync(add, null); },
             add => { flyout.Hide(); _ = NewTemplateThenAddAsync(add); });
-        var fileHooks = new RecordMenu.FileHooks((base64, add) => { flyout.Hide(); _ = PickFileAsync(base64, add); });
+        var fileHooks = new RecordMenu.FileHooks((mode, add) => { flyout.Hide(); _ = PickFileAsync(mode, add); });
         var menu = new DrillDownMenu(RecordMenu.Root(_editor.MenuSources(), hooks, fileHooks), part => { flyout.Hide(); _line.Add(part); });
         flyout.Content = menu;
         flyout.Opened += (_, _) => menu.Reset();

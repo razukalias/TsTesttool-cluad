@@ -309,7 +309,7 @@ public static class WorkbookValidator
             if (row.IsBlank) continue;
             for (var column = 0; column < table.ColumnCount; column++)
             {
-                if (!LoadTestingTool.Execution.FileTokens.TryParse(row.GetAt(column), out _, out var path)) continue;
+                if (!LoadTestingTool.Execution.FileTokens.TryParse(row.GetAt(column), out _, out var path, out _)) continue;
                 if (LoadTestingTool.Execution.GeneratedTokens.HasMarkers(path) || path.Contains('<') || path.Contains('{')) continue;   // a path built at run time cannot be checked now
                 if (LoadTestingTool.Execution.FileTokens.Find(instanceFolder, path) is null)
                     Add(problems, ProblemSeverity.Error, table, row, $"{table.Headers[column]}: the file '{path}' was not found. Put it in the instance's {LoadTestingTool.Execution.FileTokens.FilesFolder} folder or give its full path.");
