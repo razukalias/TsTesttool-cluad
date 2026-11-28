@@ -18,6 +18,7 @@ public sealed partial class MockServerWindow
     private readonly TextBox _requestDetail = new() { IsReadOnly = true, AcceptsReturn = true, FontFamily = new FontFamily("Consolas,Menlo,monospace"), TextWrapping = TextWrapping.NoWrap };
     private readonly TextBox _responseDetail = new() { IsReadOnly = true, AcceptsReturn = true, FontFamily = new FontFamily("Consolas,Menlo,monospace"), TextWrapping = TextWrapping.NoWrap };
     private TabControl? _tabs;
+    private readonly TextBlock _stateText = DashboardStyle.Text("", 12, false, DashboardStyle.Muted);
 
     internal IReadOnlyList<MockLogEntry> Entries => _entries;
     internal ListBox LogList => _log;
@@ -27,11 +28,18 @@ public sealed partial class MockServerWindow
     {
         var clear = DashboardStyle.Action("Clear", async () => { if (_client is not null) await _client.ClearAsync(); _entries.Clear(); RebuildLog(); });
         var fromRequest = DashboardStyle.Action("Route from request", () => RouteFromSelected());
+        var reset = DashboardStyle.Action("Reset state", async () =>
+        {
+            if (_client is null || !_running) { _status.Text = "Run the server first: its state lives in the running server."; return; }
+            await _client.ResetStateAsync();
+            _stateText.Text = "Scenarios: all Started; sequences start again";
+        });
+        ToolTip.SetTip(reset, "Every scenario back to Started and every answer sequence back to its first answer (databases are reset on the Databases tab)");
         ToolTip.SetTip(fromRequest, "Make a route out of the selected request, for example one no route fitted");
         _filter.TextChanged += (_, _) => RebuildLog();
         _pause.IsCheckedChanged += (_, _) => { if (_pause.IsChecked != true) RebuildLog(); };
         _log.SelectionChanged += (_, _) => ShowDetail();
-        var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 8, 0, 6), Children = { _filter, _pause, clear, fromRequest, _count } };
+        var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 8, 0, 6), Children = { _filter, _pause, clear, fromRequest, reset, _count, _stateText } };
         foreach (var c in bar.Children) c.VerticalAlignment = VerticalAlignment.Center;
         var details = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), Margin = new Thickness(0, 8, 0, 0), MinHeight = 220 };
         var request = Titled("Request", _requestDetail); var response = Titled("Response", _responseDetail);
@@ -83,8 +91,9 @@ public sealed partial class MockServerWindow
     private void ShowDetail()
     {
         if ((_log.SelectedItem as Control)?.Tag is not MockLogEntry e) { _requestDetail.Text = ""; _responseDetail.Text = ""; return; }
-        _requestDetail.Text = $"{e.Method} {e.Url}\n{string.Join("\n", e.RequestHeaders)}\n\n{e.RequestBody}";
-        _responseDetail.Text = (e.Status == 0 ? "No response: " + e.Note : $"HTTP {e.Status}  ({e.DurationMs} ms, {e.Size} bytes)") + (e.Note.Length > 0 && e.Status != 0 ? $"\n({e.Note})" : "") + $"\n{string.Join("\n", e.ResponseHeaders)}\n\n{e.ResponseBody}";
+        var why = e.Explanation.Count == 0 ? "" : (e.Matched ? "\n\nRoutes above it that did not fit:\n" : "\n\nWhy no route fitted:\n") + string.Join("\n", e.Explanation.Select(l => "• " + l));
+        _requestDetail.Text = $"{e.Method} {e.Url}\n{string.Join("\n", e.RequestHeaders)}\n\n{e.RequestBody}{why}";
+        _responseDetail.Text = (e.Status == 0 ? "No response: " + e.Note : $"HTTP {e.Status}  ({e.DurationMs} ms, {e.Size} bytes)") + (e.Note.Length > 0 && e.Status != 0 ? $"\n({e.Note})" : "") + $"\n{string.Join("\n", e.ResponseHeaders)}\n\n{e.ResponseBody}" + (e.Data.Length > 0 ? $"\n\nDatabase: {e.Data}" : "");
     }
 
     /// <summary>Makes a route out of the selected request: same method and path (the base path taken off), answering 200 with an empty JSON object.</summary>

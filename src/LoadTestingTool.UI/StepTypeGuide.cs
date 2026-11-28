@@ -52,8 +52,9 @@ public static class StepTypeGuide
             "Command type: Text for a normal statement, StoredProcedure to call a procedure.",
             "Command: type it in the Command box, or use the Template / a Command file (the file overrides the template). Write parameters as @name.",
             "Parameters: a JSON object with a value per @name; values may use _column_ placeholders.",
-            "Outputs: copies result values into variables for later steps, as output name → variable name.",
-        ], "{\n  \"ConnectionProfile\": \"MainDb\",\n  \"CommandType\": \"Text\",\n  \"CommandText\": \"select Id, Email from Users where Id = @id\",\n  \"Parameters\": { \"id\": \"_userId_\" }\n}", "MainDb must exist under Connections in appsettings.json. For SQL Server leave Provider out; for a SQLite file give the profile \"Provider\": \"Sqlite\" and a connection string like Data Source=Files/my.db (the Mock server window's \"Sample SQL database\" button creates a ready profile SampleSqlite)."),
+            "Outputs: copies result values into variables for later steps, as output name → variable name (a value of the first row, or rowsAffected for the number of changed rows).",
+            "Result: a select gives its rows as a JSON array; an insert/update/delete gives {\"rowsAffected\": n}; several result sets give {\"resultSets\": [[…],[…]], \"rowsAffected\": n}.",
+        ], "{\n  \"ConnectionProfile\": \"MainDb\",\n  \"CommandType\": \"Text\",\n  \"CommandText\": \"select Id, Email from Users where Id = @id\",\n  \"Parameters\": { \"id\": \"_userId_\" }\n}", "MainDb must exist under Connections in appsettings.json. For SQL Server leave Provider out; for a SQLite file give the profile \"Provider\": \"Sqlite\" and a connection string like Data Source=Files/my.db (the Mock server window's Databases tab makes SQLite databases with tables and data; \"Use in SQL steps\" adds their profile, and Sample adds the ready profile SampleSqlite)."),
 
         ["file"] = new("File step",
         [

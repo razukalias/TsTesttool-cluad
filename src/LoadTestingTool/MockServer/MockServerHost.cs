@@ -42,6 +42,8 @@ public sealed class MockServerHost : IDisposable
     private const int BodyLimit = 10 * 1024 * 1024;
     private const int LogTextLimit = 64 * 1024;
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
+    /// <summary>Error answers keep quotes and apostrophes as they are (no \u0027).</summary>
+    private static readonly JsonSerializerOptions ReadableJson = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     private readonly object _gate = new();
     private readonly List<MockLogEntry> _log = [];
@@ -249,7 +251,7 @@ public sealed class MockServerHost : IDisposable
         else if (dataFailed)
         {
             status = 500; contentType = "application/json";
-            responseText = System.Text.Json.JsonSerializer.Serialize(new { error = "Mock database action failed", detail = entry.Note });
+            responseText = System.Text.Json.JsonSerializer.Serialize(new { error = "Mock database action failed", detail = entry.Note }, ReadableJson);
             payload = Encoding.UTF8.GetBytes(responseText);
         }
         else if (!string.IsNullOrWhiteSpace(response.BodyFile))

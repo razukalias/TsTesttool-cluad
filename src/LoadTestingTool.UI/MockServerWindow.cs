@@ -15,8 +15,8 @@ namespace LoadTestingTool.UI;
 public sealed partial class MockServerWindow : Window
 {
     private static readonly string[] Verbs = ["ANY", "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
-    private static readonly string[] Sources = ["query", "header", "body", "json", "graphql"];
-    private static readonly string[] Ops = ["equals", "contains", "regex", "exists", "notexists"];
+    private static readonly string[] Sources = MockServerConfig.Sources;
+    private static readonly string[] Ops = MockServerConfig.Ops;
 
     private readonly string _serversFolder;
     private readonly MockServerProcess _process;
@@ -93,16 +93,16 @@ public sealed partial class MockServerWindow : Window
         var copy = DashboardStyle.Action("Copy URL", async () => { if (Clipboard is { } clipboard) await clipboard.SetTextAsync(BaseUrl()); });
         var use = DashboardStyle.Action("Use in instance", UseInSelectedInstance);
         ToolTip.SetTip(use, "Point the step URLs (targetUrl) of the instance selected in the editor at this server. 127.0.0.1 and localhost URLs only, unless 'also non-local URLs' is ticked. One undo step; save the instance to keep it.");
-        var sample = DashboardStyle.Action("Sample SQL database", () => CreateSampleDatabase());
-        ToolTip.SetTip(sample, "Create a small SQLite database (customers, orders, order lines) and a connection profile SampleSqlite in appsettings.json, so a SQL step can be tried without installing a database server.");
-        var runBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _runButton, _light, _status, copy, use, _includeRemote, sample } };
+        var wizard = DashboardStyle.Action("Route wizard…", async () => await OpenRouteWizardAsync());
+        ToolTip.SetTip(wizard, "Make routes step by step: a fixed answer, answers that depend on the request, answers in turn, a login flow, or a whole REST API on a database table");
+        var runBar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _runButton, _light, _status, copy, use, _includeRemote, wizard } };
         _name.TextChanged += (_, _) => Edit(() => _config.Name = _name.Text ?? "");
         _basePath.TextChanged += (_, _) => Edit(() => _config.BasePath = _basePath.Text?.Trim() ?? "");
         _allInterfaces.IsCheckedChanged += (_, _) => Edit(() => _config.AllInterfaces = _allInterfaces.IsChecked == true);
         _extraDelay.ValueChanged += (_, _) => Edit(() => _config.ExtraDelayMs = (int)(_extraDelay.Value ?? 0));
         _port.ValueChanged += (_, _) => Edit(() => _config.Port = (int)(_port.Value ?? 8099));
 
-        var tabs = new TabControl { Items = { new TabItem { Header = "Routes", Content = BuildRoutes() }, new TabItem { Header = "Monitor", Content = BuildMonitor() } } };
+        var tabs = new TabControl { Items = { new TabItem { Header = "Routes", Content = BuildRoutes() }, new TabItem { Header = "Databases", Content = BuildDatabases() }, new TabItem { Header = "Monitor", Content = BuildMonitor() } } };
         _tabs = tabs;
         var root = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*,Auto"), Margin = new Thickness(16) };
         root.Children.Add(DashboardStyle.Text("Mock server", 22, true));
@@ -264,24 +264,46 @@ public sealed partial class MockServerWindow : Window
         _status.Text = UseInInstance?.Invoke(BaseUrl(), _includeRemote.IsChecked == true) ?? "Open this window from the editor to use it in an instance.";
     }
 
-    /// <summary>Makes MockServers/sample.db (kept if it exists) and registers the connection profile SampleSqlite in the central settings.</summary>
+    /// <summary>
+    /// Makes the sample shop database (MockServers/Databases/sample.db with its schema and seed scripts; kept if it exists), shows it on the
+    /// Databases tab, and registers the connection profile SampleSqlite in the central settings.
+    /// </summary>
     internal string CreateSampleDatabase()
     {
         string message;
         try
         {
-            var path = Path.Combine(_serversFolder, "sample.db");
-            var created = LoadTestingTool.Execution.SampleDatabase.Create(path);
+            var existed = File.Exists(MockDatabase.PathOf(_serversFolder, "sample"));
+            var path = MockDatabase.CreateSample(_serversFolder);
             var registered = SettingsFile is { } settings && LoadTestingTool.Execution.SampleDatabase.RegisterProfile(settings, path);
-            message = (created ? "Sample database created: " : "Sample database found: ") + path + (SettingsFile is null ? "." : registered ? $". Connection profile {LoadTestingTool.Execution.SampleDatabase.ProfileName} added to appsettings.json." : $". Connection profile {LoadTestingTool.Execution.SampleDatabase.ProfileName} is already in appsettings.json.")
-                + $" In a SQL step use ConnectionProfile {LoadTestingTool.Execution.SampleDatabase.ProfileName}, e.g. select * from orders where id = @id.";
+            message = (existed ? "Sample database found: " : "Sample database created: ") + path + (SettingsFile is null ? "." : registered ? $". Connection profile {LoadTestingTool.Execution.SampleDatabase.ProfileName} added to appsettings.json." : $". Connection profile {LoadTestingTool.Execution.SampleDatabase.ProfileName} is already in appsettings.json.")
+                + $" In a SQL step use ConnectionProfile {LoadTestingTool.Execution.SampleDatabase.ProfileName}, e.g. select * from orders where id = @id; in a route use the database {MockDatabase.RouteReference("sample")}.";
+            LoadDatabases("sample");
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException or System.Text.Json.JsonException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException or System.Text.Json.JsonException or InvalidOperationException)
         {
             message = "The sample database could not be made: " + exception.Message;
         }
         _status.Text = message;
         return message;
+    }
+
+    /// <summary>Opens the route wizard and adds the routes it makes (at the top, so they answer first, unless the user unticks that).</summary>
+    private async Task OpenRouteWizardAsync()
+    {
+        var wizard = new MockRouteWizardWindow(_serversFolder);
+        await wizard.ShowDialog(this);
+        if (wizard.Result is { Count: > 0 } routes) AddWizardRoutes(routes, wizard.AtTop);
+    }
+
+    internal void AddWizardRoutes(List<MockRoute> routes, bool atTop)
+    {
+        if (atTop) _config.Routes.InsertRange(0, routes); else _config.Routes.AddRange(routes);
+        _selected = atTop ? 1 : _config.Routes.Count - routes.Count + 1;
+        _answerIndex = -1;
+        MarkChanged();
+        if (_tabs is not null) _tabs.SelectedIndex = 0;
+        _status.Text = $"{routes.Count} route(s) added{(atTop ? " at the top" : "")}. Save, then Run.";
     }
 
     // ----- run / stop / poll -----

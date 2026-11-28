@@ -450,3 +450,110 @@ public class SqlStepResultTests : IDisposable
         Assert.Equal("C1", result.Outputs["first"]);
     }
 }
+
+public class MockRouteTemplateTests : IDisposable
+{
+    private readonly string _folder = Path.Combine(Path.GetTempPath(), $"mocktpl-{Guid.NewGuid():N}");
+    private readonly HttpClient _client = new() { Timeout = TimeSpan.FromSeconds(5) };
+    private MockServerHost? _host;
+
+    public MockRouteTemplateTests() => Directory.CreateDirectory(_folder);
+    public void Dispose() { _host?.Dispose(); _client.Dispose(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); try { Directory.Delete(_folder, true); } catch (IOException) { } }
+
+    private string Start(List<MockRoute> routes)
+    {
+        var config = new MockServerConfig { Routes = routes, Port = MockServerHost.FreePort() };
+        Assert.Empty(config.Validate());
+        _host = new MockServerHost(config, _folder);
+        _host.Start();
+        return $"http://127.0.0.1:{config.Port}";
+    }
+
+    private async Task<(int Status, string Body, string? Location)> Send(string method, string url, string? json = null)
+    {
+        using var message = new HttpRequestMessage(new HttpMethod(method), url);
+        if (json is not null) message.Content = new StringContent(json, Encoding.UTF8, "application/json");
+        using var response = await _client.SendAsync(message);
+        return ((int)response.StatusCode, await response.Content.ReadAsStringAsync(), response.Headers.Location?.ToString());
+    }
+
+    [Fact]
+    public void ByRequestPutsTheCasesBeforeTheDefault()
+    {
+        var routes = MockRouteTemplates.ByRequest("Create order", "POST", "/orders",
+            [new MockCase(new MockCondition { Source = "json", Name = "customer", Op = "notexists" }, 400, "{}"), new MockCase(new MockCondition { Source = "json", Name = "qty", Op = "gt", Value = "99" }, 422, "{}")], 201, "{\"ok\":true}");
+        Assert.Equal(3, routes.Count);
+        Assert.Equal("Create order: json customer does not exist", routes[0].Name);
+        Assert.Empty(routes[2].Conditions);
+        var config = new MockServerConfig { Routes = routes };
+        MockRequest Req(string body) => new("POST", "/orders", new Dictionary<string, string>(), new Dictionary<string, string>(), body);
+        Assert.Equal(400, MockRouteMatcher.Find(config, Req("{\"qty\":1}"))!.Route.Response.Status);
+        Assert.Equal(422, MockRouteMatcher.Find(config, Req("{\"customer\":\"C1\",\"qty\":100}"))!.Route.Response.Status);
+        Assert.Equal(201, MockRouteMatcher.Find(config, Req("{\"customer\":\"C1\",\"qty\":5}"))!.Route.Response.Status);
+    }
+
+    [Fact]
+    public async Task TheLoginFlowGuardsTheResourceUntilLoginAndAfterLogout()
+    {
+        var url = Start(MockRouteTemplates.LoginFlow("/login", "/account/**", "/logout", "eva", "secret", "{\"name\":\"Eva\"}"));
+        Assert.Equal(401, (await Send("GET", url + "/account/me")).Status);
+        Assert.Equal(401, (await Send("POST", url + "/login", "{\"username\":\"eva\",\"password\":\"nope\"}")).Status);
+        var login = await Send("POST", url + "/login", "{\"username\":\"eva\",\"password\":\"secret\"}");
+        Assert.Equal(200, login.Status);
+        Assert.Contains("\"user\":\"eva\"", login.Body);
+        Assert.Equal((200, "{\"name\":\"Eva\"}"), (await Send("GET", url + "/account/me")) is var me ? (me.Status, me.Body) : default);
+        Assert.Equal(204, (await Send("POST", url + "/logout")).Status);
+        Assert.Equal(401, (await Send("GET", url + "/account/me")).Status);
+    }
+
+    [Fact]
+    public async Task TheRestApiListsGetsCreatesUpdatesAndDeletesRows()
+    {
+        var db = MockDatabase.Create(_folder, "shop");
+        MockDatabase.CreateTable(db, new MockTable { Name = "orders", Columns =
+        [
+            new MockColumn { Name = "id", Type = "INTEGER", PrimaryKey = true, AutoIncrement = true },
+            new MockColumn { Name = "customer", Type = "TEXT", NotNull = true },
+            new MockColumn { Name = "status", Type = "TEXT", NotNull = true, Default = "NEW" },
+            new MockColumn { Name = "total", Type = "REAL", NotNull = true, Default = "0" }
+        ]});
+        var table = MockDatabase.Tables(db).Single();
+        var url = Start(MockRouteTemplates.RestApi(table, "id", MockDatabase.RouteReference("shop"), "orders/"));
+
+        var created = await Send("POST", url + "/orders", "{\"customer\":\"C1\",\"total\":59.9}");
+        Assert.Equal(201, created.Status);
+        Assert.Equal("/orders/1", created.Location);
+        using (var row = JsonDocument.Parse(created.Body))
+        {
+            Assert.Equal(1, row.RootElement.GetProperty("id").GetInt32());
+            Assert.Equal("NEW", row.RootElement.GetProperty("status").GetString());
+            Assert.Equal(59.9, row.RootElement.GetProperty("total").GetDouble());
+        }
+        await Send("POST", url + "/orders", "{\"customer\":\"C2\"}");
+        await Send("POST", url + "/orders", "{\"customer\":\"C3\"}");
+        using (var all = JsonDocument.Parse((await Send("GET", url + "/orders")).Body)) Assert.Equal(3, all.RootElement.GetArrayLength());
+        using (var two = JsonDocument.Parse((await Send("GET", url + "/orders?limit=2")).Body)) Assert.Equal(2, two.RootElement.GetArrayLength());
+
+        var updated = await Send("PUT", url + "/orders/1", "{\"status\":\"PAID\"}");
+        Assert.Equal(200, updated.Status);
+        using (var row = JsonDocument.Parse(updated.Body))
+        {
+            Assert.Equal("PAID", row.RootElement.GetProperty("status").GetString());
+            Assert.Equal("C1", row.RootElement.GetProperty("customer").GetString());
+        }
+        Assert.Equal(404, (await Send("PUT", url + "/orders/77", "{\"status\":\"PAID\"}")).Status);
+        Assert.Equal("{\"error\":\"orders 77 not found\"}", (await Send("GET", url + "/orders/77")).Body);
+        Assert.Equal(204, (await Send("DELETE", url + "/orders/2")).Status);
+        Assert.Equal(404, (await Send("GET", url + "/orders/2")).Status);
+        Assert.Equal(500, (await Send("POST", url + "/orders", "{\"total\":1}")).Status);   // customer is required (NOT NULL, no default)
+    }
+
+    [Fact]
+    public void ParameterNamesAreSafeAndKeepIdForThePath()
+    {
+        Assert.Equal("p_id", MockRouteTemplates.Param("id"));
+        Assert.Equal("first_name", MockRouteTemplates.Param("first name"));
+        Assert.Equal("c_1st", MockRouteTemplates.Param("1st"));
+        Assert.Equal("p_limit", MockRouteTemplates.Param("limit"));
+    }
+}

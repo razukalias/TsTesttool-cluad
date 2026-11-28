@@ -27,9 +27,28 @@ public sealed partial class MockServerWindow
     private readonly StackPanel _headerRows = new() { Spacing = 4 };
     private readonly TextBox _body = new() { AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, FontFamily = new FontFamily("Consolas,Menlo,monospace"), MinHeight = 170 };
     private readonly TextBox _bodyFile = new() { Watermark = "optional: file in the server's folder, replaces the body", MinWidth = 320 };
+    // Sequence: which answer the response fields edit (-1: the normal response).
+    private int _answerIndex = -1;
+    private readonly ComboBox _answerPicker = new() { MinWidth = 260 };
+    private readonly CheckBox _sequenceLoop = new() { Content = "start the list again after the last answer" };
+    private readonly StackPanel _sequencePanel = new() { Spacing = 6 };
+    private readonly StackPanel _stateRows = new() { Spacing = 4 };
+    // Database action
+    private readonly CheckBox _dataOn = new() { Content = "Work with a mock database before answering" };
+    private readonly StackPanel _dataPanel = new() { Spacing = 6 };
+    private readonly ComboBox _dataDb = new() { MinWidth = 260 };
+    private readonly TextBox _dataSql = new() { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Consolas,Menlo,monospace"), MinHeight = 70, Watermark = "select * from orders where id = @id" };
+    private readonly StackPanel _dataParamRows = new() { Spacing = 4 };
+    private readonly NumericUpDown _notFoundStatus = new() { Minimum = 0, Maximum = 599, Increment = 1, FormatString = "0", Width = 110 };
+    private readonly TextBox _notFoundBody = new() { MinWidth = 360, Watermark = "{\"error\":\"not found\"}" };
+    private readonly TextBlock _sqlHint = DashboardStyle.Text("", 11, false, DashboardStyle.Muted);
 
     private MockRoute? CurrentRoute => _selected >= 1 && _selected <= _config.Routes.Count ? _config.Routes[_selected - 1] : null;
-    internal MockResponse CurrentResponse => CurrentRoute?.Response ?? _config.Fallback;
+    internal MockResponse CurrentResponse => CurrentRoute is { } route
+        ? (_answerIndex >= 0 && _answerIndex < route.Sequence.Count ? route.Sequence[_answerIndex] : route.Response)
+        : _config.Fallback;
+    /// <summary>-1: the response fields edit the route's normal response; n: answer n+1 of its sequence.</summary>
+    internal int AnswerIndex { get => _answerIndex; set { _answerIndex = value; LoadSelected(); } }
 
     internal int SelectedItem { get => _selected; set { _selected = value; RefreshRouteList(); } }
     internal ListBox RouteList => _routeList;
@@ -96,8 +115,9 @@ public sealed partial class MockServerWindow
         });
         var up = Small("▲", "Move up: routes are tried from the top", () => Move(-1));
         var down = Small("▼", "Move down", () => Move(1));
-        var tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(0, 0, 0, 6), Children = { add, graphQl, soap, wsdl, copy, remove, up, down } };
-        _routeList.SelectionChanged += (_, _) => { if (_refreshing || _routeList.SelectedIndex < 0) return; _selected = _routeList.SelectedIndex; LoadSelected(); };
+        var tools = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6), Children = { add, graphQl, soap, wsdl, copy, remove, up, down } };
+        foreach (var tool in tools.Children) tool.Margin = new Thickness(0, 0, 4, 4);
+        _routeList.SelectionChanged += (_, _) => { if (_refreshing || _routeList.SelectedIndex < 0) return; _selected = _routeList.SelectedIndex; _answerIndex = -1; LoadSelected(); };
         var left = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 8, 12, 0), Children = { tools, _routeList } };
         DockPanel.SetDock(tools, Dock.Top);
 
@@ -116,16 +136,20 @@ public sealed partial class MockServerWindow
 
         var addCondition = DashboardStyle.Action("＋ Condition", () => { if (CurrentRoute is { } route) { route.Conditions.Add(new MockCondition()); MarkEdited(); BuildConditionRows(); } });
         var addHeader = DashboardStyle.Action("＋ Header", () => { CurrentResponse.Headers.Add(new MockHeader()); MarkEdited(); BuildHeaderRows(); });
+        var addState = DashboardStyle.Action("＋ State change", () => { if (CurrentRoute is { } route) { route.SetState.Add(new MockStateChange { Scenario = "scenario", State = "next" }); MarkEdited(); BuildStateRows(); } });
         _routeOnly.Children.Add(new WrapPanel { Children = { Labeled("Name", _routeName), Labeled("Method", _method), Labeled("Path", _routePath), Pad(_enabled) } });
-        _routeOnly.Children.Add(Section("Only when (conditions: all must hold)", addCondition, _conditionRows));
+        _routeOnly.Children.Add(Section("Only when – conditions without a group must all hold; in a group (same name) one is enough", addCondition, _conditionRows));
         _routeOnly.Children.Add(new WrapPanel { Children = { Labeled("Fail % of requests", _failPercent), Pad(_drop) } });
+        _routeOnly.Children.Add(Section("After answering, move scenarios to a new state (test it with a 'state' condition)", addState, _stateRows));
+        _routeOnly.Children.Add(BuildDataSection());
 
         var editor = new StackPanel { Spacing = 10, Margin = new Thickness(0, 8, 6, 12) };
         editor.Children.Add(_routeOnly);
         editor.Children.Add(DashboardStyle.Text("Response", 14, true));
+        editor.Children.Add(BuildSequenceSection());
         editor.Children.Add(new WrapPanel { Children = { Labeled("Status", _statusCode), Labeled("Content type", _contentType), Labeled("Response time from (ms)", _delay), Labeled("to (ms, random; 0 = fixed)", _delayMax) } });
         editor.Children.Add(Section("Headers", addHeader, _headerRows));
-        editor.Children.Add(Labeled("Body  ({{path.id}}, {{query.x}}, {{header.x}}, {{json.a.b}}, {{body}}, {{guid}}, {{now}} …)", _body));
+        editor.Children.Add(Labeled("Body  ({{path.id}}, {{query.x}}, {{header.x}}, {{cookie.x}}, {{json.a.b}}, {{body}}, {{guid}}, {{now}}, {{count}}, {{state.x}}; with a database: {{row}}, {{row.col}}, {{rows}}, {{rowcount}}, {{affected}}, {{lastid}})", _body));
         editor.Children.Add(Labeled("Body file", _bodyFile));
 
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("270,*") };
@@ -192,12 +216,23 @@ public sealed partial class MockServerWindow
         {
             _routeName.Text = route.Name; _enabled.IsChecked = route.Enabled; _method.Text = route.Method; _routePath.Text = route.Path;
             _failPercent.Value = route.FailurePercent; _drop.IsChecked = route.DropConnection;
+            if (_answerIndex >= route.Sequence.Count) _answerIndex = -1;
+            _sequenceLoop.IsChecked = route.SequenceLoop;
+            _answerPicker.ItemsSource = new[] { route.Sequence.Count == 0 ? "Every request (no sequence)" : $"After the sequence (request {route.Sequence.Count + 1} on)" }
+                .Concat(route.Sequence.Select((a, i) => $"Request {i + 1}: {a.Status}")).ToList();
+            _answerPicker.SelectedIndex = _answerIndex + 1;
+            _dataOn.IsChecked = route.Data is not null;
+            _dataPanel.IsVisible = route.Data is not null;
+            LoadDataFields(route);
         }
+        _sequencePanel.IsVisible = route is not null;
         var response = CurrentResponse;
         _statusCode.Value = response.Status; _contentType.Text = response.ContentType; _delay.Value = response.DelayMs; _delayMax.Value = response.DelayMaxMs; _body.Text = response.Body; _bodyFile.Text = response.BodyFile;
         _loading = false;
         BuildConditionRows();
         BuildHeaderRows();
+        BuildStateRows();
+        BuildDataParamRows();
     }
 
     private void BuildConditionRows()
@@ -206,18 +241,41 @@ public sealed partial class MockServerWindow
         if (CurrentRoute is not { } route) return;
         foreach (var condition in route.Conditions.ToList())
         {
-            var source = new ComboBox { ItemsSource = Sources, SelectedItem = condition.Source, Width = 100 };
-            var name = new TextBox { Text = condition.Name, Width = 190, Watermark = "name / json path", IsEnabled = !condition.Source.Equals("body", StringComparison.OrdinalIgnoreCase) };
-            var op = new ComboBox { ItemsSource = Ops, SelectedItem = condition.Op, Width = 120 };
-            var value = new TextBox { Text = condition.Value, Width = 220, Watermark = "value", IsEnabled = !condition.Op.EndsWith("exists", StringComparison.OrdinalIgnoreCase) };
+            var source = new ComboBox { ItemsSource = Sources, SelectedItem = condition.Source.ToLowerInvariant(), Width = 100 };
+            ToolTip.SetTip(source, "Where the value comes from: query, header, cookie, path ({value} of the path), method, body, json, xml, graphql, soap, or state (a scenario's state)");
+            var name = new TextBox { Text = condition.Name, Width = 170, Watermark = NameHint(condition.Source), IsEnabled = NeedsName(condition.Source) };
+            var op = new ComboBox { ItemsSource = Ops, SelectedItem = condition.Op.ToLowerInvariant(), Width = 120 };
+            ToolTip.SetTip(op, "equals / notequals, contains / notcontains, startswith, endswith, regex; gt ge lt le compare numbers or dates; between 10..20; in / notin A,B,C; exists / notexists");
+            var value = new TextBox { Text = condition.Value, Width = 190, Watermark = ValueHint(condition.Op), IsEnabled = !condition.Op.EndsWith("exists", StringComparison.OrdinalIgnoreCase) };
+            var anyCase = new CheckBox { Content = "Aa", IsChecked = condition.IgnoreCase, VerticalAlignment = VerticalAlignment.Center };
+            ToolTip.SetTip(anyCase, "Ignore upper/lower case (contains always does)");
+            var group = new TextBox { Text = condition.Group, Width = 80, Watermark = "or-group" };
+            ToolTip.SetTip(group, "Empty: this condition must hold. A name: the route needs only one of the conditions with that name (\"or\").");
             var delete = Small("✕", "Remove this condition", () => { route.Conditions.Remove(condition); MarkEdited(); BuildConditionRows(); });
-            source.SelectionChanged += (_, _) => { if (source.SelectedItem is string s) { Edit(() => condition.Source = s); name.IsEnabled = s != "body"; } };
-            op.SelectionChanged += (_, _) => { if (op.SelectedItem is string o) { Edit(() => condition.Op = o); value.IsEnabled = !o.EndsWith("exists", StringComparison.Ordinal); } };
+            source.SelectionChanged += (_, _) => { if (source.SelectedItem is string s) { Edit(() => condition.Source = s); name.IsEnabled = NeedsName(s); name.Watermark = NameHint(s); } };
+            op.SelectionChanged += (_, _) => { if (op.SelectedItem is string o) { Edit(() => condition.Op = o); value.IsEnabled = !o.EndsWith("exists", StringComparison.Ordinal); value.Watermark = ValueHint(o); } };
             name.TextChanged += (_, _) => Edit(() => condition.Name = name.Text ?? "");
             value.TextChanged += (_, _) => Edit(() => condition.Value = value.Text ?? "");
-            _conditionRows.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { source, name, op, value, delete } });
+            anyCase.IsCheckedChanged += (_, _) => Edit(() => condition.IgnoreCase = anyCase.IsChecked == true);
+            group.TextChanged += (_, _) => Edit(() => condition.Group = group.Text?.Trim() ?? "");
+            _conditionRows.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { source, name, op, value, anyCase, group, delete } });
         }
     }
+
+    private static bool NeedsName(string source) => source.ToLowerInvariant() is not ("body" or "method");
+
+    private static string NameHint(string source) => source.ToLowerInvariant() switch
+    {
+        "json" => "json path: order.lines[0].sku", "xml" => "xml path: GetOrder.Id", "path" => "path value: id",
+        "graphql" => "operation / type / field", "soap" => "operation / action / version", "state" => "scenario name",
+        "body" or "method" => "(no name)", _ => "name"
+    };
+
+    private static string ValueHint(string op) => op.ToLowerInvariant() switch
+    {
+        "between" => "10..20", "in" or "notin" => "A,B,C", "gt" or "ge" or "lt" or "le" => "number or date", "regex" => "regular expression",
+        "exists" or "notexists" => "(no value)", _ => "value"
+    };
 
     private void BuildHeaderRows()
     {

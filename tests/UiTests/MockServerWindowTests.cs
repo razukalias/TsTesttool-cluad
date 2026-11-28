@@ -57,7 +57,7 @@ public class MockServerWindowTests
     {
         using var dir = new TempDir();
         var window = Open(dir);
-        var body = window.GetVisualDescendants().OfType<TextBox>().First(t => t.AcceptsReturn && t.FontFamily.Name.StartsWith("Consolas") && !t.IsReadOnly);
+        var body = window.GetVisualDescendants().OfType<TextBox>().First(t => t.AcceptsReturn && t.FontFamily.Name.StartsWith("Consolas") && !t.IsReadOnly && t.Text == window.Config.Fallback.Body);
         body.Text = "{\"gone\":true}"; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal("{\"gone\":true}", window.Config.Fallback.Body);
         window.SelectedItem = 1;
@@ -133,7 +133,7 @@ public class MockServerWindowTests
         var route = window.Config.Routes[1];
         Assert.Single(route.Conditions);
         Assert.Single(route.Response.Headers);
-        window.GetVisualDescendants().OfType<TextBox>().First(t => t.Watermark == "name / json path").Text = "tenant"; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        window.GetVisualDescendants().OfType<TextBox>().First(t => t.Watermark as string == "name").Text = "tenant"; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         window.GetVisualDescendants().OfType<TextBox>().First(t => t.Watermark == "Header-Name").Text = "X-Id"; Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal("tenant", route.Conditions[0].Name);
         Assert.Equal("X-Id", route.Response.Headers[0].Name);
@@ -255,7 +255,7 @@ public class MockServerWindowTests
         window.AddEntries([
             new MockLogEntry { Seq = 1, Time = DateTimeOffset.Now, Method = "GET", Url = "/health", Status = 200, Matched = true, Route = "Health" },
             new MockLogEntry { Seq = 2, Time = DateTimeOffset.Now, Method = "DELETE", Url = "/orders/9", Status = 404, Matched = false }]);
-        window.Tabs!.SelectedIndex = 1;
+        window.Tabs!.SelectedIndex = 2;
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal(2, window.LogList.ItemCount);
         var filter = window.GetVisualDescendants().OfType<TextBox>().First(t => t.Watermark?.StartsWith("Filter") == true);
@@ -375,7 +375,9 @@ public class MockServerSampleDatabaseTests
         var first = window.CreateSampleDatabase();
         Assert.Contains("Sample database created", first);
         Assert.Contains("added to appsettings.json", first);
-        Assert.True(File.Exists(Path.Combine(dir.Path, "MockServers", "sample.db")));
+        Assert.True(File.Exists(Path.Combine(dir.Path, "MockServers", "Databases", "sample.db")));
+        Assert.True(File.Exists(Path.Combine(dir.Path, "MockServers", "Databases", "sample.seed.sql")));
+        Assert.Equal("sample", window.SelectedDatabase);
         var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(settings)).RootElement.GetProperty("Connections");
         Assert.Equal("Sqlite", json.GetProperty("SampleSqlite").GetProperty("Provider").GetString());
         Assert.Equal("Server=x", json.GetProperty("MainDatabase").GetProperty("ConnectionString").GetString());
