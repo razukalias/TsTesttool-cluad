@@ -1008,7 +1008,10 @@ Redesigned from fixed built-in servers into one **configurable mock server**, ru
 - [x] **Done 2026-11-24 – Clicking a testcase or the instance switches the step drop-list to "All steps":** (re-clicking the already selected testcase does not fire a change and does not reset it). Original note: when a testcase (or the instance) is clicked in the tree, the step drop-list/filter should reset to "all steps" so the whole testcase shows; today it keeps the previously chosen step.
 
 
-## CI/CD support (planned 2026-11-24, not started – waiting for the user's choices)
+## CI/CD support (first slice DONE 2026-11-28: Azure DevOps, Windows agent; see docs/CI_CD.md and ci/azure-pipelines.yml)
+- [x] JUnit XML + `summary.json` in `Results/Run_<id>/` (`--junit`, `--summary`); `${NAME}` / `${NAME:-default}` in appsettings.json and workbook cells with `--set NAME=value` / environment variables, masked in logs and reports; `--validate-only` (exit 1 on errors); `--fail-on any|errors|bugs`; `--timeout-minutes` (exit 4); settings found next to the program when started from another folder; sample pipeline.
+- [ ] NOT DONE: `${NAME}` values are masked in the internal log and CI reports, but request/response text stored in the history database is not yet masked; relative `--results/--history/--logs` still resolve against the current folder; the editor has no help screen for these options yet (only docs/CI_CD.md); compare with previous run, retry, webhooks, text export.
+(original plan below)
 Already there: headless runner CLI (`--config --instance --testcases --environments --dataids --steps --run-id --results --logs --history --run-all --serve`), exit codes 0 pass / 1 fatal-validation / 2 failed / 3 cancelled (known bugs count as pass), mock server, masking in logs.
 First slice (do together):
 - [ ] **1. Reports a CI system can read:** JUnit XML (one test case per testcase / data row / step / environment, with the failure text) and `summary.json` (counts, duration, run id) written into the results folder.

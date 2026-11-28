@@ -45,6 +45,7 @@ public sealed class InternalLogger : IDisposable
     public static string MaskSensitiveData(string value, bool enabled = true)
     {
         if (!enabled || string.IsNullOrEmpty(value)) return value ?? string.Empty;
+        value = LoadTestingTool.Execution.Secrets.Mask(value);
         var masked = System.Text.RegularExpressions.Regex.Replace(
             value,
             "(?i)(\\\"(?:authorization|password|secret|token|cookie|api[-_]?key)\\\"\\s*:\\s*\\\")(?:[^\\\"\\\\]|\\\\.)*(\\\")",

@@ -143,7 +143,7 @@ public sealed class WorkbookReader
                 if (column.Key is "testcaseindex" or "testcase" or "dataid" or "extractvariable") continue;
                 var (stepName, path, headerVerb) = ParseAssertionHeader(column.Key);
                 RunValueMemory.CellOwner = stepName;
-                var cell = Compile(row.Cell(column.Value).GetString().Trim(), workbook, sheet, compiledCellCache, row.RowNumber());
+                var cell = Compile(LoadTestingTool.Execution.Secrets.Expand(row.Cell(column.Value).GetString().Trim(), $"sheet {sheet.Name}, row {row.RowNumber()}"), workbook, sheet, compiledCellCache, row.RowNumber());
                 RunValueMemory.CellOwner = null;
                 // Empty cells normally mean that no equality/content assertion was configured.
                 // Structural assertions are different: {empty}, {notempty}, {exists}, and
@@ -199,7 +199,7 @@ public sealed class WorkbookReader
     private static IXLWorksheet RequireSheet(XLWorkbook workbook, string name) => workbook.Worksheets.FirstOrDefault(w => w.Name.Trim().Equals(name, StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidDataException($"Required worksheet '{name}' was not found.");
     private static Dictionary<string, int> Headers(IXLWorksheet sheet) => sheet.FirstRowUsed()?.CellsUsed(LoadTestingTool.Excel.HeaderCells.HasText).ToDictionary(c => c.GetString().Trim().ToLowerInvariant(), c => c.Address.ColumnNumber, StringComparer.OrdinalIgnoreCase) ?? throw new InvalidDataException($"Worksheet '{sheet.Name}' has no header row.");
     private static void Require(Dictionary<string, int> h, string key, string sheet) { if (!h.ContainsKey(key)) throw new InvalidDataException($"Worksheet '{sheet}' is missing required column '{key}'."); }
-    private static string Text(Dictionary<string, int> h, IXLRow row, string key, string fallback = "") => h.TryGetValue(key, out var col) ? row.Cell(col).GetString().Trim() : fallback;
+    private static string Text(Dictionary<string, int> h, IXLRow row, string key, string fallback = "") => h.TryGetValue(key, out var col) ? LoadTestingTool.Execution.Secrets.Expand(row.Cell(col).GetString().Trim(), $"row {row.RowNumber()}, column {key}") : fallback;
     private static string CanonicalRequestVariableName(string header)
     {
         var value = header.Trim();
@@ -307,7 +307,7 @@ public sealed class WorkbookReader
         if (!resolving.Add(key)) throw new InvalidDataException($"Circular workbook reference detected at '{key}'.");
         try
         {
-            var compiledValue = Compile(sheet.Cell(rowNumber, column).GetString(), workbook, sheet, compiledCellCache, resolving, rowNumber);
+            var compiledValue = Compile(LoadTestingTool.Execution.Secrets.Expand(sheet.Cell(rowNumber, column).GetString(), $"sheet {sheet.Name}, row {rowNumber}"), workbook, sheet, compiledCellCache, resolving, rowNumber);
             compiledCellCache[key] = compiledValue;
             return compiledValue;
         }

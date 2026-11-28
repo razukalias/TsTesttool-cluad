@@ -30,12 +30,18 @@ internal static class Program
                 var portText = GetCommandLineValue(args, "--port");
                 return await MockServer.MockServerCli.RunAsync(serveConfig, int.TryParse(portText, out var servePort) ? servePort : null, Console.Out, Console.Error, stop.Token);
             }
+            Secrets.SetOverrides(ParseSetValues(args));
             if (args.Any(x => x.Equals("--run-all", StringComparison.OrdinalIgnoreCase))) return await RunAllInstancesAsync(settingsPath);
             var config = LoadConfig(settingsPath, instanceKey);
             loadedConfig = config;
             var workbookPath = GetCommandLineValue(args, "--excel", "--workbook") ?? config.ExcelFilePath;
             if (string.IsNullOrWhiteSpace(workbookPath)) throw new InvalidOperationException("No Excel workbook was specified.");
             if (Path.GetFileName(workbookPath).StartsWith("~$", StringComparison.Ordinal)) throw new InvalidOperationException($"The selected workbook is an Excel temporary lock file: '{workbookPath}'. Close Excel or select the real workbook file.");
+            config.ResultsFolder = GetCommandLineValue(args, "--results") ?? config.ResultsFolder;
+            if (args.Any(a => a.Equals("--validate-only", StringComparison.OrdinalIgnoreCase))) return CiReports.ValidateOnly(workbookPath, GetCommandLineValue(args, "--junit") ?? Path.Combine(config.ResultsFolder, "validation_junit.xml"));
+            var failOn = (GetCommandLineValue(args, "--fail-on") ?? "any").Trim().ToLowerInvariant();
+            if (failOn is not ("any" or "errors" or "bugs")) throw new InvalidOperationException("--fail-on must be any, errors or bugs.");
+            var timeoutMinutes = double.TryParse(GetCommandLineValue(args, "--timeout-minutes"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var minutes) && minutes > 0 ? minutes : 0;
             config.TemplatesFolder = GetCommandLineValue(args, "--templates") ?? config.TemplatesFolder;
             config.HistoryFolder = GetCommandLineValue(args, "--history") ?? config.HistoryFolder;
             config.LogsFolder = GetCommandLineValue(args, "--logs") ?? config.LogsFolder;
@@ -74,6 +80,8 @@ internal static class Program
             var stopFile = Path.Combine(runtimeFolder, $"run_{InternalLogger.SafeFolderName(runId)}.stop");
             using var cancellation = new CancellationTokenSource();
             using var stopMonitorCancellation = new CancellationTokenSource();
+            var timedOut = false;
+            if (timeoutMinutes > 0) { var timer = new System.Timers.Timer(TimeSpan.FromMinutes(timeoutMinutes).TotalMilliseconds) { AutoReset = false }; timer.Elapsed += (_, _) => { timedOut = true; Console.Error.WriteLine($"The run took longer than {timeoutMinutes} minutes and is stopped."); try { cancellation.Cancel(); } catch (ObjectDisposedException) { } }; timer.Start(); }
             using var runEvents = new LiveEventWriter(runEventFolder, config.InstanceId, runId, "_aggregate");
             ConsoleCancelEventHandler? cancelHandler = (_, eventArgs) => { eventArgs.Cancel = true; cancellation.Cancel(); Console.Error.WriteLine("Cancellation requested. Finishing the current operation..."); };
             Console.CancelKeyPress += cancelHandler;
@@ -178,6 +186,15 @@ internal static class Program
                 }
                 catch (Exception ex) { runEvents.WriteIssue("Warning", "History", ex.Message); Console.Error.WriteLine($"[Warning] History generation failed: {ex.Message}"); }
                 if (config.GenerateResults) WriteMetrics(config.ResultsFolder, runId, overall);
+                try
+                {
+                    var ciFolder = Path.Combine(config.ResultsFolder, $"Run_{InternalLogger.SafeFolderName(runId)}");
+                    var junitPath = GetCommandLineValue(args, "--junit") ?? (config.GenerateResults ? Path.Combine(ciFolder, "junit.xml") : null);
+                    var summaryPath = GetCommandLineValue(args, "--summary") ?? (config.GenerateResults ? Path.Combine(ciFolder, "summary.json") : null);
+                    if (junitPath is not null) CiReports.WriteJUnit(junitPath, overall);
+                    if (summaryPath is not null) CiReports.WriteSummary(summaryPath, overall, CiReports.ExitCode(overall, failOn, timedOut), failOn);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException) { Console.Error.WriteLine($"[Warning] The CI report could not be written: {ex.Message}"); }
                 runEvents.WriteRunCompleted(overall, historyPath);
                 Console.WriteLine($"[Run complete] result={(overall.Cancelled ? "CANCELLED" : overall.Testcases.Any(t => t.Result == "FAILED") ? "FAILED" : "PASSED")}; requests={overall.Metrics.TotalRequests}; p95={overall.Metrics.P95DurationMs}ms; rps={overall.Metrics.RequestsPerSecond:F2}; historyFiles={historyFiles.Length}; history={historyPath}");
                 try { if (File.Exists(stopFile)) File.Delete(stopFile); } catch { }
@@ -185,13 +202,29 @@ internal static class Program
                 await stopMonitor;
                 Console.CancelKeyPress -= cancelHandler;
             }
-            return overall.Cancelled ? 3 : overall.Testcases.Any(t => t.Result == "FAILED") ? 2 : 0;
+            return CiReports.ExitCode(overall, failOn, timedOut);
         }
         catch (Exception ex)
         {
             var location = loadedConfig is null || string.IsNullOrWhiteSpace(loadedRunId) ? null : WriteStartupFailureLog(loadedConfig, loadedRunId, "<startup>", args, ex);
             Console.Error.WriteLine(location is null ? $"[Fatal] {ex.Message}" : $"[Fatal] {ex.Message}\n[Internal log] {location}"); return 1;
         }
+    }
+
+    /// <summary>--set NAME=value (repeatable): the values for ${NAME} in appsettings.json and in the workbook.</summary>
+    private static Dictionary<string, string> ParseSetValues(string[] args)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (!args[i].Equals("--set", StringComparison.OrdinalIgnoreCase)) continue;
+            var pair = i + 1 < args.Length ? args[i + 1] : string.Empty;
+            var at = pair.IndexOf('=');
+            if (at <= 0) throw new ArgumentException("--set needs NAME=value, for example --set API_TOKEN=abc123.");
+            values[pair[..at].Trim()] = pair[(at + 1)..];
+            i++;
+        }
+        return values;
     }
 
     private static async Task MonitorStopFileAsync(string stopFile, CancellationTokenSource cancellation, CancellationToken monitorToken)
@@ -365,8 +398,10 @@ internal static class Program
     private static AppConfig LoadConfig(string? settingsPath = null, string? instanceKey = null)
     {
         var path = Path.GetFullPath(settingsPath ?? "appsettings.json", Directory.GetCurrentDirectory());
+        if (settingsPath is null && !File.Exists(path) && File.Exists(Path.Combine(AppContext.BaseDirectory, "appsettings.json"))) path = Path.Combine(AppContext.BaseDirectory, "appsettings.json");   // started from another folder: the settings next to the program
         var baseDirectory = Path.GetDirectoryName(path)!;
-        var root = new ConfigurationBuilder().SetBasePath(baseDirectory).AddJsonFile(Path.GetFileName(path), optional: false, reloadOnChange: false).Build();
+        var settingsText = Secrets.Expand(File.ReadAllText(path), Path.GetFileName(path));   // ${NAME} / ${NAME:-fallback}: --set or environment variable
+        var root = new ConfigurationBuilder().SetBasePath(baseDirectory).AddJsonStream(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(settingsText))).Build();
         var config = new AppConfig(); root.Bind(config);
         config.DataEngineBackupFolder = ResolveCentralPath(baseDirectory, config.DataEngineBackupFolder, "backup");
         if (root["MaxParallelRows"] is null && int.TryParse(root["MaxConcurrentRows"], out var legacyMaxRows)) config.MaxParallelRows = Math.Clamp(legacyMaxRows, 1, 100);

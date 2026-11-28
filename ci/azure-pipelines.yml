@@ -1,0 +1,57 @@
+# Azure DevOps pipeline for the runner (Windows agent).
+# Put the secrets in a variable group (mark them secret) or in the pipeline's Variables tab: API_TOKEN, BASE_URL.
+# The workbook uses ${API_TOKEN} and ${BASE_URL} in its cells and in appsettings.json; they are masked in logs and results.
+trigger: none
+schedules:
+  - cron: "0 5 * * 1-5"
+    displayName: Weekday morning run
+    branches: { include: [main] }
+    always: true
+
+pool:
+  vmImage: windows-latest
+
+variables:
+  - group: api-test-secrets          # API_TOKEN, BASE_URL …
+
+steps:
+  - checkout: self
+
+  - task: UseDotNet@2
+    inputs: { packageType: runtime, version: 10.x }
+
+  # 1. Stop early when the workbook has errors (exit code 1).
+  - pwsh: >
+      dotnet run --project LoadTestingTool.csproj -c Release --no-launch-profile --
+      --validate-only --instance MyInstance --settings appsettings.json
+      --junit "$(Build.ArtifactStagingDirectory)/validation_junit.xml"
+    displayName: Validate workbook
+
+  # 2. Run. --fail-on any (default): a failed test or error fails the pipeline; a known bug passes.
+  #    Exit codes: 0 passed · 1 workbook/settings unusable · 2 failed · 3 cancelled · 4 timed out.
+  - pwsh: >
+      dotnet run --project LoadTestingTool.csproj -c Release --no-launch-profile --
+      --instance MyInstance --settings appsettings.json
+      --environments qa --fail-on any --timeout-minutes 30
+      --results "$(Build.ArtifactStagingDirectory)/Results"
+      --junit "$(Build.ArtifactStagingDirectory)/junit.xml"
+      --summary "$(Build.ArtifactStagingDirectory)/summary.json"
+      --set API_TOKEN="$(API_TOKEN)" --set BASE_URL="$(BASE_URL)"
+    displayName: Run tests
+
+  # 3. Always publish the reports, also after a failure.
+  - task: PublishTestResults@2
+    condition: always()
+    inputs:
+      testResultsFormat: JUnit
+      testResultsFiles: |
+        $(Build.ArtifactStagingDirectory)/junit.xml
+        $(Build.ArtifactStagingDirectory)/validation_junit.xml
+      mergeTestResults: true
+      testRunTitle: API tests
+
+  - task: PublishPipelineArtifact@1
+    condition: always()
+    inputs:
+      targetPath: $(Build.ArtifactStagingDirectory)
+      artifact: test-results
