@@ -24,5 +24,19 @@ public sealed class ControlOutputView : StackPanel
         var button = new Button { Content = loop ? "Add output and index columns" : "Add output column", HorizontalAlignment = HorizontalAlignment.Left, Tag = "add-output-columns" };
         button.Click += (_, _) => step.Editor?.AddOutputColumns(step.CurrentName, loop);
         Children.Add(button);
+        if (!loop)
+        {
+            // "Write a result row": on by default; off writes no row unless the response sheet checks the output
+            bool Rows() => !(ControlStepSettings.Read(step.Value("stepconfig")).GetValueOrDefault("rows", "yes").Trim().ToLowerInvariant() is "no" or "false" or "off" or "0");
+            var rows = new CheckBox { Content = "Write a result row each time the condition is checked", IsChecked = Rows(), Tag = "if-rows" };
+            ToolTip.SetTip(rows, "On (default): the If writes a small result row (output true/false) into the results and reports. Off: no row unless the response sheet checks Step.output; later steps can still read <From_response_Step.output_r>.");
+            rows.IsCheckedChanged += (_, _) =>
+            {
+                var on = rows.IsChecked == true;
+                if (on == Rows()) return;
+                step.Write("stepconfig", ControlStepSettings.WithKey(step.Value("stepconfig"), "rows", on ? string.Empty : "no"));
+            };
+            Children.Add(rows);
+        }
     }
 }

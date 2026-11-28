@@ -346,7 +346,7 @@ public sealed class TestRunner
                     async Task<bool> ConditionTextAsync(string? text)
                     {
                         if (!ConditionScript.IsScript(text)) return ConditionEvaluator.Evaluate(await TextAsync(text ?? string.Empty));
-                        var names = S().Correlation.Keys.Concat(S().LoopVars.Keys).Append("env").ToList();
+                        var names = S().Correlation.Keys.Concat(S().LoopVars.Keys).Concat(StepVariables(data, control.StepName).Keys).Append("env").ToList();
                         return await ConditionScript.EvaluateAsync(text!, names, TextAsync, token);
                     }
                     async Task<bool> ConditionAsync() => await ConditionTextAsync(control.Condition);

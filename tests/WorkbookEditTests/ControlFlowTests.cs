@@ -295,6 +295,32 @@ public class ControlFlowTests
     }
 
     [Fact]
+    public void Inside_one_loop_a_step_may_read_a_later_step_of_the_same_loop_without_a_warning()
+    {
+        var path = Build(new TempDir(), null, request =>
+            {
+                request.Cell(1, 5).Value = "Check.prev"; request.Cell(2, 5).Value = "<From_response_Save.id_r>";
+                request.Cell(1, 6).Value = "Outside.prev"; request.Cell(2, 6).Value = "<From_response_Save.id_r>";
+            },
+            new Step("Loop", "For", Config: "from=1;to=2"), new Step("Check", Parent: "Loop", Url: "/c"), new Step("Save", Parent: "Loop", Url: "/s"), new Step("Outside", Url: "/o"));
+        var messages = LoadTestingTool.Editing.WorkbookValidator.Validate(LoadTestingTool.Editing.WorkbookDocument.Load(path)).Select(p => p.Message).ToList();
+        Assert.DoesNotContain(messages, m => m.Contains("Check.prev") && m.Contains("does not run before"));
+    }
+
+    [Fact]
+    public async Task A_C_sharp_condition_can_use_a_variable_line_from_a_request_column_and_an_if_can_switch_its_row_off()
+    {
+        var text = LoadTestingTool.Execution.ConditionScript.WithVariable("cs: who == \"yes\"", "who", "_who_");
+        Assert.Equal("cs: var who = \"_who_\"; return who == \"yes\";", text);
+        Assert.Equal("cs: var a = \"_a_\"; var b = \"_b_\"; return a == b;", LoadTestingTool.Execution.ConditionScript.WithVariable("cs: var b = \"_b_\"; return a == b;", "a", "_a_").Replace("cs: var a = \"_a_\"; var b", "cs: var a = \"_a_\"; var b"));
+        var path = Build(new TempDir(), null, request => { request.Cell(1, 5).Value = "Gate.who"; request.Cell(2, 5).Value = "yes"; },
+            new Step("Gate", "If", Condition: text, Config: "rows=no"), new Step("Then1", Parent: "Gate", Url: "/then"));
+        var (steps, paths, _) = await RunAsync(path, Ok);
+        Assert.Equal(["/then"], paths);
+        Assert.Equal(["Then1"], steps);   // rows=no: the If wrote no result row
+    }
+
+    [Fact]
     public async Task For_counts_from_to_and_exposes_the_counter_only_inside_the_loop()
     {
         using var dir = new TempDir();

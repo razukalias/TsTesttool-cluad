@@ -80,7 +80,8 @@ public static class StepTypeGuide
             "Runs the steps inside it only when the condition holds; the Else side runs when it does not.",
             "Condition: one or more comparisons, e.g. _status_ eq 200, \"<From_response_Login.role_r>\" ne admin, _country_ eq SE and not _skip_ eq yes. Build it row by row with Build condition…",
             "A value can come from the data row: the column Gate.who is written as _who_ in the condition.",
-            "Output: <From_response_Gate.output_r> is true or false for later steps; the optional column {eq}Gate.output checks it (button Add output column).",
+            "C# condition: start with cs: for full C#, e.g.  cs: <From_response_Login.statusCode_r> == \"200\" && _country_ == \"SE\".  The button Add variable… (visible for cs: conditions) puts  var country = \"_country_\";  in front and wraps the expression in return, so you can write  country == \"SE\"  afterwards.",
+            "Output: <From_response_Gate.output_r> is true or false for later steps; the optional column {eq}Gate.output checks it (button Add output column). Example: an If inside a 1,000-round loop would write 1,000 rows; untick \"Write a result row\" (rows=no) when nothing checks the output.",
         ], null),
 
         ["for"] = new("For step",
@@ -88,6 +89,7 @@ public static class StepTypeGuide
             "Repeats the steps inside it with a counter. From and To (or Count) say how many rounds; Step may be negative to count down; Variable name is the counter (default i, used as _i_).",
             "Examples: From 1, To 5 -> 1 2 3 4 5.   From 10, To 1, Step -3 -> 10 7 4 1.   Count 3 -> three rounds.   To = _rounds_ -> the column Loop.rounds of each data row decides.",
             "Stop when / Skip a round when: conditions such as _i_ gte 3 (like break / continue). Most rounds is capped by Max (default 10,000).",
+            "Using the previous round: a step inside the loop may read a step further down in the same loop, e.g. Check reads <From_response_Save.id_r> where Save comes after it. Round 1 sees an empty value, from round 2 it is what Save returned the round before (no warning is given for this inside one loop).",
             "Output: <From_response_Loop.output_r> is the counter value and <From_response_Loop.index_r> the round counted from 0; the columns {eq}Loop.output / {eq}Loop.index check them every round (button Add output and index columns). Result rows can be switched off with Result rows = no.",
         ], "from=1;to=3;var=i"),
 

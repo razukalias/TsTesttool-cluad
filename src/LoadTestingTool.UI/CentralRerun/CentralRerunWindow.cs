@@ -217,10 +217,10 @@ public sealed class CentralRerunWindow : Window
     {
         IsLoaded = false; _run.IsEnabled = false;
         _status.Text = "Reading the results of every instance…";
-        var instances = _host.Instances.ToList();
-        List<FailedPair> pairs;
-        try { pairs = await Task.Run(() => instances.SelectMany(i => CentralRerunSource.Collect(i)).ToList()); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _status.Text = $"Could not read the results: {ex.Message}"; return; }
+        List<CentralInstance> instances; List<FailedPair> pairs;
+        // reading each instance's workbook (the testcase catalog) and results happens in the background, so the window stays responsive
+        try { (instances, pairs) = await Task.Run(() => { var all = _host.Instances.ToList(); return (all, all.SelectMany(i => CentralRerunSource.Collect(i)).ToList()); }); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _status.Text = $"Could not read the results: {ex.Message}"; _run.IsEnabled = false; return; }
         var ticked = _all.Where(c => c.IsChecked).Select(c => c.Pair.Key).ToHashSet();
         foreach (var old in _all) old.PropertyChanged -= OnChoiceChanged;
         _all.Clear();

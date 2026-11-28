@@ -32,6 +32,19 @@ public static class ConditionScript
     public static bool IsScript(string? text) => text is not null && text.TrimStart().StartsWith(Prefix, StringComparison.OrdinalIgnoreCase);
     public static string Body(string text) => text.TrimStart()[Prefix.Length..].Trim();
 
+    /// <summary>
+    /// "Add variable…" for a script condition: the condition with <c>var name = "_placeholder_";</c> in front. A plain expression gets <c>return … ;</c> around it so the
+    /// result stays the same; a script that already uses return keeps its text. Everything stays on one line, as the condition cell is one line.
+    /// </summary>
+    public static string WithVariable(string text, string name, string placeholder)
+    {
+        var body = IsScript(text) ? Body(text) : text.Trim();
+        var line = LoadTestingTool.Editing.ScriptVariableLines.Line(name, placeholder);
+        var statements = Regex.IsMatch(body, @"(^|[;{}\s])return\b") || body.EndsWith(';');
+        var rest = body.Length == 0 ? "return true;" : statements ? body : "return " + body + ";";
+        return Prefix + " " + line + " " + rest;
+    }
+
     /// <summary>The wizard's rows as a C# expression (the same truth, ready to be extended by hand): <c>Is("eq", "&lt;From_response_A.x_r&gt;", "200") &amp;&amp; !Is("empty", "_i_")</c>.</summary>
     public static string FromParts(IEnumerable<ConditionPart> parts)
     {

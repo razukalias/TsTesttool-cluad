@@ -328,12 +328,24 @@ public static class WorkbookValidator
     private static void ValidateReferencedSteps(WorkbookDocument document, List<WorkbookProblem> problems)
     {
         var byTestcase = new Dictionary<int, List<(string Name, StepType Type)>>();
+        var parents = new Dictionary<(int, string), string>();   // (testcase, step) -> the control step it sits in
         foreach (var row in document.Config.Rows.Where(r => !r.IsBlank))
         {
             if (!int.TryParse(Text(row, "testcaseindex"), out var index)) continue;
             StepType type; try { type = StepTypeParser.Parse(Text(row, "steptype")); } catch (InvalidDataException) { continue; }
             if (!byTestcase.TryGetValue(index, out var list)) byTestcase[index] = list = [];
             list.Add((Text(row, "stepname"), type));
+            var parentCell = Text(row, "parent");
+            parents[(index, Text(row, "stepname").ToLowerInvariant())] = (parentCell.EndsWith(":else", StringComparison.OrdinalIgnoreCase) ? parentCell[..^5] : parentCell).Trim();
+        }
+        bool SharedLoop(int testcase, string first, string second)
+        {
+            var loops = new HashSet<string>(StringComparer.OrdinalIgnoreCase); var guard = 0;
+            for (var at = first.ToLowerInvariant(); guard++ < 50 && parents.TryGetValue((testcase, at), out var parent) && parent.Length > 0; at = parent.ToLowerInvariant())
+                if (byTestcase[testcase].FirstOrDefault(s => s.Name.Equals(parent, StringComparison.OrdinalIgnoreCase)).Type is StepType.For or StepType.ForEach or StepType.While) loops.Add(parent);
+            for (var at = second.ToLowerInvariant(); guard++ < 100 && parents.TryGetValue((testcase, at), out var parent) && parent.Length > 0; at = parent.ToLowerInvariant())
+                if (loops.Contains(parent)) return true;
+            return false;
         }
         void Check(SheetTable table, TableRow row, string where, string text, int testcase, string ownStep)
         {
@@ -344,7 +356,9 @@ public static class WorkbookValidator
                 var name = match.Groups["step"].Value; var path = match.Groups["path"].Value;
                 var at = steps.FindIndex(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
                 if (at < 0) { Add(problems, ProblemSeverity.Warning, table, row, $"{where}: <From_response_{name}…> refers to a step '{name}' that this testcase does not have."); continue; }
-                if (ownAt >= 0 && at >= ownAt) Add(problems, ProblemSeverity.Warning, table, row, $"{where}: reads the response of {name}, which does not run before {ownStep}, so the value will be empty.");
+                // inside a loop a step may read a step further down in the same loop: from the second round it holds the previous round's value
+                var sameLoop = ownAt >= 0 && at >= ownAt && SharedLoop(testcase, ownStep, name);
+                if (ownAt >= 0 && at >= ownAt && !sameLoop) Add(problems, ProblemSeverity.Warning, table, row, $"{where}: reads the response of {name}, which does not run before {ownStep}, so the value will be empty.");
                 var type = steps[at].Type;
                 if (path.Equals("output", StringComparison.OrdinalIgnoreCase) && type is not (StepType.File or StepType.Script) && !type.IsControl())
                     Add(problems, ProblemSeverity.Warning, table, row, $"{where}: {name}.output exists only on File, Script, If and loop steps ({name} is {type.WireName()}).");

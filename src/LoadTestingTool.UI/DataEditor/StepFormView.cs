@@ -1,5 +1,6 @@
 using System.Collections.Specialized;
 using Avalonia;
+using LoadTestingTool.Execution;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
@@ -293,6 +294,22 @@ public sealed class StepFormView : UserControl
                     buttons.Children.Add(wizard);
                 }
                 if (title.Equals("condition", StringComparison.OrdinalIgnoreCase)) Build("condition", "Build condition…", "build-condition", "Build the condition row by row: values, verbs, and / or / xor / not and brackets");
+                if (title.Equals("condition", StringComparison.OrdinalIgnoreCase))
+                {
+                    // a C# condition (starts with cs:) can get variables: var name = "_column_"; in front, the expression becomes a return
+                    var addVariable = new Button { Content = "Add variable…", Margin = new Thickness(6, 0, 0, 0), Tag = "condition-add-variable", IsVisible = ConditionScript.IsScript(box.Text) };
+                    ToolTip.SetTip(addVariable, "For a C# condition (cs:): adds  var name = \"_column_\";  in front, filled from a request column or a value of an earlier step");
+                    box.TextChanged += (_, _) => addVariable.IsVisible = ConditionScript.IsScript(box.Text);
+                    addVariable.Click += async (_, _) =>
+                    {
+                        if (TopLevel.GetTopLevel(this) is not Window owner) return;
+                        var chosen = await new ScriptVariableWindow(valueSource.MenuSources().RequestHeaders, valueSource.ReferenceTargets(_step.CurrentName), box.Text ?? string.Empty).ShowDialog<(string Name, string Placeholder)?>(owner);
+                        if (chosen is not { } pick) return;
+                        box.Text = ConditionScript.WithVariable(box.Text ?? string.Empty, pick.Name, pick.Placeholder);
+                        Commit();
+                    };
+                    buttons.Children.Add(addVariable);
+                }
                 else if (_step.TypeText is "For" or "ForEach")
                 {
                     Build("stopwhen", "Stop when…", "stop-when", "A condition checked after every round; when it holds, the loop ends");
