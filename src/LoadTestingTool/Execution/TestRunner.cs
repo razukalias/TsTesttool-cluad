@@ -570,7 +570,7 @@ public sealed class TestRunner
                     variables[runtimeVariable.Key] = runtimeText;
             var resolvedUrl = await ResolveDynamicValueAsync(step.TargetUrl.Replace("{env}", environment, StringComparison.OrdinalIgnoreCase), correlation, requestReferences, executionContext, cancellationToken);
             result.TargetUrl = Substitute(resolvedUrl, variables); var originalTemplate = string.IsNullOrWhiteSpace(step.TemplateSource) ? string.Empty : await File.ReadAllTextAsync(templatePath, cancellationToken); var resolvedTemplate = string.IsNullOrWhiteSpace(originalTemplate) ? string.Empty : await ResolveDynamicValueAsync(originalTemplate, correlation, requestReferences, executionContext, cancellationToken);
-            var streamedTemplate = PrepareStreamingBinaryTemplate(resolvedTemplate, result.ContentType, variables, executionContext);
+            var streamedTemplate = PrepareStreamingBinaryTemplate(resolvedTemplate, result.ContentType, variables, executionContext, _features.WorkspaceRoot);
             var body = streamedTemplate is null ? TemplateRenderer.Render(resolvedTemplate, result.ContentType, variables) : string.Empty;
             var resolvedTemplateForLog = streamedTemplate is null ? body : resolvedTemplate;
             _logger.Info($"STEP RESOLUTION [{requestId}]\nSTEP TYPE: HTTP\nORIGINAL TARGET: {step.TargetUrl}\nRESOLVED TARGET: {result.TargetUrl}\nORIGINAL TEMPLATE:\n{originalTemplate}\nRESOLVED TEMPLATE:\n{InternalLogger.RedactVariableValues(resolvedTemplateForLog, redactedVariables, variables)}\nVARIABLES:\n{FormatVariables(variables, redactedVariables)}");
@@ -699,6 +699,13 @@ public sealed class TestRunner
             _logger.Info($"STEP RESOLUTION [{requestId}]\nSTEP TYPE: {step.StepType.WireName()}\nORIGINAL TARGET: {step.TargetUrl}\nRESOLVED TARGET: {result.TargetUrl}\nORIGINAL TEMPLATE:\n{originalTemplate}\nRESOLVED TEMPLATE:\n{InternalLogger.RedactVariableValues(templateText, redactedVariables, variables)}\nVARIABLES:\n{FormatVariables(variables, redactedVariables)}");
             var execution = await _pipeline.ExecuteAsync(new StepExecutionRequest { Step = step, Context = context, WorkspaceRoot = _features.WorkspaceRoot, TemplateText = templateText, CancellationToken = timeout.Token });
             StepExecutionResultMapper.PublishOutputs(execution, context);
+            if (step.StepType is StepType.File or StepType.Script && execution.Outputs.Count > 0)
+            {
+                // The constant name every File and Script step answers to: <StepName>.output (typed in the context, text in the correlation store).
+                var main = execution.Outputs.TryGetValue("result", out var scriptValue) ? scriptValue : execution.Outputs.First().Value;
+                context.Set($"{step.StepName}.output", main, VariableScope.Iteration);
+                correlation[$"{step.StepName}.output"] = main is string mainText ? mainText : JsonSerializer.Serialize(main);
+            }
             result.RequestBody = InternalLogger.RedactVariableValues(execution.RequestText, redactedVariables, variables); result.ResponseBody = execution.ResponseText; result.HttpStatus = execution.StatusCode == 0 && execution.Succeeded ? 200 : execution.StatusCode; result.ErrorMessage = execution.ErrorMessage;
             PublishResponseValues(step.StepName, result.ResponseBody, "json", correlation); correlation[$"{step.StepName}.statusCode"] = result.HttpStatus.ToString(System.Globalization.CultureInfo.InvariantCulture); PublishResponseHeaders(step.StepName, execution.ResponseHeaders, correlation); result.ResponseHeaders = string.Join("\n", execution.ResponseHeaders.Select(h => $"{h.Key}={h.Value}"));
             var shownBody = InternalLogger.RedactVariableValues(string.IsNullOrEmpty(execution.LogBody) ? templateText : execution.LogBody, redactedVariables, variables);
@@ -711,7 +718,7 @@ public sealed class TestRunner
             {
                 var (plain, bugs) = BugTag.Strip(definitions, environment);
                 var resolvedDefinitions = await ResolveAssertionReferencesAsync(plain, correlation, requestReferences, context, cancellationToken);
-                var evaluated = _assertions.Evaluate(result.ResponseBody, "json", resolvedDefinitions, run.RunId, requestId, result.HttpStatus, step.IgnoreEmpty, step.AssertOnlyResponse, execution.ResponseHeaders);
+                var evaluated = _assertions.Evaluate(WrapOutput(step, execution, result.ResponseBody), "json", resolvedDefinitions, run.RunId, requestId, result.HttpStatus, step.IgnoreEmpty, step.AssertOnlyResponse, execution.ResponseHeaders);
                 BugTag.Apply(evaluated, bugs);
                 result.Assertions.AddRange(evaluated);
             }
@@ -893,7 +900,7 @@ public sealed class TestRunner
         }
     }
     private static string Substitute(string value, IReadOnlyDictionary<string, string> vars) => Regex.Replace(value ?? "", @"_([\p{L}\p{N}._-]+)_", m => vars.TryGetValue(m.Groups[1].Value, out var v) ? v : throw new InvalidDataException($"Missing request variable '{m.Groups[1].Value}'."));
-    private static (string Prefix, string Suffix, BinaryFileReference File, string Summary)? PrepareStreamingBinaryTemplate(string template, string contentType, IReadOnlyDictionary<string, string> variables, LoadTestingTool.Domain.ExecutionContext context)
+    internal static (string Prefix, string Suffix, BinaryFileReference File, string Summary)? PrepareStreamingBinaryTemplate(string template, string contentType, IReadOnlyDictionary<string, string> variables, LoadTestingTool.Domain.ExecutionContext context, string? workspaceRoot = null)
     {
         var source = template ?? string.Empty;
         var tokenPattern = @"_(?:\*(?<star>[\p{L}\p{N}._-]+)\*|(?<plain>[\p{L}\p{N}._-]+))_";
@@ -903,8 +910,12 @@ public sealed class TestRunner
         {
             var candidateName = candidate.Groups["star"].Success ? candidate.Groups["star"].Value : candidate.Groups["plain"].Value;
             var explicitMarker = candidate.Groups["star"].Success;
-            if (context.TryGet(candidateName, out var candidateValue) && candidateValue is BinaryFileReference candidateFile)
+            // A request column (e.g. payload = <From_response_ReadPdf.output_r>) holds the reference marker; the file is the one a File step made in this run.
+            var viaColumn = !explicitMarker && variables.TryGetValue(candidateName, out var columnText) ? Regex.Match(columnText ?? string.Empty, @"^\s*_\*([\p{L}\p{N}._-]+)\*_\s*$") : null;
+            var lookupName = viaColumn is { Success: true } ? viaColumn.Groups[1].Value : candidateName;
+            if (context.TryGet(lookupName, out var candidateValue) && candidateValue is BinaryFileReference candidateFile)
             {
+                if (workspaceRoot is not null) WorkspaceGuard.Resolve(workspaceRoot, candidateFile.Path);
                 match = candidate;
                 file = candidateFile;
                 break;
@@ -928,6 +939,16 @@ public sealed class TestRunner
         return (prefix, suffix, file, summary);
     }
     private static string ResolveHttpMediaType(string contentType) => contentType.Equals("json", StringComparison.OrdinalIgnoreCase) ? "application/json" : contentType.Equals("xml", StringComparison.OrdinalIgnoreCase) ? "application/xml" : contentType;
+    /// <summary>For File and Script steps the response sheet can check <c>Step.output</c>: the body is wrapped as {"output": value}.</summary>
+    private static string WrapOutput(RequestStep step, StepResult execution, string body)
+    {
+        if (step.StepType is not (StepType.File or StepType.Script) || execution.Outputs.Count == 0) return body;
+        var main = execution.Outputs.TryGetValue("result", out var scriptValue) ? scriptValue : execution.Outputs.First().Value;
+        var node = main is BinaryFileReference ? JsonSerializer.SerializeToNode(main) : main is string text ? System.Text.Json.Nodes.JsonValue.Create(text) : JsonSerializer.SerializeToNode(main);
+        // Keep every path that worked before: a JSON object body gets an extra "output" property, anything else is wrapped.
+        try { if (System.Text.Json.Nodes.JsonNode.Parse(body) is System.Text.Json.Nodes.JsonObject obj && !obj.ContainsKey("output")) { obj["output"] = node; return obj.ToJsonString(); } } catch (JsonException) { }
+        return new System.Text.Json.Nodes.JsonObject { ["output"] = node }.ToJsonString();
+    }
     private static BinaryFileReference? ResolveBinaryHttpBody(RequestStep step, LoadTestingTool.Domain.ExecutionContext context)
     {
         if (string.IsNullOrWhiteSpace(step.StepConfig)) return null;

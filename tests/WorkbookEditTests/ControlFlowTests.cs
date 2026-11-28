@@ -568,6 +568,20 @@ public class ControlFlowEditingTests
     private static LoadTestingTool.Editing.TableRow Row(LoadTestingTool.Editing.WorkbookDocument d, string name) => d.Config.Rows.First(r => r.Get("stepname") == name);
 
     [Fact]
+    public void File_and_script_steps_get_an_output_column_when_created_once()
+    {
+        using var dir = new TempDir();
+        var d = Open(dir, ("ReadPdf", "File", ""), ("Calc", "Script", ""), ("Call", "HTTP", ""));
+        d.Config.Rows.First(r => r.Get("stepname") == "Calc").Set("stepname", "Calc");
+        d.Response.Rows.FirstOrDefault()?.Set("x", "");
+        Assert.Equal(2, d.EnsureOutputColumns());
+        Assert.Contains(d.Response.Headers, h => h == "{eq}ReadPdf.output");
+        Assert.Contains(d.Response.Headers, h => h == "{eq}Calc.output");
+        Assert.DoesNotContain(d.Response.Headers, h => h.Contains("Call.output"));
+        Assert.Equal(0, d.EnsureOutputColumns());
+    }
+
+    [Fact]
     public void Nesting_is_read_from_the_parent_column()
     {
         using var dir = new TempDir();

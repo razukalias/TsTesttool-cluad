@@ -1,3 +1,4 @@
+using LoadTestingTool.Domain;
 using System.Globalization;
 using System.Security.Cryptography;
 using ClosedXML.Excel;
@@ -286,6 +287,36 @@ public sealed partial class WorkbookDocument
         var temp = path + ".tmp";
         workbook.SaveAs(temp);
         File.Move(temp, path, overwrite: true);
+    }
+
+    /// <summary>Adds the <c>Step.output</c> column for every File and Script step that lacks one (used when a step is created; saving does not touch old workbooks).</summary>
+    private static bool IsOutputStep(TableRow row)
+    {
+        try { var type = StepTypeParser.Parse(row.Get("steptype")); return type.Equals(StepType.File) || type.Equals(StepType.Script); }
+        catch (InvalidDataException) { return false; }
+    }
+
+    /// <summary>Adds the <c>Step.output</c> expected column for one new File or Script step.</summary>
+    public void EnsureOutputColumn(TableRow row)
+    {
+        if (!IsOutputStep(row)) return;
+        var path = row.Get("stepname").Trim() + ".output";
+        if (!Response.Headers.Any(h => h.EndsWith("}" + path, StringComparison.OrdinalIgnoreCase))) Response.EnsureColumn("{eq}" + path);
+    }
+
+    public int EnsureOutputColumns()
+    {
+        var added = 0;
+        foreach (var row in Config.Rows.Where(r => !r.IsBlank))
+        {
+            if (!IsOutputStep(row)) continue;
+            var name = row.Get("stepname").Trim();
+            if (name.Length == 0) continue;
+            var path = name + ".output";
+            if (Response.Headers.Any(h => h.EndsWith(path, StringComparison.OrdinalIgnoreCase) && (h.Length == path.Length || h[..^path.Length].EndsWith('}')))) continue;
+            Response.EnsureColumn("{eq}" + path); added++;
+        }
+        return added;
     }
 
     public SaveResult Save(WorkbookSaveOptions? options = null)

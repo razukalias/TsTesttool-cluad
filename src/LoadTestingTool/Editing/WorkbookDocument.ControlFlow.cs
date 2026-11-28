@@ -127,6 +127,7 @@ public sealed partial class WorkbookDocument
         row.Set("enabled", "True");
         if (parentName.Length > 0) SetStepParent(row, parentName, elseBranch);
         else if (anchor is not null) PlaceStepAfter(row, anchor);
+        EnsureOutputColumn(row);
         return row;
     }
 

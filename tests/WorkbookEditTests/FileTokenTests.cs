@@ -94,3 +94,36 @@ public class FileTokenTests
         Assert.Contains("absent.bin", problem.Message);
     }
 }
+
+public class FileReferenceThroughRequestColumnTests
+{
+    private static LoadTestingTool.Domain.ExecutionContext Context(TempDir dir, out string root)
+    {
+        root = dir.Path; Directory.CreateDirectory(root);
+        var file = System.IO.Path.Combine(root, "a.pdf"); File.WriteAllBytes(file, [1, 2, 3, 4]);
+        var context = new LoadTestingTool.Domain.ExecutionContext();
+        context.Set("ReadPdf.output", new LoadTestingTool.Domain.BinaryFileReference { Path = file, SizeBytes = 4, Sha256 = "x", ContentType = "application/pdf" });
+        return context;
+    }
+
+    [Fact]
+    public void A_request_column_holding_the_reference_streams_the_file_without_a_star_in_the_template()
+    {
+        using var dir = new TempDir();
+        var context = Context(dir, out var root);
+        var variables = new Dictionary<string, string> { ["payload"] = "_*ReadPdf.output*_" };
+        var streamed = LoadTestingTool.Execution.TestRunner.PrepareStreamingBinaryTemplate("{\"data\":\"_payload_\"}", "json", variables, context, root);
+        Assert.NotNull(streamed);
+        Assert.Contains("\"data\"", streamed!.Value.Prefix); Assert.Equal(4, streamed.Value.File.SizeBytes);
+    }
+
+    [Fact]
+    public void Ordinary_text_in_the_column_stays_text_and_a_file_outside_the_workspace_is_refused()
+    {
+        using var dir = new TempDir(); using var other = new TempDir();
+        var context = Context(dir, out _); Directory.CreateDirectory(other.Path);
+        Assert.Null(LoadTestingTool.Execution.TestRunner.PrepareStreamingBinaryTemplate("{\"a\":\"_payload_\"}", "json", new Dictionary<string, string> { ["payload"] = "hello" }, context, dir.Path));
+        var variables = new Dictionary<string, string> { ["payload"] = "_*ReadPdf.output*_" };
+        Assert.Throws<UnauthorizedAccessException>(() => LoadTestingTool.Execution.TestRunner.PrepareStreamingBinaryTemplate("{\"a\":\"_payload_\"}", "json", variables, context, other.Path));
+    }
+}
