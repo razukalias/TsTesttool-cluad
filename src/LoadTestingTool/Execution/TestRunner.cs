@@ -618,7 +618,7 @@ public sealed class TestRunner
             try
             {
                 using var settings = StepConfig.Parse(step);
-                if (authManager.Select(settings.RootElement) is { } chosen) authScope = new AuthScope { ProfileName = chosen.Name, Profile = chosen.Profile, Variables = variables };
+                if (authManager.Select(settings.RootElement, environment) is { } chosen) authScope = new AuthScope { ProfileName = chosen.Name, Profile = chosen.Profile, Variables = variables };
             }
             catch (InvalidDataException ex)
             {
@@ -628,7 +628,12 @@ public sealed class TestRunner
             }
         }
         using var authEnter = AuthScope.Enter(authScope);
-        if (!step.StepType.IsHttpLike()) return await ExecuteNonHttpAsync(run, testcase, dataId, step, variables, redactedVariables, definitions, requestReferences, sequence, thread, iteration, correlation, correlationSources, executionContext, cancellationToken, environment);
+        if (!step.StepType.IsHttpLike())
+        {
+            var nonHttp = await ExecuteNonHttpAsync(run, testcase, dataId, step, variables, redactedVariables, definitions, requestReferences, sequence, thread, iteration, correlation, correlationSources, executionContext, cancellationToken, environment);
+            if (authScope is { Applied.Count: > 0 }) nonHttp.RequestHeaders += $"{(nonHttp.RequestHeaders.Length > 0 ? "; " : string.Empty)}authentication={authScope.ProfileName} ({string.Join(", ", authScope.Applied)} added, value hidden)";
+            return nonHttp;
+        }
         var started = DateTimeOffset.Now; var sw = Stopwatch.StartNew(); var requestId = $"REQ-{Interlocked.Increment(ref _sequence):D8}"; var templatePath = Path.Combine(_templatesFolder, step.TemplateSource);
         _logger.Info($"Request starting. RequestId={requestId}; testcase={testcase.TestcaseIndex}; dataid={dataId}; stepName={step.StepName}; thread={thread}; iteration={iteration}; verb={step.Verb}; url={step.TargetUrl}; template={templatePath}; ignoreempty={step.IgnoreEmpty}");
         var result = new RequestResult { RunId = run.RunId, RequestId = requestId, TestcaseIndex = step.TestcaseIndex, Testcase = testcase.Testcase, DataId = dataId, StepName = step.StepName, StepType = step.StepType.WireName(), Thread = thread, Iteration = iteration, SequenceOrder = sequence, StartedAt = started, WaitMs = step.WaitMs, WaitExpression = step.WaitExpression, Verb = step.Verb, TargetUrl = GeneratedTokens.ToDisplay(step.TargetUrl), TemplateSource = step.TemplateSource, StepConfig = StepConfig.Mask(GeneratedTokens.Resolve(step.StepConfig)), ContentType = ResolveContentType(step), RequestHeaders = string.Join("; ", step.Headers.Select(h => $"{h.Key}={h.Value}")), Variables = new Dictionary<string, string>(variables, StringComparer.OrdinalIgnoreCase), RedactedVariables = redactedVariables, Environment = environment };

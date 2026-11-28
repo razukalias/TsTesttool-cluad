@@ -157,6 +157,85 @@ public class AuthenticationTests : IDisposable
     }
 
     [Fact]
+    public async Task Oauth2_password_grant_sends_the_user_and_a_refresh_token_is_used_for_the_renewal()
+    {
+        var calls = new List<string>();
+        var settings = new AuthSettings { Profiles = { ["o"] = new AuthProfile { Type = "oauth2", GrantType = "password", TokenUrl = "http://auth.test/token", ClientId = "c", ClientSecret = "secret-xyz", User = "ann", Password = "pw-1234" } } };
+        var (manager, login, api, client) = Setup(settings, login: (_, body) => { calls.Add(body!); return Json("{\"access_token\":\"tok-abcdef\",\"expires_in\":10,\"refresh_token\":\"refresh-777\"}"); });
+        await Send(client, manager, "o");
+        Assert.Contains("grant_type=password", calls[0]); Assert.Contains("username=ann", calls[0]); Assert.Contains("password=pw-1234", calls[0]);
+        await Send(client, manager, "o");   // 10 seconds is inside the renewal margin: the refresh token is used, not the password
+        Assert.Contains("grant_type=refresh_token", calls[1]); Assert.Contains("refresh_token=refresh-777", calls[1]); Assert.DoesNotContain("password=", calls[1]);
+        Assert.Equal("***", Secrets.Mask("refresh-777"));
+    }
+
+    [Fact]
+    public async Task A_refused_refresh_token_falls_back_to_the_configured_grant()
+    {
+        var calls = new List<string>();
+        var settings = new AuthSettings { Profiles = { ["o"] = new AuthProfile { Type = "oauth2", GrantType = "password", TokenUrl = "http://auth.test/token", ClientId = "c", ClientSecret = "secret-xyz", User = "ann", Password = "pw-1234" } } };
+        var (manager, _, _, client) = Setup(settings, login: (_, body) => { calls.Add(body!); return body!.Contains("grant_type=refresh_token") ? Json("{\"error\":\"invalid_grant\"}", HttpStatusCode.BadRequest) : Json("{\"access_token\":\"tok-abcdef\",\"expires_in\":10,\"refresh_token\":\"refresh-777\"}"); });
+        await Send(client, manager, "o"); await Send(client, manager, "o");
+        Assert.Equal(3, calls.Count);
+        Assert.Contains("grant_type=password", calls[2]);
+    }
+
+    [Fact]
+    public async Task A_refresh_token_grant_uses_the_given_token()
+    {
+        var calls = new List<string>();
+        var settings = new AuthSettings { Profiles = { ["o"] = new AuthProfile { Type = "oauth2", GrantType = "refresh_token", RefreshToken = "from-pipeline-1", TokenUrl = "http://auth.test/token", ClientId = "c", ClientSecret = "secret-xyz" } } };
+        var (manager, _, _, client) = Setup(settings, login: (_, body) => { calls.Add(body!); return Json("{\"access_token\":\"tok-abcdef\"}"); });
+        await Send(client, manager, "o");
+        Assert.Contains("refresh_token=from-pipeline-1", calls[0]);
+    }
+
+    [Fact]
+    public void A_profile_for_an_environment_is_used_instead_of_the_plain_one()
+    {
+        var settings = new AuthSettings { Default = "api", Profiles = { ["api"] = new AuthProfile { User = "plain" }, ["api@qa"] = new AuthProfile { User = "qa" } } };
+        var manager = new AuthManager(settings, new HttpClient());
+        JsonElement Config(string json) => JsonDocument.Parse(json).RootElement;
+        Assert.Equal("api@qa", manager.Select(Config("{}"), "qa")!.Value.Name);
+        Assert.Equal("api@qa", manager.Select(Config("{\"auth\":\"api\"}"), "QA")!.Value.Name, ignoreCase: true);
+        Assert.Equal("api", manager.Select(Config("{}"), "prod")!.Value.Name);
+        Assert.Equal("api", manager.Select(Config("{}"))!.Value.Name);
+    }
+
+    [Fact]
+    public async Task A_profile_with_a_certificate_sends_the_login_and_the_requests_through_the_certificate_client()
+    {
+        var viaCertificate = new Fake((_, _) => new HttpResponseMessage(HttpStatusCode.OK));
+        var asked = new List<string>();
+        var settings = new AuthSettings { Profiles = { ["m"] = new AuthProfile { Type = "certificate", CertificatePath = "c.pfx", CertificatePassword = "cert-pw-1" } } };
+        var (manager, _, api, client) = Setup(settings);
+        manager.CertificateFactory = (path, password, key) => { asked.Add($"{path}|{password}"); return new HttpMessageInvoker(viaCertificate); };
+        var response = await Send(client, manager, "m"); await Send(client, manager, "m");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Empty(api.Seen);
+        Assert.Equal(2, viaCertificate.Seen.Count);
+        Assert.Single(asked);   // the client is built once
+        Assert.Equal("***", Secrets.Mask("cert-pw-1"));
+    }
+
+    [Fact]
+    public void A_pfx_file_is_loaded_and_a_wrong_path_says_so()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "cert_" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(dir);
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        var request = new System.Security.Cryptography.X509Certificates.CertificateRequest("CN=test", rsa, System.Security.Cryptography.HashAlgorithmName.SHA256, System.Security.Cryptography.RSASignaturePadding.Pkcs1);
+        using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+        var pfx = Path.Combine(dir, "c.pfx");
+        File.WriteAllBytes(pfx, certificate.Export(System.Security.Cryptography.X509Certificates.X509ContentType.Pfx, "pw-12345"));
+        var manager = new AuthManager(new AuthSettings(), new HttpClient());
+        Assert.NotNull(manager.CertificateInvoker(new AuthProfile { CertificatePath = pfx, CertificatePassword = "pw-12345" }));
+        var ex = Assert.Throws<InvalidDataException>(() => manager.CertificateInvoker(new AuthProfile { CertificatePath = Path.Combine(dir, "missing.pfx") }));
+        Assert.Contains("could not be loaded", ex.Message);
+        Assert.Null(manager.CertificateInvoker(new AuthProfile()));
+        Directory.Delete(dir, true);
+    }
+
+    [Fact]
     public void Select_follows_none_a_name_the_default_and_an_inline_profile()
     {
         var settings = new AuthSettings { Default = "api", Profiles = { ["api"] = new AuthProfile(), ["other"] = new AuthProfile { Type = "basic" } } };

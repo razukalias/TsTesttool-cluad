@@ -12,7 +12,7 @@ namespace LoadTestingTool.UI.DataEditor;
 /// </summary>
 public sealed class AuthenticationWindow : Window
 {
-    private static readonly string[] Types = ["bearer", "oauth2", "basic", "apikey", "headers", "cookie"];
+    private static readonly string[] Types = ["bearer", "oauth2", "basic", "apikey", "headers", "cookie", "certificate"];
     private static readonly IBrush Muted = Brush.Parse("#8EA4BC");
 
     private readonly IEnvironmentSettings _settings;
@@ -139,11 +139,19 @@ public sealed class AuthenticationWindow : Window
                 _form.Children.Add(Text("TtlSeconds", "Log in again after (seconds, 0 = never)", () => p.TtlSeconds.ToString(), v => p.TtlSeconds = int.TryParse(v, out var n) && n >= 0 ? n : 0));
                 break;
             case "oauth2":
+                _form.Children.Add(Combo("GrantType", "Grant", ["client_credentials", "password", "refresh_token"], () => p.GrantType, v => { if (!v.Equals(p.GrantType, StringComparison.OrdinalIgnoreCase)) { p.GrantType = v; BuildForm(); } }));
                 _form.Children.Add(Text("TokenUrl", "Token URL", () => p.TokenUrl, v => p.TokenUrl = v, "https://auth.example.com/oauth/token"));
                 _form.Children.Add(Text("ClientId", "Client id", () => p.ClientId, v => p.ClientId = v, "${CLIENT_ID}"));
                 _form.Children.Add(Text("ClientSecret", "Client secret", () => p.ClientSecret, v => p.ClientSecret = v, "${CLIENT_SECRET}"));
                 _form.Children.Add(Text("Scope", "Scope", () => p.Scope, v => p.Scope = v, "read write"));
                 _form.Children.Add(Text("Audience", "Audience", () => p.Audience, v => p.Audience = v));
+                if (p.GrantType.Equals("password", StringComparison.OrdinalIgnoreCase))
+                {
+                    _form.Children.Add(Text("User", "User", () => p.User, v => p.User = v, "${API_USER}"));
+                    _form.Children.Add(Text("Password", "Password", () => p.Password, v => p.Password = v, "${API_PASSWORD}"));
+                }
+                if (p.GrantType.Equals("refresh_token", StringComparison.OrdinalIgnoreCase))
+                    _form.Children.Add(Text("RefreshToken", "Refresh token (for example from a one-time browser sign-in, kept in a pipeline secret)", () => p.RefreshToken, v => p.RefreshToken = v, "${REFRESH_TOKEN}"));
                 _form.Children.Add(Combo("ClientAuth", "Send the client in", ["body", "basic"], () => p.ClientAuth, v => p.ClientAuth = v));
                 Token(p, withPath: false);
                 break;
@@ -160,7 +168,13 @@ public sealed class AuthenticationWindow : Window
                 _form.Children.Add(Text("Headers", "Headers (one per line: Name: value)", () => string.Join("\n", p.Headers.Select(h => $"{h.Key}: {h.Value}")), v =>
                     p.Headers = v.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.Split(':', 2)).Where(x => x.Length == 2 && x[0].Trim().Length > 0).ToDictionary(x => x[0].Trim(), x => x[1].Trim(), StringComparer.OrdinalIgnoreCase), "X-Tenant: acme", multi: true));
                 break;
+            case "certificate":
+                break;
         }
+        _form.Children.Add(new TextBlock { Text = p.Type.Equals("certificate", StringComparison.OrdinalIgnoreCase) ? "Client certificate (mutual TLS)" : "Client certificate (optional, mutual TLS)", FontSize = 12, Foreground = Muted, Margin = new Thickness(0, 8, 0, 0) });
+        _form.Children.Add(Text("CertificatePath", "Certificate file (.pfx / .p12, or .pem with a key file)", () => p.CertificatePath, v => p.CertificatePath = v, "C:\\certs\\client.pfx"));
+        _form.Children.Add(Text("CertificatePassword", "Certificate password", () => p.CertificatePassword, v => p.CertificatePassword = v, "${CERT_PASSWORD}"));
+        _form.Children.Add(Text("CertificateKeyPath", "Key file (only for .pem)", () => p.CertificateKeyPath, v => p.CertificateKeyPath = v));
     }
 
     private void Login(AuthProfile p)
@@ -188,6 +202,7 @@ public sealed class AuthenticationWindow : Window
         "apikey" => "Sends a fixed key in a header or in the query string.",
         "headers" => "Sends fixed headers with every request.",
         "cookie" => "Logs in with the call below; the session cookie it sets is sent with the following requests.",
+        "certificate" => "Only a client certificate: every request of the step is sent with it (mutual TLS). The certificate can also be added to any other type below.",
         _ => string.Empty
     };
 
@@ -273,6 +288,13 @@ TYPES
   apikey   Name + value, in a header (X-Api-Key) or in the query string (?api_key=…).
   headers  Fixed headers, one per line.
   cookie   Login call; the session cookie is kept for the following requests.
+  certificate  A client certificate (mutual TLS); it can also be added to any other type. .pfx/.p12 with a password, or .pem with a key file.
+
+OAUTH2 GRANTS
+  client_credentials (default), password (User + Password), refresh_token (a refresh token you got once by signing in with a browser and keep as a pipeline secret: ${REFRESH_TOKEN}). When the server answers with a new refresh token it is used for the renewals.
+
+PER ENVIRONMENT
+  A profile called api@qa is used instead of api when the run is for the environment qa (api@prod for prod …). Steps and the default keep writing the name api.
 
 SECRETS
   Write ${NAME} for passwords, secrets and keys: the value comes from --set NAME=value or the environment variable NAME when the run starts, and is never saved in the workbook.

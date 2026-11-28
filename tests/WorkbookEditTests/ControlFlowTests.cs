@@ -671,6 +671,18 @@ public class ControlFlowEditingTests
     }
 
     [Fact]
+    public void Steps_inside_a_disabled_control_step_are_marked_as_not_reached()
+    {
+        using var dir = new TempDir();
+        var d = Open(dir, ("A", "HTTP", ""), ("If1", "If", ""), ("T", "HTTP", "If1"), ("L", "For", "If1"), ("Deep", "HTTP", "L"));
+        d.Config.Rows.First(r => r.Get("stepname") == "If1").Set("enabled", "False");
+        var nesting = d.GetNesting(1).ToDictionary(n => n.Name);
+        Assert.True(nesting["If1"].IsDisabled); Assert.False(nesting["If1"].ParentDisabled);
+        Assert.True(nesting["T"].ParentDisabled); Assert.True(nesting["Deep"].ParentDisabled); Assert.False(nesting["Deep"].IsDisabled);
+        Assert.False(nesting["A"].ParentDisabled);
+    }
+
+    [Fact]
     public void Nesting_is_read_from_the_parent_column()
     {
         using var dir = new TempDir();

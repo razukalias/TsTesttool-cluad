@@ -36,6 +36,14 @@ public sealed class AuthProfile
     public string Audience { get; set; } = string.Empty;
     /// <summary>"body" sends client_id and client_secret in the form, "basic" sends them in an Authorization header.</summary>
     public string ClientAuth { get; set; } = "body";
+    /// <summary>client_credentials (default), password (uses User and Password) or refresh_token (uses RefreshToken, for example one a pipeline got once by signing in with a browser).</summary>
+    public string GrantType { get; set; } = "client_credentials";
+    public string RefreshToken { get; set; } = string.Empty;
+    // client certificate (mutual TLS), for any type; the type "certificate" sends nothing else
+    public string CertificatePath { get; set; } = string.Empty;
+    public string CertificatePassword { get; set; } = string.Empty;
+    /// <summary>Only for a PEM certificate: the file with the private key.</summary>
+    public string CertificateKeyPath { get; set; } = string.Empty;
     // basic
     public string User { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
@@ -98,17 +106,47 @@ public sealed class AuthApplied
 /// <summary>Logs in when needed, keeps the token until it expires and logs in again after a 401.</summary>
 public sealed class AuthManager(AuthSettings settings, HttpClient loginClient, Action<string>? log = null)
 {
-    private sealed record Entry(string Token, DateTimeOffset? Expires);
+    private sealed record Entry(string Token, DateTimeOffset? Expires, string RefreshToken = "");
     private readonly ConcurrentDictionary<string, Entry> _tokens = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new(StringComparer.Ordinal);
     /// <summary>The manager of this run (set at start), handed to the runner.</summary>
     public static AuthManager? Current { get; set; }
     public AuthSettings Settings { get; } = settings;
+    /// <summary>Builds the client for a client certificate (path, password, key path). Replaceable for tests.</summary>
+    public Func<string, string, string, HttpMessageInvoker> CertificateFactory { get; set; } = CreateCertificateClient;
+    private readonly ConcurrentDictionary<string, HttpMessageInvoker> _certificateClients = new(StringComparer.Ordinal);
+
+    /// <summary>The client that sends with the certificate of the profile, or null when it has none.</summary>
+    public HttpMessageInvoker? CertificateInvoker(AuthProfile resolved)
+    {
+        if (resolved.CertificatePath.Length == 0) return null;
+        Secrets.Register(resolved.CertificatePassword, "certificate password");
+        return _certificateClients.GetOrAdd($"{resolved.CertificatePath}|{resolved.CertificateKeyPath}|{resolved.CertificatePassword}", _ => CertificateFactory(resolved.CertificatePath, resolved.CertificatePassword, resolved.CertificateKeyPath));
+    }
+
+    private static HttpMessageInvoker CreateCertificateClient(string path, string password, string keyPath)
+    {
+        try
+        {
+            var certificate = keyPath.Length > 0
+                ? System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPemFile(path, keyPath)
+                : System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12FromFile(path, password.Length == 0 ? null : password);
+            if (keyPath.Length > 0) certificate = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12(certificate.Export(System.Security.Cryptography.X509Certificates.X509ContentType.Pfx), null);   // a PEM key must be exported once for the Windows TLS stack
+            var handler = new HttpClientHandler { UseDefaultCredentials = true, AutomaticDecompression = DecompressionMethods.All };
+            handler.ClientCertificates.Add(certificate);
+            return new HttpMessageInvoker(handler, disposeHandler: true);
+        }
+        catch (Exception ex) when (ex is System.Security.Cryptography.CryptographicException or IOException or ArgumentException)
+        {
+            throw new InvalidDataException($"The client certificate {path} could not be loaded: {ex.Message}");
+        }
+    }
+
     public int Logins => _logins;
     private int _logins;
 
     /// <summary>The profile a step uses: its own <c>"auth"</c> (a profile name, <c>none</c>, or a whole profile written in the settings) or the default. Null = no authentication.</summary>
-    public (string Name, AuthProfile Profile)? Select(JsonElement stepSettings)
+    public (string Name, AuthProfile Profile)? Select(JsonElement stepSettings, string environment = "")
     {
         if (stepSettings.ValueKind == JsonValueKind.Object && stepSettings.TryGetProperty("auth", out var choice))
         {
@@ -116,9 +154,16 @@ public sealed class AuthManager(AuthSettings settings, HttpClient loginClient, A
                 return ("inline", JsonSerializer.Deserialize<AuthProfile>(choice.GetRawText(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new AuthProfile());
             var name = choice.ValueKind == JsonValueKind.String ? choice.GetString()?.Trim() ?? string.Empty : string.Empty;
             if (name.Equals("none", StringComparison.OrdinalIgnoreCase) || name.Equals("off", StringComparison.OrdinalIgnoreCase)) return null;
-            if (name.Length > 0 && !name.Equals("default", StringComparison.OrdinalIgnoreCase)) return Find(name);
+            if (name.Length > 0 && !name.Equals("default", StringComparison.OrdinalIgnoreCase)) return Find(name, environment);
         }
-        return string.IsNullOrWhiteSpace(Settings.Default) ? null : Find(Settings.Default);
+        return string.IsNullOrWhiteSpace(Settings.Default) ? null : Find(Settings.Default, environment);
+    }
+
+    /// <summary>A profile called <c>name@environment</c> (for example api@qa) is used in that environment instead of <c>name</c>.</summary>
+    private (string, AuthProfile) Find(string name, string environment)
+    {
+        if (!string.IsNullOrWhiteSpace(environment) && Settings.Profiles.TryGetValue($"{name}@{environment.Trim()}", out var specific)) return ($"{name}@{environment.Trim()}", specific);
+        return Find(name);
     }
 
     private (string, AuthProfile) Find(string name)
@@ -153,8 +198,10 @@ public sealed class AuthManager(AuthSettings settings, HttpClient loginClient, A
             case "cookie":
                 await TokenAsync(name, p, refresh, cancellationToken);   // the cookie jar of the client keeps the session
                 break;
+            case "certificate":
+                break;   // only the client certificate, see CertificatePath
             default:
-                throw new InvalidDataException($"Authentication '{name}' has an unknown type '{p.Type}'. Use bearer, oauth2, basic, apikey, headers or cookie.");
+                throw new InvalidDataException($"Authentication '{name}' has an unknown type '{p.Type}'. Use bearer, oauth2, basic, apikey, headers, cookie or certificate.");
         }
         return applied;
     }
@@ -171,7 +218,13 @@ public sealed class AuthManager(AuthSettings settings, HttpClient loginClient, A
         try
         {
             if (!refresh && _tokens.TryGetValue(key, out cached) && (cached.Expires is null || cached.Expires > DateTimeOffset.UtcNow.AddSeconds(30))) return cached.Token;
-            var entry = p.Type.Equals("oauth2", StringComparison.OrdinalIgnoreCase) ? await OAuthAsync(name, p, cancellationToken) : await LoginAsync(name, p, cancellationToken);
+            Entry entry;
+            if (p.Type.Equals("oauth2", StringComparison.OrdinalIgnoreCase))
+            {
+                _tokens.TryGetValue(key, out var old);
+                entry = old is { RefreshToken.Length: > 0 } && !refresh ? await TryRefreshAsync(name, p, old.RefreshToken, cancellationToken) ?? await OAuthAsync(name, p, cancellationToken) : await OAuthAsync(name, p, cancellationToken);
+            }
+            else entry = await LoginAsync(name, p, cancellationToken);
             Interlocked.Increment(ref _logins);
             _tokens[key] = entry;
             Secrets.Register(entry.Token, $"token of {name}");
@@ -186,7 +239,7 @@ public sealed class AuthManager(AuthSettings settings, HttpClient loginClient, A
         using var request = new HttpRequestMessage(new HttpMethod(p.LoginMethod.Length == 0 ? "POST" : p.LoginMethod), p.LoginUrl);
         if (p.LoginBody.Length > 0) request.Content = new StringContent(p.LoginBody, Encoding.UTF8, p.LoginContentType);
         foreach (var (key, value) in p.LoginHeaders) request.Headers.TryAddWithoutValidation(key, value);
-        var (status, body) = await SendAsync(name, request, cancellationToken);
+        var (status, body) = await SendAsync(name, request, p, cancellationToken);
         if (p.Type.Equals("cookie", StringComparison.OrdinalIgnoreCase)) return new Entry("cookie", p.TtlSeconds > 0 ? DateTimeOffset.UtcNow.AddSeconds(p.TtlSeconds) : null);
         return ReadToken(name, p, status, body);
     }
@@ -195,7 +248,10 @@ public sealed class AuthManager(AuthSettings settings, HttpClient loginClient, A
     {
         var url = p.TokenUrl.Length > 0 ? p.TokenUrl : p.LoginUrl;
         if (url.Length == 0) throw new InvalidDataException($"Authentication '{name}' (oauth2) has no TokenUrl.");
-        var form = new List<KeyValuePair<string, string>> { new("grant_type", "client_credentials") };
+        var grant = p.GrantType.Trim().ToLowerInvariant() switch { "" or "client_credentials" => "client_credentials", "password" => "password", "refresh_token" => "refresh_token", var other => throw new InvalidDataException($"Authentication '{name}' has an unknown GrantType '{other}'. Use client_credentials, password or refresh_token.") };
+        var form = new List<KeyValuePair<string, string>> { new("grant_type", grant) };
+        if (grant == "password") { form.Add(new("username", p.User)); form.Add(new("password", p.Password)); Secrets.Register(p.Password, "password"); }
+        if (grant == "refresh_token") { form.Add(new("refresh_token", p.RefreshToken)); Secrets.Register(p.RefreshToken, "refresh token"); }
         if (p.Scope.Length > 0) form.Add(new("scope", p.Scope));
         if (p.Audience.Length > 0) form.Add(new("audience", p.Audience));
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
@@ -204,16 +260,25 @@ public sealed class AuthManager(AuthSettings settings, HttpClient loginClient, A
         else { form.Add(new("client_id", p.ClientId)); form.Add(new("client_secret", p.ClientSecret)); }
         Secrets.Register(p.ClientSecret, "client secret");
         request.Content = new FormUrlEncodedContent(form);
-        var (status, body) = await SendAsync(name, request, cancellationToken);
+        var (status, body) = await SendAsync(name, request, p, cancellationToken);
         return ReadToken(name, p, status, body, defaultExpiresIn: "$.expires_in");
     }
 
-    private async Task<(int Status, string Body)> SendAsync(string name, HttpRequestMessage request, CancellationToken cancellationToken)
+    /// <summary>Asks for a new access token with the refresh token the last answer carried; null when the server refuses it (the configured grant is used then).</summary>
+    private async Task<Entry?> TryRefreshAsync(string name, AuthProfile p, string refreshToken, CancellationToken cancellationToken)
+    {
+        var refreshProfile = AuthManager.Fill(p, new Dictionary<string, string>());
+        refreshProfile.GrantType = "refresh_token"; refreshProfile.RefreshToken = refreshToken;
+        try { return await OAuthAsync(name, refreshProfile, cancellationToken); }
+        catch (InvalidDataException) { return null; }
+    }
+
+    private async Task<(int Status, string Body)> SendAsync(string name, HttpRequestMessage request, AuthProfile p, CancellationToken cancellationToken)
     {
         log?.Invoke($"AUTH login | profile={name} | {request.Method} {request.RequestUri}");
         try
         {
-            using var response = await loginClient.SendAsync(request, cancellationToken);
+            using var response = await (CertificateInvoker(p) ?? loginClient).SendAsync(request, cancellationToken);
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             if (!response.IsSuccessStatusCode)
                 throw new InvalidDataException($"Authentication '{name}' failed: the login call to {request.RequestUri} answered {(int)response.StatusCode} {response.ReasonPhrase}. {Secrets.Mask(Short(body))}".TrimEnd());
@@ -236,7 +301,9 @@ public sealed class AuthManager(AuthSettings settings, HttpClient loginClient, A
             if (expiresPath.Length > 0 && JsonPath.Select(doc.RootElement, expiresPath) is { } seconds && double.TryParse(Convert.ToString(seconds, System.Globalization.CultureInfo.InvariantCulture), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var s) && s > 0)
                 expires = DateTimeOffset.UtcNow.AddSeconds(s);
             else if (p.TtlSeconds > 0) expires = DateTimeOffset.UtcNow.AddSeconds(p.TtlSeconds);
-            return new Entry(token, expires);
+            var refresh = JsonPath.Select(doc.RootElement, "$.refresh_token")?.ToString() ?? string.Empty;
+            if (refresh.Length > 0) Secrets.Register(refresh, "refresh token");
+            return new Entry(token, expires, p.Type.Equals("oauth2", StringComparison.OrdinalIgnoreCase) ? refresh : string.Empty);
         }
     }
 
@@ -253,7 +320,8 @@ public sealed class AuthManager(AuthSettings settings, HttpClient loginClient, A
             Type = F(profile.Type), LoginUrl = F(profile.LoginUrl), LoginMethod = F(profile.LoginMethod), LoginBody = F(profile.LoginBody), LoginContentType = F(profile.LoginContentType),
             LoginHeaders = profile.LoginHeaders.ToDictionary(x => x.Key, x => F(x.Value), StringComparer.OrdinalIgnoreCase),
             TokenPath = F(profile.TokenPath), ExpiresInPath = F(profile.ExpiresInPath), TtlSeconds = profile.TtlSeconds,
-            TokenUrl = F(profile.TokenUrl), ClientId = F(profile.ClientId), ClientSecret = F(profile.ClientSecret), Scope = F(profile.Scope), Audience = F(profile.Audience), ClientAuth = F(profile.ClientAuth),
+            TokenUrl = F(profile.TokenUrl), ClientId = F(profile.ClientId), ClientSecret = F(profile.ClientSecret), Scope = F(profile.Scope), Audience = F(profile.Audience), ClientAuth = F(profile.ClientAuth), GrantType = F(profile.GrantType), RefreshToken = F(profile.RefreshToken),
+            CertificatePath = F(profile.CertificatePath), CertificatePassword = F(profile.CertificatePassword), CertificateKeyPath = F(profile.CertificateKeyPath),
             User = F(profile.User), Password = F(profile.Password), Name = F(profile.Name), Value = F(profile.Value), In = F(profile.In),
             Headers = profile.Headers.ToDictionary(x => x.Key, x => F(x.Value), StringComparer.OrdinalIgnoreCase), Header = F(profile.Header), Prefix = profile.Prefix
         };
@@ -278,14 +346,15 @@ public sealed class AuthHandler(HttpMessageHandler inner, AuthManager manager) :
         var applied = await manager.ApplyAsync(scope.ProfileName, scope.Profile, scope.Variables, refresh: false, cancellationToken);
         var retry = body is not null || request.Content is null ? Clone(request, body) : null;
         Add(request, applied, scope);
-        var response = await base.SendAsync(request, cancellationToken);
+        var certificate = manager.CertificateInvoker(AuthManager.Fill(scope.Profile, scope.Variables));
+        var response = certificate is null ? await base.SendAsync(request, cancellationToken) : await certificate.SendAsync(request, cancellationToken);
         if (response.StatusCode != HttpStatusCode.Unauthorized || retry is null || scope.Profile.Type.Equals("basic", StringComparison.OrdinalIgnoreCase)
-            || scope.Profile.Type.Equals("apikey", StringComparison.OrdinalIgnoreCase) || scope.Profile.Type.Equals("headers", StringComparison.OrdinalIgnoreCase)) return response;
+            || scope.Profile.Type.Equals("apikey", StringComparison.OrdinalIgnoreCase) || scope.Profile.Type.Equals("headers", StringComparison.OrdinalIgnoreCase) || scope.Profile.Type.Equals("certificate", StringComparison.OrdinalIgnoreCase)) return response;
         response.Dispose();
         manager.Invalidate(scope.ProfileName, scope.Profile, scope.Variables);
         var again = await manager.ApplyAsync(scope.ProfileName, scope.Profile, scope.Variables, refresh: true, cancellationToken);
         Add(retry, again, scope);
-        return await base.SendAsync(retry, cancellationToken);
+        return certificate is null ? await base.SendAsync(retry, cancellationToken) : await certificate.SendAsync(retry, cancellationToken);
     }
 
     private static void Add(HttpRequestMessage request, AuthApplied applied, AuthScope scope)

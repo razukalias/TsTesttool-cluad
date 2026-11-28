@@ -42,4 +42,24 @@ public class DisableStepTests
         Assert.Equal("True", shell.Current!.StepRows.First(r => r.CurrentName == node.Name).Row.Get("enabled"));
         window.Close();
     }
+
+    [AvaloniaFact]
+    public void Ticked_steps_are_disabled_and_enabled_together()
+    {
+        using var dir = new TempDir();
+        var (w, sh) = Open(dir);
+        var testcase = sh.Instances[0].Testcases.FirstOrDefault(t => t.StepNodes.Count >= 2) ?? sh.Instances[0].Testcases[0];
+        sh.SelectedNode = testcase.StepNodes[0];
+        if (testcase.StepNodes.Count < 2) sh.Current!.AddStepCommand.Execute(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var nodes = testcase.StepNodes;
+        Assert.True(nodes.Count >= 2);
+        nodes[0].IsChosen = true; nodes[1].IsChosen = true;
+        sh.SetStepEnabled(nodes[0], false);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        nodes = testcase.StepNodes;
+        Assert.True(nodes[0].IsDisabled); Assert.True(nodes[1].IsDisabled);
+        if (nodes.Count > 2) Assert.False(nodes[2].IsDisabled);
+        w.Close();
+    }
 }

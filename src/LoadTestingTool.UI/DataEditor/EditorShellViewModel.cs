@@ -384,7 +384,10 @@ public sealed partial class EditorShellViewModel : ObservableObject
         if (EditorOf(step) is not { } editor) return;
         Current = editor;
         if (!ReferenceEquals(editor.SelectedTestcase, step.Owner)) editor.SelectedTestcase = step.Owner;
-        editor.SetStepsEnabled([step.Name], enabled);
+        // ticked steps of the same testcase go together with the one that was clicked
+        var names = step.IsChosen ? step.Owner.StepNodes.Where(n => n.IsChosen).Select(n => n.Name).ToList() : [step.Name];
+        if (!names.Contains(step.Name, StringComparer.OrdinalIgnoreCase)) names.Add(step.Name);
+        editor.SetStepsEnabled(names, enabled);
     }
 
     /// <summary>The authentication profiles an instance can use: its own and the global ones.</summary>

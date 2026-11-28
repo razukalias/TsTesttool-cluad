@@ -105,7 +105,9 @@ public partial class DataEditorWindow
                 break;
             case StepNode step:
                 menu.Items.Add(Item("⚙  Open step settings", () => _shell.OpenStepConfig(step)));
-                menu.Items.Add(step.IsDisabled ? Item("Enable step", () => _shell.SetStepEnabled(step, true)) : Item("Disable step (the runner skips it)", () => _shell.SetStepEnabled(step, false)));
+                var tickedCount = step.IsChosen ? step.Owner.StepNodes.Count(n => n.IsChosen) : 0;
+                var who = tickedCount > 1 ? $"{tickedCount} ticked steps" : "step";
+                menu.Items.Add(step.IsDisabled ? Item($"Enable {who}", () => _shell.SetStepEnabled(step, true)) : Item($"Disable {who} (the runner skips {(tickedCount > 1 ? "them" : "it")})", () => _shell.SetStepEnabled(step, false)));
                 menu.Items.Add(new Separator());
                 menu.Items.Add(Item("Rename", () => BeginTreeRename(tree, node)));
                 menu.Items.Add(Item("Duplicate step…", () => _shell.OpenDuplicateStepPanel(step)));

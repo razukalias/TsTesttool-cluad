@@ -17,6 +17,12 @@ Steps log in through **profiles**; no login step is needed in the testcase. The 
 | `apikey` | a key in a header or the query string | `Name`, `Value`, `In` (`header` or `query`) |
 | `headers` | fixed headers | `Headers` |
 | `cookie` | login call; the session cookie is kept for the next requests | `LoginUrl`, `LoginBody`, `TtlSeconds` |
+| `certificate` | only a client certificate (mutual TLS) | `CertificatePath`, `CertificatePassword`, `CertificateKeyPath` |
+
+A certificate can be added to **any** type (the login call and the requests of the step are then sent with it). `.pfx`/`.p12` use `CertificatePassword`; for `.pem` set `CertificateKeyPath` too. Write the password as `${CERT_PASSWORD}`.
+
+### OAuth2 grants
+`GrantType`: `client_credentials` (default), `password` (`User` + `Password`) or `refresh_token` (`RefreshToken`). A browser sign-in (authorization code) cannot run unattended: sign in once, keep the refresh token as a pipeline secret (`"RefreshToken": "${REFRESH_TOKEN}"`) and use the `refresh_token` grant. When the server answers with a new refresh token it is used for the renewals; if the server refuses it, the configured grant is used again.
 
 ## Example (appsettings.json)
 ```json
@@ -34,6 +40,9 @@ Steps log in through **profiles**; no login step is needed in the testcase. The 
 ```
 A step that needs the partner login writes `{"auth":"partner"}` in its settings; a public endpoint writes `{"auth":"none"}`.
 
+## A profile per environment
+A profile called `api@qa` is used instead of `api` when the run is for the environment `qa` (`api@prod` for `prod`, …). Steps and the default keep writing `api`; an environment without its own profile uses `api`.
+
 ## A different user per data row
 Use request columns in the profile: `"LoginBody": "{\"user\":\"_user_\",\"password\":\"_password_\"}"`. The columns `user` and `password` of the step's data row are filled in; every different value gets its own login and token.
 
@@ -41,4 +50,4 @@ Use request columns in the profile: `"LoginBody": "{\"user\":\"_user_\",\"passwo
 Write `${NAME}` for passwords, secrets and keys (see `CI_CD.md`): the value comes from `--set NAME=value` or the environment variable `NAME` and is never saved in the workbook. Tokens and passwords are masked as `***` in the internal log, reports and history; the request log of a step shows which header was added (`authentication=api (Authorization added, value hidden)`). *Test login* in the window logs in once and says whether it worked.
 
 ## Not covered yet
-OAuth2 authorization-code / password grants and refresh tokens, certificates, per-environment profiles (use `${NAME}` values per run for now).
+The interactive OAuth2 authorization-code sign-in (use a refresh token, see above), PKCS#11 / Windows certificate store certificates (file certificates only).

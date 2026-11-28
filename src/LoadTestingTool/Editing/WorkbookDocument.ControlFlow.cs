@@ -3,7 +3,7 @@ using LoadTestingTool.Domain;
 namespace LoadTestingTool.Editing;
 
 /// <summary>A step as the tree shows it: its name, how deep it sits inside control steps and which branch of an If it is in.</summary>
-public sealed record StepNesting(string Name, int Depth, bool IsControl, bool InElse, string TypeName = "", bool IsAsync = false, bool IsDisabled = false);
+public sealed record StepNesting(string Name, int Depth, bool IsControl, bool InElse, string TypeName = "", bool IsAsync = false, bool IsDisabled = false, bool ParentDisabled = false);
 
 public sealed partial class WorkbookDocument
 {
@@ -37,8 +37,9 @@ public sealed partial class WorkbookDocument
             var depth = 0;
             var current = row;
             var seen = new HashSet<TableRow> { row };
-            while (ParentName(current.Get("parent")) is { Length: > 0 } parent && byName.TryGetValue(parent, out var up) && seen.Add(up)) { depth++; current = up; }
-            result.Add(new StepNesting(row.Get("stepname").Trim(), depth, IsControlRow(row), IsElse(row.Get("parent")), TypeNameOf(row), IsOn(row.Get("async")), IsOff(row.Get("enabled"))));
+            var parentOff = false;   // a step inside a disabled control step is never reached
+            while (ParentName(current.Get("parent")) is { Length: > 0 } parent && byName.TryGetValue(parent, out var up) && seen.Add(up)) { depth++; current = up; parentOff |= IsOff(up.Get("enabled")); }
+            result.Add(new StepNesting(row.Get("stepname").Trim(), depth, IsControlRow(row), IsElse(row.Get("parent")), TypeNameOf(row), IsOn(row.Get("async")), IsOff(row.Get("enabled")), parentOff));
         }
         return result;
     }
