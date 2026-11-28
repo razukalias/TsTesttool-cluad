@@ -201,7 +201,7 @@ public sealed class FileStepExecutor : IStepExecutor
         var hash = await SHA256.HashDataAsync(stream, cancellationToken);
         return new BinaryFileReference { Path = path, SizeBytes = info.Length, Sha256 = Convert.ToHexString(hash).ToLowerInvariant(), ContentType = contentType };
     }
-    private static async Task<byte[]> ResolveBinaryContentAsync(string? content, LoadTestingTool.Domain.ExecutionContext context, long maxBytes, CancellationToken cancellationToken)
+    internal static async Task<byte[]> ResolveBinaryContentAsync(string? content, LoadTestingTool.Domain.ExecutionContext context, long maxBytes, CancellationToken cancellationToken)
     {
         var raw = content ?? string.Empty;
         var trimmed = raw.Trim();
@@ -213,6 +213,14 @@ public sealed class FileStepExecutor : IStepExecutor
         {
             EnsureSize(reference.SizeBytes, maxBytes, reference.Path);
             return await File.ReadAllBytesAsync(reference.Path, cancellationToken);
+        }
+        // A request column holding a file reference: _payload_ -> "_*ReadPdf.output*_" -> the File step's file.
+        if (!string.IsNullOrWhiteSpace(variableName) && context.TryGet(variableName, out var columnValue) && columnValue is string columnText
+            && System.Text.RegularExpressions.Regex.Match(columnText.Trim(), "^_\\*([\\p{L}\\p{N}._-]+)\\*_$") is { Success: true } inner
+            && context.TryGet(inner.Groups[1].Value, out var innerValue) && innerValue is BinaryFileReference innerReference)
+        {
+            EnsureSize(innerReference.SizeBytes, maxBytes, innerReference.Path);
+            return await File.ReadAllBytesAsync(innerReference.Path, cancellationToken);
         }
         var resolved = context.Resolve(raw);
         try { var bytes = Convert.FromBase64String(resolved); EnsureSize(bytes.Length, maxBytes, "inline Base64 content"); return bytes; }

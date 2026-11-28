@@ -312,6 +312,7 @@ public sealed class TestRunner
                             Verb = control.StepType.WireName(), StepConfig = control.StepConfig, HttpStatus = 200, ResponseBody = body.ToJsonString(), Environment = environment
                         };
                         var defs = workbook.Assertions.GetValueOrDefault((control.TestcaseIndex, data.DataId, control.StepName)) ?? [];
+                        if (defs.Count == 0 && config.TryGetValue("rows", out var rowsSetting) && rowsSetting.Trim().ToLowerInvariant() is "no" or "false" or "off" or "0") return;   // rows switched off and nothing checks them
                         if (control.AssertEnabled && defs.Count > 0)
                         {
                             var (plain, bugs) = BugTag.Strip(defs, environment);
@@ -329,6 +330,7 @@ public sealed class TestRunner
                     {
                         var vars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                         foreach (var pair in S().Correlation) vars[pair.Key] = pair.Value;
+                        foreach (var pair in StepVariables(data, control.StepName)) vars[pair.Key] = pair.Value;   // the request columns of this step (_to_ = Step.to) and the shared ones
                         foreach (var pair in S().LoopVars) vars[pair.Key] = pair.Value;
                         if (!string.IsNullOrWhiteSpace(environment)) vars["env"] = environment;
                         var resolved = await ResolveDynamicValueAsync(text ?? string.Empty, S().Correlation, S().References, executionContext, token);
@@ -1005,7 +1007,7 @@ public sealed class TestRunner
             ? new BinaryFileReference { Path = reference.Path, SizeBytes = reference.SizeBytes, Sha256 = reference.Sha256, ContentType = contentType.Value.GetString()! }
             : reference;
     }
-    private static (MultipartFormDataContent Content, string Summary) CreateMultipartContent(RequestStep step, string workspaceRoot, IReadOnlyDictionary<string, string> variables, LoadTestingTool.Domain.ExecutionContext context)
+    internal static (MultipartFormDataContent Content, string Summary) CreateMultipartContent(RequestStep step, string workspaceRoot, IReadOnlyDictionary<string, string> variables, LoadTestingTool.Domain.ExecutionContext context)
     {
         var options = StepConfig.Read<MultipartStepOptions>(step);
         if (options.Parts.Count == 0) throw new InvalidDataException($"Multipart HTTP step '{step.StepName}' must define at least one part.");
@@ -1017,8 +1019,11 @@ public sealed class TestRunner
             names.Add(name);
             if (part.Type.Equals("file", StringComparison.OrdinalIgnoreCase))
             {
-                var relative = RenderMultipartValue(part.Path ?? string.Empty, variables, context);
-                var path = WorkspaceGuard.Resolve(workspaceRoot, relative);
+                // A file reference (a File step's output, written _*ReadPdf.output*_ or held by a request column) is the file itself; anything else is a path in the workspace.
+                var fileReference = ReferencedFile(part.Path, context);
+                var relative = fileReference is null ? RenderMultipartValue(part.Path ?? string.Empty, variables, context) : part.Path!;
+                fileReference ??= ReferencedFile(relative, context);
+                var path = fileReference?.Path ?? WorkspaceGuard.Resolve(workspaceRoot, relative);
                 if (!File.Exists(path)) throw new FileNotFoundException($"Multipart file part '{relative}' was not found.", path);
                 var info = new FileInfo(path); using var hash = SHA256.Create(); using var stream = File.OpenRead(path); var digest = Convert.ToHexString(hash.ComputeHash(stream)).ToLowerInvariant();
                 var fileContent = new StreamContent(File.OpenRead(path));
@@ -1034,6 +1039,11 @@ public sealed class TestRunner
         }
         var summary = $"[multipart body omitted; parts={string.Join(", ", names)}; files={(files.Count == 0 ? "none" : string.Join(" | ", files))}]";
         return (content, summary);
+    }
+    private static BinaryFileReference? ReferencedFile(string? text, LoadTestingTool.Domain.ExecutionContext context)
+    {
+        var marker = System.Text.RegularExpressions.Regex.Match((text ?? string.Empty).Trim(), @"^_\*([\p{L}\p{N}._\-\[\]]+)\*_$");
+        return marker.Success && context.TryGet(marker.Groups[1].Value, out var value) && value is BinaryFileReference reference ? reference : null;
     }
     private static string RenderMultipartValue(string value, IReadOnlyDictionary<string, string> variables, LoadTestingTool.Domain.ExecutionContext context)
     {

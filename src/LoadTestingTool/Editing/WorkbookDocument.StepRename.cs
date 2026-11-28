@@ -39,6 +39,19 @@ public sealed partial class WorkbookDocument
         return new(removed, left);
     }
 
+    /// <summary>The request and response columns <c>Step.field</c> that removing the step would take out and that hold a value in some row (none when another row still uses the step name).</summary>
+    public IReadOnlyList<string> StepColumnsWithData(string stepName)
+    {
+        stepName = stepName.Trim();
+        var stillUsed = Config.Rows.Count(r => !r.IsBlank && string.Equals(r.Get("stepname").Trim(), stepName, StringComparison.OrdinalIgnoreCase)) > 1;
+        var found = new List<string>();
+        if (stepName.Length == 0 || stillUsed) return found;
+        foreach (var table in new[] { Request, Response })
+            for (var i = 0; i < table.ColumnCount; i++)
+                if (TryRenameHeader(table.Headers[i], stepName, "x", out _) && table.Rows.Any(r => !r.IsBlank && r.GetAt(i).Trim().Length > 0)) found.Add(table.Headers[i]);
+        return found;
+    }
+
     private static readonly char[] ForbiddenStepNameCharacters = ['.', '<', '>', '{', '}', '|', ',', ':'];
 
     /// <summary>

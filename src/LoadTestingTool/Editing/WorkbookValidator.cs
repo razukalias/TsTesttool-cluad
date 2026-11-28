@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Globalization;
 using LoadTestingTool.Domain;
 using LoadTestingTool.Excel;
@@ -22,6 +23,7 @@ public static class WorkbookValidator
         var responseKeys = ValidateDataSheet(document.Response, problems, duplicateSeverity: ProblemSeverity.Warning);
         ValidateResponseColumns(document.Response, stepsByTestcase, problems);
         ValidateFileTokens(document, problems);
+        ValidateReferencedSteps(document, problems);
         foreach (var table in new[] { document.Config, document.Request, document.Response }) ValidateCellLength(table, problems);
         ValidateCrossSheet(document, stepsByTestcase, requestKeys, responseKeys, problems);
         return problems;
@@ -314,6 +316,56 @@ public static class WorkbookValidator
                 if (LoadTestingTool.Execution.FileTokens.Find(instanceFolder, path) is null)
                     Add(problems, ProblemSeverity.Error, table, row, $"{table.Headers[column]}: the file '{path}' was not found. Put it in the instance's {LoadTestingTool.Execution.FileTokens.FilesFolder} folder or give its full path.");
             }
+        }
+    }
+
+    private static readonly Regex ResponseReference = new(@"<From_response_(?<step>[^.<>]+)\.(?<path>[^<>]*?)_(?:[A-Za-z]+|\d+)>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// A cell of a step (its request columns, condition, step config) that reads <c>&lt;From_response_Other.path_r&gt;</c> needs <c>Other</c> to be a step of the same testcase that runs
+    /// before it; <c>.output</c> exists on File, Script, If and loop steps, <c>.index</c> on loops. Warnings only: a loop may legitimately read a later step's value from its last round.
+    /// </summary>
+    private static void ValidateReferencedSteps(WorkbookDocument document, List<WorkbookProblem> problems)
+    {
+        var byTestcase = new Dictionary<int, List<(string Name, StepType Type)>>();
+        foreach (var row in document.Config.Rows.Where(r => !r.IsBlank))
+        {
+            if (!int.TryParse(Text(row, "testcaseindex"), out var index)) continue;
+            StepType type; try { type = StepTypeParser.Parse(Text(row, "steptype")); } catch (InvalidDataException) { continue; }
+            if (!byTestcase.TryGetValue(index, out var list)) byTestcase[index] = list = [];
+            list.Add((Text(row, "stepname"), type));
+        }
+        void Check(SheetTable table, TableRow row, string where, string text, int testcase, string ownStep)
+        {
+            if (!text.Contains("<From_response_", StringComparison.OrdinalIgnoreCase) || !byTestcase.TryGetValue(testcase, out var steps)) return;
+            var ownAt = steps.FindIndex(s => s.Name.Equals(ownStep, StringComparison.OrdinalIgnoreCase));
+            foreach (Match match in ResponseReference.Matches(text))
+            {
+                var name = match.Groups["step"].Value; var path = match.Groups["path"].Value;
+                var at = steps.FindIndex(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                if (at < 0) { Add(problems, ProblemSeverity.Warning, table, row, $"{where}: <From_response_{name}…> refers to a step '{name}' that this testcase does not have."); continue; }
+                if (ownAt >= 0 && at >= ownAt) Add(problems, ProblemSeverity.Warning, table, row, $"{where}: reads the response of {name}, which does not run before {ownStep}, so the value will be empty.");
+                var type = steps[at].Type;
+                if (path.Equals("output", StringComparison.OrdinalIgnoreCase) && type is not (StepType.File or StepType.Script) && !type.IsControl())
+                    Add(problems, ProblemSeverity.Warning, table, row, $"{where}: {name}.output exists only on File, Script, If and loop steps ({name} is {type.WireName()}).");
+                if (path.Equals("index", StringComparison.OrdinalIgnoreCase) && type is not (StepType.For or StepType.ForEach or StepType.While))
+                    Add(problems, ProblemSeverity.Warning, table, row, $"{where}: {name}.index exists only on loop steps ({name} is {type.WireName()}).");
+            }
+        }
+        foreach (var row in document.Request.Rows.Where(r => !r.IsBlank))
+        {
+            if (!int.TryParse(Text(row, "testcaseindex"), out var testcase)) continue;
+            for (var i = 0; i < document.Request.ColumnCount; i++)
+            {
+                var header = document.Request.Headers[i]; var dot = header.IndexOf('.');
+                if (dot <= 0) continue;
+                Check(document.Request, row, header, row.GetAt(i), testcase, header[..dot]);
+            }
+        }
+        foreach (var row in document.Config.Rows.Where(r => !r.IsBlank))
+        {
+            if (!int.TryParse(Text(row, "testcaseindex"), out var testcase)) continue;
+            foreach (var column in new[] { "condition", "stepconfig" }) Check(document.Config, row, column, Text(row, column), testcase, Text(row, "stepname"));
         }
     }
 

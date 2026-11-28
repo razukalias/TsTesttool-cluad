@@ -57,19 +57,55 @@ public static class StepTypeGuide
 
         ["file"] = new("File step",
         [
-            "Action: Read, Json (read one value from a JSON file), ReadBinary, Write, Append, WriteBinary or AppendBinary.",
-            "File: a path inside the workspace, e.g. Files/data.json. A path outside it is refused.",
-            "Content: only for Write and Append. It may hold _variable_ placeholders.",
-            "Output variable: the name later steps use to read the result, e.g. <From_response_...> or _fileContent_.",
-            "Output mode: Reference keeps big binary files out of memory; Value or Base64 puts the content itself in the variable.",
-        ], "{\n  \"Action\": \"Read\",\n  \"Path\": \"Files/payload.json\",\n  \"OutputVariable\": \"payload\"\n}"),
+            "Action: Read (text), Json (one value of a JSON file), ReadBinary (a file reference that streams, nothing is loaded into memory), Write, Append, WriteBinary or AppendBinary.",
+            "File comes from: Fixed path = one file for every row. The data row = every row names its own file in the request column <Step>.file. A bare name (data.json) is read from the instance's Files folder; reading also works with a full path anywhere (C:\\Data\\a.pdf). Writing stays inside the workspace.",
+            "Content: only for Write/Append (text) and WriteBinary/AppendBinary (Base64 or a file reference such as _payload_ where the column payload holds <From_response_ReadPdf.output_r>).",
+            "Output: every File step answers to the constant name <Step>.output. Example: step ReadPdf (ReadBinary) -> later steps use <From_response_ReadPdf.output_r>; to check it, add the expected-value column {eq}ReadPdf.output in the response sheet (it is added when the step is created).",
+            "Sending a file with an HTTP step: give that step a request column, e.g. payload = <From_response_ReadPdf.output_r>, and write \"data\": \"_payload_\" in the template (JSON body: the file is streamed as Base64) or use the column as the Path of a multipart file part. No stars needed. The file must come from a File step of the same run.",
+            "Example: ReadPdf (ReadBinary, File = invoice.pdf) -> Upload (HTTP POST, column payload = <From_response_ReadPdf.output_r>, template {\"name\":\"invoice\",\"data\":\"_payload_\"}) -> Archive (WriteBinary, File = Files/out/invoice.pdf, Content = _payload_).",
+            "In any request cell you can also write <from_filepath>name (text), <from_filepath_base64>name, <from_filepath_binary>name (streams) or <from_filepath_json>data.json|$.user.id (one value of a JSON file) without a File step; the wizard's File menu inserts them.",
+        ], "{\n  \"Action\": \"ReadBinary\",\n  \"Path\": \"invoice.pdf\"\n}", "Then use <From_response_<StepName>.output_r> in later steps. The older OutputVariable setting still works."),
 
         ["script"] = new("Script step",
         [
             "Runs a C# script. Trusted scripts must be enabled in the instance settings, otherwise the step fails.",
             "Script: use the Template, a Script file in the workspace, or type the code in the Inline box. The file wins over the template, which wins over the inline code.",
-            "The script can read the row's data as _name_ placeholders and return a value for later steps.",
-        ], "{\n  \"Inline\": \"return _data_;\"\n}"),
+            "Add variable…: adds a line such as  var orderId = \"_orderId_\";  at the top of the script. Pick a request column or a value of an earlier step and choose the C# name; the value always arrives as a string (quotes and line breaks are escaped for you). Use int.Parse(orderId) when you need a number.",
+            "Output: the returned value is <Step>.output for later steps (<From_response_Calc.output_r>) and can be checked with the response column {eq}Calc.output. A returned object or list can be read by path, e.g. Calc.total.",
+            "Example: var qty = \"_qty_\"; return int.Parse(qty) * 2;  with a request column Calc.qty = 21 gives Calc.output = 42.",
+        ], "{\n  \"Inline\": \"var qty = \\\"_qty_\\\";\\nreturn int.Parse(qty) * 2;\"\n}"),
+
+        ["if"] = new("If step",
+        [
+            "Runs the steps inside it only when the condition holds; the Else side runs when it does not.",
+            "Condition: one or more comparisons, e.g. _status_ eq 200, \"<From_response_Login.role_r>\" ne admin, _country_ eq SE and not _skip_ eq yes. Build it row by row with Build condition…",
+            "A value can come from the data row: the column Gate.who is written as _who_ in the condition.",
+            "Output: <From_response_Gate.output_r> is true or false for later steps; the optional column {eq}Gate.output checks it (button Add output column).",
+        ], null),
+
+        ["for"] = new("For step",
+        [
+            "Repeats the steps inside it with a counter. From and To (or Count) say how many rounds; Step may be negative to count down; Variable name is the counter (default i, used as _i_).",
+            "Examples: From 1, To 5 -> 1 2 3 4 5.   From 10, To 1, Step -3 -> 10 7 4 1.   Count 3 -> three rounds.   To = _rounds_ -> the column Loop.rounds of each data row decides.",
+            "Stop when / Skip a round when: conditions such as _i_ gte 3 (like break / continue). Most rounds is capped by Max (default 10,000).",
+            "Output: <From_response_Loop.output_r> is the counter value and <From_response_Loop.index_r> the round counted from 0; the columns {eq}Loop.output / {eq}Loop.index check them every round (button Add output and index columns). Result rows can be switched off with Result rows = no.",
+        ], "from=1;to=3;var=i"),
+
+        ["foreach"] = new("ForEach step",
+        [
+            "Repeats the steps inside it once per item. Items can be a comma list (a,b,c), a JSON array, a reference to a response list (<From_response_List.ids_r>) or a request column (_ids_).",
+            "The item is _item_ (change it with Variable name) and its position _index_ counted from 0.",
+            "Examples: Items a,b,c -> three rounds.   Items <From_response_Search.ids_r> -> one round per id the search returned.   Skip a round when: _item_ empty.",
+            "Output: <From_response_Each.output_r> is the item and <From_response_Each.index_r> its position.",
+        ], "items=a,b,c;var=item"),
+
+        ["while"] = new("While step",
+        [
+            "Repeats the steps inside it while the Condition holds, for example polling until a job is done. The condition is checked before every round.",
+            "Most rounds (default 100) protects against endless loops; When the limit is reached = fail (default) or continue. Wait between rounds (ms) pauses, e.g. 2000 while polling. Most rounds can come from a column: _tries_.",
+            "Example: Condition \"<From_response_Poll.state_r>\" ne DONE, Most rounds 10, Wait 2000 -> polls every 2 s, at most 10 times.",
+            "Output: <From_response_Wait.output_r> is the round number and <From_response_Wait.index_r> the round from 0.",
+        ], "max=10;delayms=2000"),
 
         ["actionmanual"] = new("Action manual step",
         [

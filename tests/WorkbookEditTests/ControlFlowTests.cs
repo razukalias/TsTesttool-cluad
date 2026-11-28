@@ -246,6 +246,55 @@ public class ControlFlowTests
     }
 
     [Fact]
+    public async Task Loop_settings_and_conditions_can_come_from_the_request_columns_of_the_data_row()
+    {
+        var path = Build(new TempDir(), null, request => { request.Cell(1, 5).Value = "Loop.rounds"; request.Cell(2, 5).Value = 2; request.Cell(1, 6).Value = "Gate.who"; request.Cell(2, 6).Value = "yes"; },
+            new Step("Loop", "For", Config: "from=1;count=_rounds_"),
+            new Step("Each", Parent: "Loop", Url: "/n/_i_"),
+            new Step("Gate", "If", Condition: "_who_ eq yes"),
+            new Step("Then1", Parent: "Gate", Url: "/then"));
+        var (_, paths, _) = await RunAsync(path, Ok);
+        Assert.Equal(["/n/1", "/n/2", "/then"], paths);
+    }
+
+    [Fact]
+    public void A_reference_to_a_step_that_does_not_run_before_is_warned_about()
+    {
+        var path = Build(new TempDir(), null, request =>
+            {
+                request.Cell(1, 5).Value = "First.late"; request.Cell(2, 5).Value = "<From_response_Last.id_r>";
+                request.Cell(1, 6).Value = "Last.bad"; request.Cell(2, 6).Value = "<From_response_First.output_r> <From_response_Ghost.id_r>";
+            },
+            new Step("First", Url: "/a"), new Step("Last", Url: "/b"));
+        var messages = LoadTestingTool.Editing.WorkbookValidator.Validate(LoadTestingTool.Editing.WorkbookDocument.Load(path)).Where(p => p.Severity == LoadTestingTool.Editing.ProblemSeverity.Warning).Select(p => p.Message).ToList();
+        Assert.Contains(messages, m => m.Contains("Last, which does not run before First"));
+        Assert.Contains(messages, m => m.Contains("First.output exists only on File"));
+        Assert.Contains(messages, m => m.Contains("'Ghost' that this testcase does not have"));
+    }
+
+    [Fact]
+    public void Renaming_a_step_renames_its_output_index_and_file_columns_and_removing_it_reports_the_ones_with_data()
+    {
+        var path = Build(new TempDir(), null, request => { request.Cell(1, 5).Value = "Loop.to"; request.Cell(2, 5).Value = 3; },
+            new Step("Loop", "For", Config: "from=1;to=_to_"), new Step("Each", Parent: "Loop", Url: "/n/_i_"));
+        var doc = LoadTestingTool.Editing.WorkbookDocument.Load(path);
+        doc.Response.EnsureColumn("{eq}Loop.output"); doc.Response.EnsureColumn("{eq}Loop.index");
+        Assert.Equal(["Loop.to"], doc.StepColumnsWithData("Loop"));
+        doc.RenameStep("Loop", "Outer");
+        Assert.Contains("Outer.to", doc.Request.Headers);
+        Assert.Contains("{eq}Outer.output", doc.Response.Headers); Assert.Contains("{eq}Outer.index", doc.Response.Headers);
+    }
+
+    [Fact]
+    public async Task A_loop_with_rows_no_writes_no_result_rows_but_the_values_stay_available()
+    {
+        var path = Build(new TempDir(), new Step("Loop", "For", Config: "from=1;to=2;rows=no"), new Step("Each", Parent: "Loop", Url: "/n/<From_response_Loop.output_r>/<From_response_Loop.index_r>"));
+        var (steps, paths, _) = await RunAsync(path, Ok);
+        Assert.Equal(["Each", "Each"], steps);
+        Assert.Equal(["/n/1/0", "/n/2/1"], paths);
+    }
+
+    [Fact]
     public async Task For_counts_from_to_and_exposes_the_counter_only_inside_the_loop()
     {
         using var dir = new TempDir();

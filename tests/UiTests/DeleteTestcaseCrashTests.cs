@@ -239,5 +239,35 @@ public class FileStepColumnTests
         var vm = new DataEditorViewModel(Samples.Copy(dir, "DataEngine-all-parameters.xlsx"));
         Assert.True(vm.AddFileColumn("ReadPdf"));
         Assert.False(vm.AddFileColumn("ReadPdf"));
+        Assert.True(vm.RemoveFileColumnIfEmpty("ReadPdf"));   // nothing typed in it
+        Assert.False(vm.RemoveFileColumnIfEmpty("ReadPdf"));
+    }
+}
+
+public class StepGuideExamplesTests
+{
+    [Theory]
+    [InlineData("file")] [InlineData("script")] [InlineData("for")] [InlineData("foreach")] [InlineData("while")] [InlineData("if")]
+    public void Every_guide_has_steps_and_its_example_config_reads(string type)
+    {
+        var guide = LoadTestingTool.UI.StepTypeGuide.For(type)!;
+        Assert.NotNull(guide);
+        Assert.True(guide.Steps.Length >= 4);
+        if (guide.ExampleConfig is { } example)
+        {
+            if (example.TrimStart().StartsWith('{')) System.Text.Json.JsonDocument.Parse(example);
+            else Assert.NotEmpty(LoadTestingTool.Execution.ControlConfig.Parse(example));
+        }
+        Assert.Contains(type is "file" ? "<Step>.output" : type is "script" ? "Add variable" : "Output", string.Join(" ", guide.Steps));
+    }
+
+    [Fact]
+    public void The_loop_settings_show_a_field_for_each_setting_and_the_column_button_adds_the_request_column()
+    {
+        using var dir = new TempDir();
+        var vm = new DataEditorViewModel(Samples.Copy(dir, "DataEngine-all-parameters.xlsx"));
+        Assert.True(vm.AddControlColumn("Loop", "to"));
+        Assert.False(vm.AddControlColumn("Loop", "to"));
+        Assert.Contains(LoadTestingTool.UI.ControlStepSettings.For("For"), s => s.Key == "rows");
     }
 }

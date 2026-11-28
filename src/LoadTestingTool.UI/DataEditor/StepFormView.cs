@@ -165,7 +165,9 @@ public sealed class StepFormView : UserControl
         var type = _step.TypeText;
 
         var head = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        head.Children.Add(Text("STEP SETTINGS", 11, Muted, bold: true, vertical: VerticalAlignment.Center));
+        var settingsTitle = new StackPanel { Orientation = Orientation.Horizontal, Children = { Text("STEP SETTINGS", 11, Muted, bold: true, vertical: VerticalAlignment.Center) } };
+        if (IsControl(type) && StepTypeGuide.Icon(type, () => _step.Value("stepconfig"), example => _step.Write("stepconfig", example)) is { } controlGuide) settingsTitle.Children.Add(controlGuide);
+        head.Children.Add(settingsTitle);
         if (StepTypeSection.HasSettings(type))
         {
             var wizard = new Button { Content = "Configure…", Classes = { "accent" } };
@@ -187,6 +189,7 @@ public sealed class StepFormView : UserControl
         }
         if (UsesHeaders(type)) _settings.Children.Add(HeadersSection());
         if (!IsControl(type) && !type.Trim().Equals("ActionManual", StringComparison.OrdinalIgnoreCase)) _settings.Children.Add(new OutputVariablesView(_step));
+        if (type.Trim().ToLowerInvariant() is "for" or "foreach" or "while") _settings.Children.Add(new LoopSettingsView(_step, type.Trim().ToLowerInvariant() switch { "for" => "For", "foreach" => "ForEach", _ => "While" }, Follow));
         if (IsControl(type)) _settings.Children.Add(new ControlOutputView(_step, !type.Trim().Equals("If", StringComparison.OrdinalIgnoreCase)));
         _settings.Children.Add(RawConfig());
         if (_step.Editor is { } owner)

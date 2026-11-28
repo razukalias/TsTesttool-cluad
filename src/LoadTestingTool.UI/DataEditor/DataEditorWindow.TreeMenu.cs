@@ -74,6 +74,15 @@ public partial class DataEditorWindow
         if (match is not null) tabs.SelectedItem = match;
     }
 
+    /// <summary>Removing a step also removes its data columns; when they hold values the person is asked first.</summary>
+    private async Task RemoveAfterAskingAsync(StepNode step, Action remove)
+    {
+        var held = _shell.ColumnsWithData(step);
+        if (held.Count > 0 && !await ConfirmWindow.AskAsync(this, "Remove step " + step.Name,
+                $"Removing {step.Name} also removes {held.Count} data {(held.Count == 1 ? "column that holds" : "columns that hold")} values: {string.Join(", ", held.Take(6))}{(held.Count > 6 ? ", …" : string.Empty)}. Undo brings them back.", "Remove step and columns")) return;
+        remove();
+    }
+
     private ContextMenu? BuildTreeMenu(TreeView tree, object node)
     {
         var menu = new ContextMenu();
@@ -118,12 +127,12 @@ public partial class DataEditorWindow
                 }
                 menu.Items.Add(new Separator());
                 var inside = step.IsControl ? ChildCount(step) : 0;
-                var remove = Item(inside > 0 ? $"Remove step (its {inside} child {(inside == 1 ? "step moves" : "steps move")} out one level)" : "Remove step", () => _shell.RemoveStep(step));
+                var remove = Item(inside > 0 ? $"Remove step (its {inside} child {(inside == 1 ? "step moves" : "steps move")} out one level)" : "Remove step", () => _ = RemoveAfterAskingAsync(step, () => _shell.RemoveStep(step)));
                 remove.Tag = "tree-remove";
                 menu.Items.Add(remove);
                 if (inside > 0)
                 {
-                    var removeAll = Item($"Remove step and its {inside} child {(inside == 1 ? "step" : "steps")}", () => _shell.RemoveStepWithChildren(step));
+                    var removeAll = Item($"Remove step and its {inside} child {(inside == 1 ? "step" : "steps")}", () => _ = RemoveAfterAskingAsync(step, () => _shell.RemoveStepWithChildren(step)));
                     removeAll.Tag = "tree-remove-with-children";
                     menu.Items.Add(removeAll);
                 }

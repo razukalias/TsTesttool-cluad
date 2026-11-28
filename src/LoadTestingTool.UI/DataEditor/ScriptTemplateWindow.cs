@@ -50,6 +50,13 @@ public sealed class ScriptTemplateWindow : Window
 
         var validate = new Button { Content = "Validate", Tag = "script-validate" };
         validate.Click += (_, _) => Validate();
+        var addVariable = new Button { Content = "Add variable…", Tag = "script-add-variable" };
+        ToolTip.SetTip(addVariable, "Adds a line like  var orderId = \"_orderId_\";  at the top of the script, filled from a request column of the row");
+        addVariable.Click += async (_, _) =>
+        {
+            var chosen = await new ScriptVariableWindow(variables, [], _code.Text ?? string.Empty).ShowDialog<(string Name, string Placeholder)?>(this);
+            if (chosen is { } pick) _code.Text = ScriptVariableLines.AddToTop(_code.Text, pick.Name, pick.Placeholder);
+        };
         var save = new Button { Content = "Save", Classes = { "primary" }, Tag = "script-save", MinWidth = 90 };
         save.Click += (_, _) => Save();
         var cancel = new Button { Content = "Close", Tag = "script-close", MinWidth = 90, IsCancel = true };
@@ -72,7 +79,7 @@ public sealed class ScriptTemplateWindow : Window
         var bottom = new StackPanel { Spacing = 6, Margin = new Thickness(0, 8, 0, 0), Children =
         {
             _problems, _status,
-            new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { validate, cancel, save } },
+            new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { addVariable, validate, cancel, save } },
         } };
         DockPanel.SetDock(bottom, Dock.Bottom); left.Children.Add(bottom);
         var editor = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };

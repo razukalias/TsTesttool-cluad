@@ -555,6 +555,8 @@ public sealed class SqliteHistoryTests : IDisposable
 
         var first = store.ImportLogFiles(logs, ["qa", "dev"]);
         Assert.Equal((3, 2, 0, 1), (first.Files, first.Added, first.Skipped, first.NoRun));
+        Assert.Single(first.NoRunFiles!);   // the name of the log that matched no run is reported
+        Assert.EndsWith(".log", first.NoRunFiles![0]);
         Assert.Equal("first", store.LoadLog("20261126_100000_a1b2c3d4", "Order checkout", "qa"));
         Assert.Equal("second", store.LoadLog("20261126_110000_e5f6a7b8", "Order checkout", "default"));   // no known environment in the name: default
         Assert.Equal(2, store.LogTotals().Logs);

@@ -121,6 +121,9 @@ public sealed partial class EditorShellViewModel
         if (step.Owner.StepNodes.FirstOrDefault(n => string.Equals(n.Name, name, StringComparison.OrdinalIgnoreCase)) is { } again) SelectedNode = again;
     }
 
+    /// <summary>The data columns with values that removing the step would take out.</summary>
+    public IReadOnlyList<string> ColumnsWithData(StepNode step) => EditorOf(step)?.ColumnsWithDataOfStep(step.Name) ?? [];
+
     public void RemoveStep(StepNode step)
     {
         if (EditorOf(step) is not { } editor) return;

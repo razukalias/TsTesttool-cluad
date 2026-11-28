@@ -224,6 +224,9 @@ public sealed partial class DataEditorViewModel
     public void RemoveStepNamed(string name)
         => RemoveStepRow(StepRows.FirstOrDefault(r => string.Equals(r.CurrentName, name, StringComparison.OrdinalIgnoreCase)));
 
+    /// <summary>The data columns of the step (request and response) that hold values and would be removed with it.</summary>
+    public IReadOnlyList<string> ColumnsWithDataOfStep(string name) => _document.StepColumnsWithData(name);
+
     public void RemoveStepRow(StepRowViewModel? step)
     {
         if (step is null) return;

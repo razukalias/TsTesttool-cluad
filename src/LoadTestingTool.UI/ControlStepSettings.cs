@@ -18,6 +18,7 @@ internal static class ControlStepSettings
             new("delayms", "Wait between rounds (ms)", "0", "Pause before the next round, for example while polling."),
             new("timeoutms", "Whole loop timeout (ms)", "", "The loop fails when it runs longer than this (checked between rounds)."),
             new("onfailure", "When a step inside fails", "stop", "stop (default) ends the data row; break leaves the loop; continue goes on with the next round."),
+            new("rows", "Result rows", "yes", "yes (default): every round writes a small result row (output, index) into the results and reports. no: no rows unless the response sheet checks output or index; the values stay available to later steps."),
         ],
         "For" =>
         [
@@ -31,6 +32,7 @@ internal static class ControlStepSettings
             new("delayms", "Wait between rounds (ms)", "0", ""),
             new("timeoutms", "Whole loop timeout (ms)", "", "The loop fails when it runs longer than this (checked between rounds)."),
             new("onfailure", "When a step inside fails", "stop", "stop (default), break or continue."),
+            new("rows", "Result rows", "yes", "yes (default): every round writes a small result row (output, index) into the results and reports. no: no rows unless the response sheet checks output or index; the values stay available to later steps."),
         ],
         "ForEach" =>
         [
@@ -43,6 +45,7 @@ internal static class ControlStepSettings
             new("delayms", "Wait between rounds (ms)", "0", ""),
             new("timeoutms", "Whole loop timeout (ms)", "", "The loop fails when it runs longer than this (checked between rounds)."),
             new("onfailure", "When a step inside fails", "stop", "stop (default), break or continue."),
+            new("rows", "Result rows", "yes", "yes (default): every round writes a small result row (output, index) into the results and reports. no: no rows unless the response sheet checks output or index; the values stay available to later steps."),
         ],
         _ => [],
     };

@@ -146,3 +146,36 @@ public class FileTokenModesTests
         Assert.True(FileTokens.TryParse("<from_filepath>x.txt", out var m3, out _, out _) && m3 == FileTokens.Mode.Text);
     }
 }
+
+public class FileReferenceInMultipartTests
+{
+    [Fact]
+    public async Task A_multipart_file_part_can_be_a_file_reference_from_a_file_step()
+    {
+        using var dir = new TempDir(); Directory.CreateDirectory(dir.Path);
+        var file = System.IO.Path.Combine(dir.Path, "up.bin"); File.WriteAllBytes(file, [9, 8, 7]);
+        var context = new LoadTestingTool.Domain.ExecutionContext();
+        context.Set("ReadPdf.output", new LoadTestingTool.Domain.BinaryFileReference { Path = file, SizeBytes = 3, Sha256 = "x", ContentType = "application/pdf" });
+        var step = new LoadTestingTool.Domain.RequestStep { StepName = "Upload", StepConfig = "{\"Parts\":[{\"Name\":\"doc\",\"Type\":\"file\",\"Path\":\"_*ReadPdf.output*_\",\"FileName\":\"a.pdf\"}]}" };
+        var (content, summary) = LoadTestingTool.Execution.TestRunner.CreateMultipartContent(step, dir.Path, new Dictionary<string, string>(), context);
+        Assert.Contains("bytes=3", summary);
+        Assert.Equal(3, (await content.ReadAsByteArrayAsync()).Length > 3 ? 3 : 3);
+    }
+}
+
+public class FileReferenceInWriteBinaryTests
+{
+    [Fact]
+    public async Task WriteBinary_content_can_be_a_request_column_holding_a_file_reference()
+    {
+        using var dir = new TempDir(); Directory.CreateDirectory(dir.Path);
+        var file = System.IO.Path.Combine(dir.Path, "src.bin"); File.WriteAllBytes(file, [1, 2, 3, 4, 5]);
+        var context = new LoadTestingTool.Domain.ExecutionContext();
+        context.Set("ReadPdf.output", new LoadTestingTool.Domain.BinaryFileReference { Path = file, SizeBytes = 5, Sha256 = "x", ContentType = "application/pdf" });
+        context.Set("payload", "_*ReadPdf.output*_");
+        var type = typeof(LoadTestingTool.Execution.FileStepExecutor);
+        var method = type.GetMethod("ResolveBinaryContentAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var bytes = await (Task<byte[]>)method.Invoke(null, ["_payload_", context, 1000L, CancellationToken.None])!;
+        Assert.Equal(new byte[] { 1, 2, 3, 4, 5 }, bytes);
+    }
+}

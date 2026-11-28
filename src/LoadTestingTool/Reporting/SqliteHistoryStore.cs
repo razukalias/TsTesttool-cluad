@@ -479,7 +479,7 @@ public sealed class SqliteHistoryStore : IHistoryStore
         return Scalar(connection, "SELECT 1 FROM logs WHERE run_id=@r LIMIT 1", ("@r", runId)) is not null;
     }
 
-    public sealed record LogImportResult(int Files, int Added, int Skipped, int NoRun);
+    public sealed record LogImportResult(int Files, int Added, int Skipped, int NoRun, IReadOnlyList<string>? NoRunFiles = null);
 
     /// <summary>
     /// Reads the internal logs of finished runs from a Logs folder into the database. A file name carries only the last 8 characters of the run id
@@ -499,6 +499,7 @@ public sealed class SqliteHistoryStore : IHistoryStore
             while (reader.Read()) known.Add((reader.GetString(0), reader.GetString(1)));
         }
         int files = 0, added = 0, skipped = 0, noRun = 0;
+        var noRunFiles = new List<string>();
         foreach (var path in Directory.GetFiles(logsFolder, "*.log", SearchOption.TopDirectoryOnly))
         {
             var name = System.IO.Path.GetFileNameWithoutExtension(path);
@@ -509,18 +510,18 @@ public sealed class SqliteHistoryStore : IHistoryStore
             files++;
             var shortId = name[(marker + 5)..];
             var matches = runs.Where(r => Safe(r).EndsWith(shortId, StringComparison.OrdinalIgnoreCase)).ToList();
-            if (matches.Count != 1) { noRun++; continue; }
+            if (matches.Count != 1) { noRun++; noRunFiles.Add(System.IO.Path.GetFileName(path)); continue; }
             var runId = matches[0];
             var prefix = name[..name.IndexOf($"_{status}_", StringComparison.OrdinalIgnoreCase)];
             var environment = environments.Append("default").Select(Safe).OrderByDescending(x => x.Length).FirstOrDefault(x => prefix.EndsWith($"_{x}", StringComparison.OrdinalIgnoreCase));
             var testcase = environment is null ? prefix : prefix[..^(environment.Length + 1)];
             if (known.Contains((runId, name + ".log"))) { skipped++; continue; }
             string text;
-            try { text = File.ReadAllText(path); } catch (IOException) { noRun++; continue; }
+            try { text = File.ReadAllText(path); } catch (IOException) { noRun++; noRunFiles.Add(System.IO.Path.GetFileName(path)); continue; }
             SaveLog(runId, name + ".log", testcase, environment ?? "default", status, text);
             added++;
         }
-        return new(files, added, skipped, noRun);
+        return new(files, added, skipped, noRun, noRunFiles);
     }
 
     /// <summary>Keeps the workbook as it was for this run. Identical content is stored once, however many runs used it.</summary>

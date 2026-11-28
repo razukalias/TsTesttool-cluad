@@ -106,6 +106,33 @@ public sealed partial class DataEditorViewModel
         return true;
     }
 
+    /// <summary>Takes the request column <c>Step.file</c> out again when no row has a value in it (a column holding file names is kept).</summary>
+    public bool RemoveFileColumnIfEmpty(string step)
+    {
+        var header = $"{step}.file";
+        var at = _document.Request.FindColumn(header);
+        if (at < 0 || _document.Request.Rows.Any(r => !r.IsBlank && r.GetAt(at).Trim().Length > 0)) return false;
+        Record($"remove column {header}");
+        _document.Request.RemoveColumn(at);
+        MarkChanged();
+        BuildRows();
+        ShowStatus($"Removed the empty request column {header}.", isError: false);
+        return true;
+    }
+
+    /// <summary>Gives a loop or If setting its request column <c>Step.key</c> (the value of each data row) when the sheet lacks it.</summary>
+    public bool AddControlColumn(string step, string key)
+    {
+        var header = $"{step}.{key}";
+        if (_document.Request.FindColumn(header) >= 0) return false;
+        Record($"add column {header}");
+        _document.Request.EnsureColumn(header);
+        MarkChanged();
+        BuildRows();
+        ShowStatus($"Added the request column {header}: put the value for each data row in it.", isError: false);
+        return true;
+    }
+
     public ObservableCollection<ResponseHeaderChoice> ResponseHeaderChoices { get; } = [];
     [ObservableProperty] private string _responseHeadersNote = string.Empty;
 

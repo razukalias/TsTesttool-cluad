@@ -246,7 +246,7 @@ public sealed class StepTypeSection : UserControl
             var wantRow = combo.SelectedIndex == 1;
             if (wantRow == FromRow()) return;
             if (wantRow) { _config["Path"] = "_file_"; _step.Editor?.AddFileColumn(_step.CurrentName); }
-            else _config.Remove("Path");
+            else { _config.Remove("Path"); _step.Editor?.RemoveFileColumnIfEmpty(_step.CurrentName); }
             Save();
             Rebuild();
         };

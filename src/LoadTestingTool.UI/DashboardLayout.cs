@@ -481,6 +481,14 @@ public sealed partial class MainWindow
         };
         window.Show(Host);
     }
+    /// <summary>The first three log files that matched no run, then "and N more".</summary>
+    private static string UnmatchedLogNames(LoadTestingTool.Reporting.SqliteHistoryStore.LogImportResult r)
+    {
+        var names = (r.NoRunFiles ?? []).Take(3).ToList();
+        var more = r.NoRun - names.Count;
+        return string.Join(", ", names) + (more > 0 ? (names.Count > 0 ? " and " : string.Empty) + more + " more" : string.Empty);
+    }
+
     private static Control KeyValue(string label, string value)
     {
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("105,*") };
@@ -1452,7 +1460,7 @@ public sealed partial class MainWindow
             try
             {
                 var r = store.ImportLogFiles(item.LogsFolder, item.EnvironmentOptions);
-                Say($"{r.Added} logs stored, {r.Skipped} already there" + (r.NoRun > 0 ? $", {r.NoRun} belong to runs that are not in the database." : "."));
+                Say($"{r.Added} logs stored, {r.Skipped} already there" + (r.NoRun > 0 ? $", {r.NoRun} belong to runs that are not in the database ({UnmatchedLogNames(r)})." : "."));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException) { Say($"Import failed: {ex.Message}"); }
             Dispatcher.UIThread.Post(RefreshArtifacts);
