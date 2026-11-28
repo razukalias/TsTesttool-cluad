@@ -187,6 +187,7 @@ public sealed class StepFormView : UserControl
         }
         if (UsesHeaders(type)) _settings.Children.Add(HeadersSection());
         if (!IsControl(type) && !type.Trim().Equals("ActionManual", StringComparison.OrdinalIgnoreCase)) _settings.Children.Add(new OutputVariablesView(_step));
+        if (IsControl(type)) _settings.Children.Add(new ControlOutputView(_step, !type.Trim().Equals("If", StringComparison.OrdinalIgnoreCase)));
         _settings.Children.Add(RawConfig());
         if (_step.Editor is { } owner)
         {

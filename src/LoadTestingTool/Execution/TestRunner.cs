@@ -295,6 +295,35 @@ public sealed class TestRunner
                         _logger.Warn($"CONTROL STEP FAILED | step={control.StepName} | {message}");
                         return false;
                     }
+                    // <Step>.output (and <Step>.index for loops) is always available to later steps; it also becomes a small result row the response sheet can check.
+                    string? pendingOutput = null, pendingIndex = null;
+                    async Task EmitAsync(string output, string? index)
+                    {
+                        var key = control.StepName;
+                        S().Correlation[$"{key}.output"] = output;
+                        if (index is not null) S().Correlation[$"{key}.index"] = index;
+                        var now = DateTimeOffset.Now;
+                        var body = new System.Text.Json.Nodes.JsonObject { ["output"] = output };
+                        if (index is not null) body["index"] = index;
+                        var row = new RequestResult
+                        {
+                            RunId = run.RunId, RequestId = $"CTL-{Interlocked.Increment(ref _sequence):D8}", TestcaseIndex = control.TestcaseIndex, Testcase = testcase.Testcase, DataId = data.DataId,
+                            StepName = control.StepName, StepType = control.StepType.WireName(), Thread = threadId, Iteration = iteration, SequenceOrder = Interlocked.Increment(ref stepOrder), StartedAt = now, EndedAt = now,
+                            Verb = control.StepType.WireName(), StepConfig = control.StepConfig, HttpStatus = 200, ResponseBody = body.ToJsonString(), Environment = environment
+                        };
+                        var defs = workbook.Assertions.GetValueOrDefault((control.TestcaseIndex, data.DataId, control.StepName)) ?? [];
+                        if (control.AssertEnabled && defs.Count > 0)
+                        {
+                            var (plain, bugs) = BugTag.Strip(defs, environment);
+                            var resolved = await ResolveAssertionReferencesAsync(plain, S().Correlation, S().References, executionContext, token);
+                            var evaluated = _assertions.Evaluate(row.ResponseBody, "json", resolved, run.RunId, row.RequestId, 200, control.IgnoreEmpty, control.AssertOnlyResponse, null);
+                            BugTag.Apply(evaluated, bugs);
+                            row.Assertions.AddRange(evaluated);
+                            if (row.Assertions.Any(a => a.Result == "FAIL")) row.FailureCategory = FailureCategories.Assertion;
+                        }
+                        AddRequest(testcaseResult, row);
+                        Publish(row);
+                    }
                     IEnumerable<RequestStep> Inside(bool elseBranch) => testcase.Steps.Where(step => step.Parent.Equals(control.StepName, StringComparison.OrdinalIgnoreCase) && step.InElse == elseBranch).ToList();
                     async Task<string> TextAsync(string text)
                     {
@@ -331,6 +360,7 @@ public sealed class TestRunner
                         var outer = scope?.Round ?? string.Empty;
                         if (scope is not null) scope.Round = $"{outer}/{control.StepName}#{number}";   // new random numbers, GUIDs and dates every round
                         _logger.Info($"LOOP ROUND | loop={control.StepName} | type={control.StepType.WireName()} | round={number}");
+                        if (pendingOutput is not null) await EmitAsync(pendingOutput, pendingIndex);
                         try { return await RunSequenceAsync(Inside(false)) ? 0 : onFailure switch { "continue" => 0, "break" => 1, _ => 2 }; }
                         finally { if (scope is not null) scope.Round = outer; endOfLastRound = new Dictionary<string, string>(S().Correlation, StringComparer.OrdinalIgnoreCase); }
                     }
@@ -353,6 +383,7 @@ public sealed class TestRunner
                                 if (await MetAsync(skipWhen)) { _logger.Info($"LOOP SKIP | step={control.StepName} | {variable}={value} | skipwhen={skipWhen}"); continue; }
                                 _logger.Info($"LOOP ROUND | step={control.StepName} | round={round + 1} | {variable}={value}");
                                 round++;
+                                pendingOutput = value; pendingIndex = (position - 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
                                 var outcome = await RoundAsync(round);
                                 if (outcome == 1) break;
                                 if (outcome == 2) return false;
@@ -377,6 +408,7 @@ public sealed class TestRunner
                             {
                                 var met = await ConditionAsync();
                                 _logger.Info($"IF | step={control.StepName} | condition={control.Condition} | result={met}");
+                                await EmitAsync(met ? "true" : "false", null);
                                 return await RunSequenceAsync(Inside(!met));
                             }
                             case StepType.For:
@@ -427,6 +459,7 @@ public sealed class TestRunner
                                         rounds++;
                                         S().LoopVars["round"] = rounds.ToString(System.Globalization.CultureInfo.InvariantCulture);
                                         _logger.Info($"LOOP ROUND | step={control.StepName} | round={rounds}");
+                                        pendingOutput = rounds.ToString(System.Globalization.CultureInfo.InvariantCulture); pendingIndex = (rounds - 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
                                         var outcome = await RoundAsync(rounds);
                                         if (outcome == 1) break;
                                         if (outcome == 2) return false;

@@ -85,6 +85,14 @@ public sealed partial class DataEditorViewModel
         return columns.Count;
     }
 
+    /// <summary>Adds the expected-value columns <c>Step.output</c> (and <c>Step.index</c> for a loop) to the response sheet, the ones that are not there yet.</summary>
+    public int AddOutputColumns(string step, bool index)
+    {
+        var wanted = (index ? new[] { "output", "index" } : ["output"]).Where(path => !ResponseColumnExists(step, path)).Select(path => ("eq", path)).ToList();
+        if (wanted.Count == 0) { ShowStatus($"{step} already has its output columns in the response sheet.", isError: false); return 0; }
+        return AddResponseBodyColumns(step, wanted, ResponseFill.None, null, _ => null);
+    }
+
     public ObservableCollection<ResponseHeaderChoice> ResponseHeaderChoices { get; } = [];
     [ObservableProperty] private string _responseHeadersNote = string.Empty;
 

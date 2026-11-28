@@ -213,3 +213,19 @@ public class SavedWorkbookReadableTests
         Assert.Equal(vm.Testcases.Count, new DataEditorViewModel(path).Testcases.Count);
     }
 }
+
+public class ControlOutputColumnTests
+{
+    [Fact]
+    public void The_output_and_index_columns_are_added_only_on_request_and_only_once()
+    {
+        using var dir = new TempDir();
+        var vm = new DataEditorViewModel(Samples.Copy(dir, "DataEngine-all-parameters.xlsx"));
+        Assert.False(vm.ResponseColumnExists("Poll", "output"));
+        Assert.Equal(2, vm.AddOutputColumns("Poll", true));
+        Assert.True(vm.ResponseColumnExists("Poll", "output")); Assert.True(vm.ResponseColumnExists("Poll", "index"));
+        Assert.Equal(0, vm.AddOutputColumns("Poll", true));
+        Assert.Equal(1, vm.AddOutputColumns("Gate", false));
+        Assert.False(vm.ResponseColumnExists("Gate", "index"));
+    }
+}

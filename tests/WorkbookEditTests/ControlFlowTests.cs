@@ -221,7 +221,7 @@ public class ControlFlowTests
             new Step("After", Url: "/after"));
         var (steps, paths, _) = await RunAsync(path, Ok);
         Assert.Equal(["/first", "/then", "/after"], paths);
-        Assert.Equal(["First", "Then1", "After"], steps);
+        Assert.Equal(["First", "Check", "Then1", "After"], steps);   // the If writes a small result row (Check.output = true)
 
         var (_, otherPaths, _) = await RunAsync(Build(new TempDir(),
             new Step("First", Url: "/first"),
@@ -229,6 +229,20 @@ public class ControlFlowTests
             new Step("Then1", Parent: "Check", Url: "/then"),
             new Step("Else1", Parent: "Check:else", Url: "/else")), Ok);
         Assert.Equal(["/first", "/else"], otherPaths);
+    }
+
+    [Fact]
+    public async Task A_loop_and_an_if_publish_output_and_index_to_later_steps_and_can_be_checked()
+    {
+        using var dir = new TempDir();
+        var path = Build(dir,
+            new Step("Each", "ForEach", Config: "{\"items\":\"a,b,c\"}"),
+            new Step("Call", Parent: "Each", Url: "/x/<From_response_Each.output_r>/<From_response_Each.index_r>"),
+            new Step("Check", "If", Condition: "1 eq 1"),
+            new Step("Then1", Parent: "Check", Url: "/after/<From_response_Check.output_r>"));
+        var (steps, paths, _) = await RunAsync(path, Ok);
+        Assert.Equal(["/x/a/0", "/x/b/1", "/x/c/2", "/after/true"], paths);
+        Assert.Equal(["Each", "Call", "Each", "Call", "Each", "Call", "Check", "Then1"], steps);
     }
 
     [Fact]
