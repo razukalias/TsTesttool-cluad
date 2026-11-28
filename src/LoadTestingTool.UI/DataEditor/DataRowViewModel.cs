@@ -43,7 +43,7 @@ public sealed partial class StepNode(TestcaseItem owner, string name, int positi
     public int Position { get; } = position;
     /// <summary>The outline number (2, 2.1, 2.2.1); the plain position until the nesting is known.</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))] private string _number = string.Empty;
-    public string Title => $"{(Number.Length > 0 ? Number : Position.ToString())} · {Name}{(IsControl ? $"  ({TypeName})" : string.Empty)}{(InElse ? "  · else" : string.Empty)}{(IsAsync ? "  ⇉ async" : string.Empty)}";
+    public string Title => $"{(Number.Length > 0 ? Number : Position.ToString())} · {Name}{(IsControl ? $"  ({TypeName})" : string.Empty)}{(InElse ? "  · else" : string.Empty)}{(IsAsync ? "  ⇉ async" : string.Empty)}{(IsDisabled ? "  · disabled" : string.Empty)}";
 
     /// <summary>How deep the step sits inside If, While, For and ForEach steps (0 = top level).</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Indent)), NotifyPropertyChangedFor(nameof(Title))] private int _depth;
@@ -51,6 +51,9 @@ public sealed partial class StepNode(TestcaseItem owner, string name, int positi
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))] private bool _inElse;
     /// <summary>The step runs in the background (the async column of the config sheet).</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Title))] private bool _isAsync;
+    /// <summary>The enabled cell is false: the runner skips the step; the tree shows it faded.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(Title)), NotifyPropertyChangedFor(nameof(Fade))] private bool _isDisabled;
+    public double Fade => IsDisabled ? 0.45 : 1.0;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Title)), NotifyPropertyChangedFor(nameof(IconData))] private string _typeName = string.Empty;
 
     /// <summary>The line icon of the step type, as path data.</summary>
@@ -58,7 +61,7 @@ public sealed partial class StepNode(TestcaseItem owner, string name, int positi
     public Avalonia.Thickness Indent => new(Depth * 16, 1, 0, 1);
     public string Kind => IsControl ? TypeName : string.Empty;
 
-    internal void ApplyNesting(StepNesting nesting) { Depth = nesting.Depth; IsControl = nesting.IsControl; InElse = nesting.InElse; TypeName = nesting.TypeName; IsAsync = nesting.IsAsync; }
+    internal void ApplyNesting(StepNesting nesting) { Depth = nesting.Depth; IsControl = nesting.IsControl; InElse = nesting.InElse; TypeName = nesting.TypeName; IsAsync = nesting.IsAsync; IsDisabled = nesting.IsDisabled; }
 }
 
 public sealed partial class TestcaseItem : ObservableObject

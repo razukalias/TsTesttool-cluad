@@ -52,6 +52,12 @@ public interface IEnvironmentSettings
     /// Returns null on success, otherwise why not.
     /// </summary>
     string? SaveExecution(string? instance, string key, string? value) => "Execution settings are not available here.";
+
+    /// <summary>The authentication profiles: for <c>null</c> the global ones, for an instance only its own (they win over the global ones of the same name).</summary>
+    LoadTestingTool.Execution.AuthSettings GetAuth(string? instance) => new();
+
+    /// <summary>Saves the profiles and the default of the global scope or of one instance. Returns null on success, otherwise why not.</summary>
+    string? SaveAuth(string? instance, LoadTestingTool.Execution.AuthSettings settings) => "Authentication settings are not available here.";
 }
 
 /// <summary>One environment with a tick box, in an instance's or the global environment drop-down.</summary>

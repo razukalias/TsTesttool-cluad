@@ -253,6 +253,9 @@ public sealed partial class DataEditorViewModel
     /// <summary>What the "Re-run from history" dialog needs: where the instance's history is and which environments it has; set by whoever hosts the editor.</summary>
     public Func<RerunContext?>? RerunContextProvider { get; set; }
 
+    /// <summary>The names of the authentication profiles a step of this instance can choose (global and the instance's own), set by the shell.</summary>
+    public Func<IReadOnlyList<string>>? AuthProfileNames { get; set; }
+
     /// <summary>Shows a problem in the editor's status line.</summary>
     public void ShowProblem(string message) => ShowStatus(message, isError: true);
 

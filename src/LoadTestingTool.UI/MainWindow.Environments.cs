@@ -292,6 +292,43 @@ public sealed partial class MainWindow
             catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException) { return DataEditor.ExecutionValues.None; }
         }
 
+        public LoadTestingTool.Execution.AuthSettings GetAuth(string? instance)
+        {
+            try
+            {
+                var root = ReadRoot();
+                var node = instance is null ? root["Auth"] : (root["Instances"] as JsonObject)?[instance] is JsonObject own ? own["Auth"] : null;
+                return LoadTestingTool.Execution.AuthJson.Read(node);
+            }
+            catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException) { return new LoadTestingTool.Execution.AuthSettings(); }
+        }
+
+        public string? SaveAuth(string? instance, LoadTestingTool.Execution.AuthSettings settings)
+        {
+            try
+            {
+                var root = ReadRoot();
+                var written = LoadTestingTool.Execution.AuthJson.Write(settings);
+                if (instance is null) { if (written is null) root.Remove("Auth"); else root["Auth"] = written; }
+                else
+                {
+                    var instances = root["Instances"] as JsonObject ?? new JsonObject();
+                    var own = instances[instance] as JsonObject ?? new JsonObject();
+                    if (written is null) own.Remove("Auth"); else own["Auth"] = written;
+                    instances[instance] = own;
+                    root["Instances"] = instances;
+                }
+                Write(root);
+                window.UiLog($"Authentication profiles saved from the data editor. scope={instance ?? "global"}; profiles={settings.Profiles.Count}; default={settings.Default}");
+                return null;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            {
+                window.UiLog($"Could not save the authentication profiles: {ex}");
+                return $"Could not save the authentication profiles to {Path.GetFileName(window._config.SettingsFile)}: {ex.Message}";
+            }
+        }
+
         public string? SaveExecution(string? instance, string key, string? value)
         {
             if (value is not null)

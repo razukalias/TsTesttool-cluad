@@ -87,7 +87,11 @@ internal static class Program
             ConsoleCancelEventHandler? cancelHandler = (_, eventArgs) => { eventArgs.Cancel = true; cancellation.Cancel(); Console.Error.WriteLine("Cancellation requested. Finishing the current operation..."); };
             Console.CancelKeyPress += cancelHandler;
             var stopMonitor = MonitorStopFileAsync(stopFile, cancellation, stopMonitorCancellation.Token);
-            using var http = new HttpClient(new HttpClientHandler { UseDefaultCredentials = true, AutomaticDecompression = DecompressionMethods.All }) { Timeout = Timeout.InfiniteTimeSpan };
+            var httpHandler = new HttpClientHandler { UseDefaultCredentials = true, AutomaticDecompression = DecompressionMethods.All };
+            // the login calls of the authentication profiles use the plain client (same cookies, no credentials added to them); every other request goes through the handler that adds the credentials
+            using var loginHttp = new HttpClient(httpHandler, disposeHandler: false) { Timeout = TimeSpan.FromSeconds(Math.Max(5, config.RequestTimeoutSeconds)) };
+            AuthManager.Current = new AuthManager(config.Auth, loginHttp);   // also without profiles: a step can carry its own "auth" settings
+            using var http = new HttpClient(AuthManager.Current is { } authManager ? new AuthHandler(httpHandler, authManager) : httpHandler) { Timeout = Timeout.InfiniteTimeSpan };
             WorkbookModel workbook;
             byte[]? workbookContent = null;   // the workbook as this run reads it, for the database's snapshot
             try
@@ -341,7 +345,8 @@ internal static class Program
         {
             WorkspaceRoot = Path.GetFullPath(config.WorkspaceRoot),
             TemplatesFolder = Path.GetFullPath(config.TemplatesFolder),
-            Connections = config.Connections
+            Connections = config.Connections,
+            Auth = AuthManager.Current
         }, events.WriteManualPending, eventFolder, string.Equals(uiLaunchId, "not-provided", StringComparison.OrdinalIgnoreCase));
         filters.TryGetValue(testcase.TestcaseIndex, out var selectedDataIds);
         try
@@ -469,6 +474,7 @@ internal static class Program
         var legacyFolder = string.IsNullOrWhiteSpace(instance.Folder) ? string.Empty : ResolveCentralPath(baseDirectory, instance.Folder, instanceKey);
         var instanceFolder = Directory.Exists(derivedFolder) || string.IsNullOrWhiteSpace(legacyFolder) ? derivedFolder : legacyFolder;
         config.InstanceId = instanceKey;
+        config.Auth = AuthSettings.Merge(config.Auth, instance.Auth);
         config.WorkspaceRoot = ResolveCentralPath(instanceFolder, instance.WorkspaceRoot, instanceFolder);
         var globalWorkbook = string.IsNullOrWhiteSpace(config.WorkbookName) ? Path.GetFileName(config.ExcelFilePath) : config.WorkbookName;
         var preferredWorkbook = ResolveCentralPath(instanceFolder, globalWorkbook, config.ExcelFilePath);

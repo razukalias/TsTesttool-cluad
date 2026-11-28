@@ -1216,3 +1216,9 @@ NOT DONE: "Add variable…" for condition scripts (`cs:`; an expression cannot s
 
 ## The four leftovers (DONE 2026-11-28)
 DONE: "Add variable..." for C# conditions (`cs:`): puts `var name = "_column_";` in front on one line and wraps a plain expression in `return`; `_column_` request columns work in cs: conditions. The If step can switch its result row off (checkbox "Write a result row", `rows=no`). The reference warning is skipped for steps inside the same loop (previous round's value). The Re-run center reads each instance's workbook catalog and results in the background. Guides: If (C# condition and rows example), For (previous round example).
+
+## Disable step and Authentication (2026-11-28)
+- [x] Right-click a step › Disable step / Enable step: writes the `enabled` cell (the runner already skips it), the tree shows it faded with "· disabled", one undo step.
+- [x] Authentication profiles (bearer login, OAuth2 client credentials, basic, API key, fixed headers, cookie session) on instance and global level, chosen per step (`auth`: default / none / name / inline), `${NAME}` secrets, `_column_` placeholders for a user per data row, token cache with renewal and one retry after 401, tokens masked everywhere, editor window (instance menu and Configuration panel), step field, Test login, docs/AUTHENTICATION.md.
+- [ ] NOT DONE: OAuth2 authorization-code / password grants and refresh tokens; client certificates; profiles per environment; the Authorization header added by a profile is not shown in the request log of GraphQL steps (only a note for HTTP/WCF); a disabled control step is not shown differently for its child steps; Disable for several ticked steps at once.
+

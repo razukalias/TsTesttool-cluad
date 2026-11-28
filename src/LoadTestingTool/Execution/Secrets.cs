@@ -46,6 +46,9 @@ public static class Secrets
         return text;
     }
 
+    /// <summary>Marks a value (a token or password a profile got) as secret, so it is masked as *** in logs, reports and history.</summary>
+    public static void Register(string? value, string name) { if (!string.IsNullOrEmpty(value) && value.Length >= 4) Used[value] = name; }
+
     public static bool Any => !Used.IsEmpty;
 
     internal static void ResetForTests() { Used.Clear(); _overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); }

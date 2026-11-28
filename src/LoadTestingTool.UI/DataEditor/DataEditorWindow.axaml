@@ -339,7 +339,7 @@
               </Grid>
             </TreeDataTemplate>
             <DataTemplate DataType="vm:StepNode">
-              <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="{Binding Indent}">
+              <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="{Binding Indent}" Opacity="{Binding Fade}">
                 <Viewbox Width="16" Height="16" Margin="0,0,7,0" VerticalAlignment="Center" IsVisible="{Binding $parent[TreeViewItem].ItemCount, Converter={x:Static vm:TreeConverters.IsZero}}"><Canvas Width="24" Height="24"><Path Data="{Binding IconData}" Stroke="#8EA4BC" StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round" /></Canvas></Viewbox>
                 <Button Grid.Column="3" Classes="treemove" Tag="config" Content="⚙" FontSize="13" Margin="4,0,0,0" VerticalAlignment="Center" IsVisible="{Binding IsNotEditing}" ToolTip.Tip="Open this step's settings (Config edit mode)" />
                 <CheckBox Grid.Column="4" Classes="treecheck" Margin="2,0,0,0" IsChecked="{Binding IsChosen, Mode=TwoWay}" ToolTip.Tip="Tick to run this step on its own" />

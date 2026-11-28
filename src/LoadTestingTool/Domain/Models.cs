@@ -57,12 +57,16 @@ public sealed class AppConfig
     public List<string> Environments { get; set; } = [];
     public string WorkspaceRoot { get; set; } = ".";
     public Dictionary<string, SqlConnectionProfile> Connections { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Authentication profiles for every instance and the profile used when a step does not choose one.</summary>
+    public LoadTestingTool.Execution.AuthSettings Auth { get; set; } = new();
     public Dictionary<string, CentralInstanceConfig> Instances { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class CentralInstanceConfig
 {
     public bool Enabled { get; set; } = true;
+    /// <summary>Profiles and default of this instance; they win over the global ones of the same name.</summary>
+    public LoadTestingTool.Execution.AuthSettings? Auth { get; set; }
     // Legacy migration fields. New settings derive these values from the instance key and AppConfig.
     public string Folder { get; set; } = string.Empty;
     public string Workbook { get; set; } = string.Empty;

@@ -110,6 +110,8 @@ public sealed class FeatureConfig
     public string WorkspaceRoot { get; set; } = ".";
     public string TemplatesFolder { get; set; } = "Templates";
     public Dictionary<string, SqlConnectionProfile> Connections { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Logs in for the steps that use authentication; null when the run has no profiles.</summary>
+    public LoadTestingTool.Execution.AuthManager? Auth { get; set; }
 }
 
 public sealed class SqlConnectionProfile

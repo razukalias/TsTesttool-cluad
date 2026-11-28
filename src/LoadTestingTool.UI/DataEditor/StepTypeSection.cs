@@ -84,6 +84,7 @@ public sealed class StepTypeSection : UserControl
         var description = Describe(type);
         if (description.Length > 0) _body.Children.Add(Note(description));
         if (type == "http") _body.Children.Add(ContentTypeField());
+        if (type is "http" or "wcf" or "graphql" or "caseql") _body.Children.Add(AuthField());
         switch (type)
         {
             case "graphql" or "caseql":
@@ -129,6 +130,30 @@ public sealed class StepTypeSection : UserControl
         var combo = new ComboBox { ItemsSource = options, HorizontalAlignment = HorizontalAlignment.Stretch, SelectedItem = options.FirstOrDefault(o => string.Equals(o, current, StringComparison.OrdinalIgnoreCase)) };
         combo.SelectionChanged += (_, _) => { if (combo.SelectedItem is string chosen && !string.Equals(chosen, _step.Value("contenttype"), StringComparison.Ordinal)) _step.Write("contenttype", chosen); };
         return new StackPanel { Spacing = 4, Children = { new TextBlock { Text = "Body format (content type)", FontSize = 12, Foreground = Muted }, combo } };
+    }
+
+    /// <summary>Which authentication profile the step uses: the instance's default, none, or one of the profiles (instance or global). Saved as "auth" in the step settings.</summary>
+    private Control AuthField()
+    {
+        var names = _step.Editor?.AuthProfileNames?.Invoke() ?? [];
+        var current = _config["auth"] is JsonValue ? _config["auth"]!.ToString() : string.Empty;
+        var options = new List<string> { "default", "none" }; options.AddRange(names);
+        var inline = _config["auth"] is JsonObject;
+        if (inline) options.Add("(written in the settings)");
+        else if (current.Length > 0 && !options.Contains(current, StringComparer.OrdinalIgnoreCase)) options.Add(current);
+        var shown = inline ? "(written in the settings)" : options.FirstOrDefault(o => string.Equals(o, current.Length == 0 ? "default" : current, StringComparison.OrdinalIgnoreCase)) ?? "default";
+        var combo = new ComboBox { ItemsSource = options, SelectedItem = shown, HorizontalAlignment = HorizontalAlignment.Stretch, Tag = "step-auth" };
+        var error = new TextBlock { IsVisible = false };
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (combo.SelectedItem is not string chosen || chosen == "(written in the settings)") return;
+            Commit(new Spec("auth", "Authentication", Kind.Text), chosen.Equals("default", StringComparison.OrdinalIgnoreCase) ? string.Empty : chosen, error);
+        };
+        return new StackPanel { Spacing = 4, Children =
+        {
+            new TextBlock { Text = "Authentication", FontSize = 12, Foreground = Muted }, combo,
+            new TextBlock { Text = names.Count == 0 ? "default = the instance's default profile (none defined yet: right-click the instance > Authentication…). none = send no credentials." : "default = the instance's default profile, none = send no credentials, or one of the profiles (right-click the instance > Authentication… to change them).", FontSize = 11, Foreground = Muted, TextWrapping = TextWrapping.Wrap },
+        } };
     }
 
     private static bool Is(JsonObject c, string key, string value) => string.Equals(c[key]?.ToString(), value, StringComparison.OrdinalIgnoreCase);

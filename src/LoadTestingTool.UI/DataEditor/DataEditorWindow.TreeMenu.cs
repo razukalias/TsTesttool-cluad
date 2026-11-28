@@ -92,6 +92,7 @@ public partial class DataEditorWindow
                 menu.Items.Add(Item("Add testcase", () => _ = AddChildAsync(tree, node)));
                 menu.Items.Add(Item("Duplicate instance…", () => _ = DuplicateInstanceAsync(instance)));
                 menu.Items.Add(Item("New instance…", () => _ = NewInstanceAsync()));
+                menu.Items.Add(Item("Authentication…", () => { if (_shell.EnvironmentSettings is { } central) new AuthenticationWindow(central, instance.Name).Show(this); }));
                 break;
             case TestcaseItem:
                 menu.Items.Add(Item("Rename", () => BeginTreeRename(tree, node)));
@@ -104,6 +105,7 @@ public partial class DataEditorWindow
                 break;
             case StepNode step:
                 menu.Items.Add(Item("⚙  Open step settings", () => _shell.OpenStepConfig(step)));
+                menu.Items.Add(step.IsDisabled ? Item("Enable step", () => _shell.SetStepEnabled(step, true)) : Item("Disable step (the runner skips it)", () => _shell.SetStepEnabled(step, false)));
                 menu.Items.Add(new Separator());
                 menu.Items.Add(Item("Rename", () => BeginTreeRename(tree, node)));
                 menu.Items.Add(Item("Duplicate step…", () => _shell.OpenDuplicateStepPanel(step)));

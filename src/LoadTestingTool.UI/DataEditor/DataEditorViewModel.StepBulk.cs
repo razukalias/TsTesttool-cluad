@@ -50,6 +50,23 @@ public sealed partial class DataEditorViewModel
         FinishStepBulk(changed, $"Filled {StepColumns[cellIndex - 1].Title} down {changed} {(changed == 1 ? "step" : "steps")}", 0, string.Empty);
     }
 
+    /// <summary>Sets the enabled cell of the named steps. A disabled step stays in the workbook and the runner skips it. One undo step.</summary>
+    public void SetStepsEnabled(IReadOnlyList<string> names, bool enabled)
+    {
+        var steps = names.Select(n => StepRows.FirstOrDefault(r => string.Equals(r.CurrentName, n, StringComparison.OrdinalIgnoreCase))).Where(r => r is not null).Select(r => r!).ToList();
+        if (steps.Count == 0) return;
+        var value = enabled ? "True" : "False";
+        var cell = StepColumns.ToList().FindIndex(c => c.Title.Equals("Enabled", StringComparison.OrdinalIgnoreCase));
+        Record($"{(enabled ? "enable" : "disable")} {(steps.Count == 1 ? "step " + steps[0].CurrentName : steps.Count + " steps")}");
+        var changed = 0;
+        foreach (var step in steps)
+        {
+            if (cell >= 0) { if (ApplyStepCell(step, cell + 1, value) == CellResult.Changed) changed++; }
+            else { step.Row.Set("enabled", value); changed++; }
+        }
+        FinishStepBulk(changed, $"{(enabled ? "Enabled" : "Disabled")} {(changed == 1 ? "step " + steps[0].CurrentName : changed + " steps")}" + (enabled ? string.Empty : ". The runner skips it; Undo or Enable brings it back"), 0, string.Empty);
+    }
+
     private void FinishStepBulk(int changed, string message, int skipped, string skippedNote)
     {
         if (changed == 0)

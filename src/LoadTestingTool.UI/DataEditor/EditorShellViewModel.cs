@@ -378,6 +378,23 @@ public sealed partial class EditorShellViewModel : ObservableObject
     }
 
     /// <summary>The ⚙ beside a step in the tree: shows the testcase's steps as forms (Config edit mode) with only this step's settings in view.</summary>
+    /// <summary>Right-click Disable / Enable on a step: the step stays in the workbook, the runner skips it while it is disabled.</summary>
+    public void SetStepEnabled(StepNode step, bool enabled)
+    {
+        if (EditorOf(step) is not { } editor) return;
+        Current = editor;
+        if (!ReferenceEquals(editor.SelectedTestcase, step.Owner)) editor.SelectedTestcase = step.Owner;
+        editor.SetStepsEnabled([step.Name], enabled);
+    }
+
+    /// <summary>The authentication profiles an instance can use: its own and the global ones.</summary>
+    public IReadOnlyList<string> AuthProfileNamesOf(string instance)
+    {
+        if (EnvironmentSettings is not { } settings) return [];
+        try { return LoadTestingTool.Execution.AuthSettings.Merge(settings.GetAuth(null), settings.GetAuth(instance)).Profiles.Keys.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList(); }
+        catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException) { return []; }
+    }
+
     public void OpenStepConfig(StepNode step)
     {
         SelectedNode = step;
@@ -509,6 +526,7 @@ public sealed partial class EditorShellViewModel : ObservableObject
         node.Editor!.CloseRequested += (_, _) => OnEditorClosed();
         node.Editor.HistoryHandler = testcase => HistoryHandler?.Invoke(node.Name, testcase);
         node.Editor.RerunContextProvider = () => RerunContextProvider?.Invoke(node.Name);
+        node.Editor.AuthProfileNames = () => AuthProfileNamesOf(node.Name);
         node.SelectedTestcaseChanged += (_, _) =>
         {
             if (ReferenceEquals(Current, node.Editor) && node.Editor!.SelectedTestcase is { } chosen2 && !ReferenceEquals(SelectedNode, chosen2) && !(SelectedNode is StepNode sn && ReferenceEquals(sn.Owner, chosen2))) SelectedNode = chosen2;

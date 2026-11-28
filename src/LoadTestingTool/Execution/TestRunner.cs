@@ -612,6 +612,22 @@ public sealed class TestRunner
     private async Task<RequestResult> ExecuteRequestAsync(RunResult run, TestcaseDefinition testcase, string dataId, RequestStep step, Dictionary<string, string> variables, IReadOnlySet<string> redactedVariables, IReadOnlyList<AssertionDefinition> definitions, IReadOnlyDictionary<string, string> requestReferences, int sequence, int thread, int iteration, Dictionary<string, string> correlation, Dictionary<string, CorrelationRecord> correlationSources, LoadTestingTool.Domain.ExecutionContext executionContext, CancellationToken cancellationToken, string environment)
     {
         using var configVariables = StepConfig.UseVariables(variables);   // the step's settings may hold _column_ placeholders
+        AuthScope? authScope = null;
+        if (_features.Auth is { } authManager && (step.StepType is StepType.Http or StepType.Wcf or StepType.GraphQL or StepType.CaseQL))
+        {
+            try
+            {
+                using var settings = StepConfig.Parse(step);
+                if (authManager.Select(settings.RootElement) is { } chosen) authScope = new AuthScope { ProfileName = chosen.Name, Profile = chosen.Profile, Variables = variables };
+            }
+            catch (InvalidDataException ex)
+            {
+                var failure = CreateControlFailure(run, testcase, dataId, step, sequence, thread, iteration, environment, ex.Message);
+                failure.FailureCategory = "Authentication";
+                return failure;
+            }
+        }
+        using var authEnter = AuthScope.Enter(authScope);
         if (!step.StepType.IsHttpLike()) return await ExecuteNonHttpAsync(run, testcase, dataId, step, variables, redactedVariables, definitions, requestReferences, sequence, thread, iteration, correlation, correlationSources, executionContext, cancellationToken, environment);
         var started = DateTimeOffset.Now; var sw = Stopwatch.StartNew(); var requestId = $"REQ-{Interlocked.Increment(ref _sequence):D8}"; var templatePath = Path.Combine(_templatesFolder, step.TemplateSource);
         _logger.Info($"Request starting. RequestId={requestId}; testcase={testcase.TestcaseIndex}; dataid={dataId}; stepName={step.StepName}; thread={thread}; iteration={iteration}; verb={step.Verb}; url={step.TargetUrl}; template={templatePath}; ignoreempty={step.IgnoreEmpty}");
@@ -672,7 +688,7 @@ public sealed class TestRunner
             result.RequestHeaders = InternalLogger.RedactVariableValues(string.Join("; ", resolvedHeaders.Select(h => $"{h.Key}={h.Value}")), redactedVariables, variables); foreach (var h in resolvedHeaders) if (!h.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase) && !request.Headers.TryAddWithoutValidation(h.Key, h.Value)) request.Content?.Headers.TryAddWithoutValidation(h.Key, h.Value);
             _logger.Info($"STEP REQUEST [{requestId}]\nTYPE: HTTP\nSTEP: {step.StepName}\nENVIRONMENT: {environment}\nTARGET: {result.TargetUrl}\nMETHOD: {step.Verb}\nTEMPLATE: {step.TemplateSource}\nHEADERS:\n{result.RequestHeaders}\nDETAILS:\ncontentType={result.ContentType}\nBODY:\n{result.RequestBody}");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); timeout.CancelAfter(StepTimeout(step)); using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseContentRead, timeout.Token);
-            result.HttpStatus = (int)response.StatusCode; var responseHeaderValues = response.Headers.Concat(response.Content.Headers).ToList(); result.ResponseHeaders = string.Join("\n", responseHeaderValues.Select(h => $"{h.Key}={string.Join(",", h.Value)}")); result.ResponseBody = await response.Content.ReadAsStringAsync(timeout.Token);
+            result.HttpStatus = (int)response.StatusCode; if (authScope is { Applied.Count: > 0 }) result.RequestHeaders += $"{(result.RequestHeaders.Length > 0 ? "; " : string.Empty)}authentication={authScope.ProfileName} ({string.Join(", ", authScope.Applied)} added, value hidden)"; var responseHeaderValues = response.Headers.Concat(response.Content.Headers).ToList(); result.ResponseHeaders = string.Join("\n", responseHeaderValues.Select(h => $"{h.Key}={string.Join(",", h.Value)}")); result.ResponseBody = await response.Content.ReadAsStringAsync(timeout.Token);
             PublishResponseValues(step.StepName, result.ResponseBody, result.ContentType, correlation); correlation[$"{step.StepName}.statusCode"] = result.HttpStatus.ToString(System.Globalization.CultureInfo.InvariantCulture); PublishResponseHeaders(step.StepName, responseHeaderValues.ToDictionary(h => h.Key, h => string.Join(",", h.Value)), correlation);
             _logger.Info($"STEP RESPONSE [{requestId}]\nSTATUS: {result.HttpStatus}\nHEADERS:\n{result.ResponseHeaders}\nBODY:\n{result.ResponseBody}");
             if (step.AssertEnabled)
