@@ -1227,3 +1227,9 @@ DONE: "Add variable..." for C# conditions (`cs:`): puts `var name = "_column_";`
 - [x] ForEach reads CSV, Excel (sheet, header, columns, skip/take) and JSON files (array path) from the instance `Files` folder or any full path; objects in `items` / a response array also give `_item.<field>_`. Browse… and Preview in the loop form; help with examples in `docs/FOREACH_DATA_SOURCES.md` and the loop form.
 - [ ] NOT DONE: Preview is text (sheet / column / array names are typed, not clicked); no response-array picker that lists the fields of an earlier step's response (type `<From_response_Step.path_r>` by hand); no Excel row range by cell address (use Skip/Take).
 - [ ] TODO (asked 2026-11-28): File step that WRITES files of types Excel (.xlsx), Word (.docx), PDF, JSON and CSV (today it reads, copies and writes plain/binary content): content from a template or from earlier responses, rows from a data source, with help text and examples.
+
+## File step: read and write many file types, and metadata (DESIGN agreed 2026-11-28, NOT BUILT)
+- [ ] Read with "Return as": Excel/CSV → Rows (JSON, default) | CSV text | Text | Binary; sheet, header yes/no, cell range, delimiter, `maxrows` (default 10000). Word → Text (default) | Paragraphs (JSON, with style) | Tables (JSON) | Markdown. PDF → Text (whole or per page).
+- [ ] Write: rows (JSON) or CSV text → Excel, Word table, PDF, CSV, JSON file; "read Excel as CSV, then write" works without a converter.
+- [ ] Metadata of any file (images too): `action=info` returns name, size, dates, extension, MIME type, SHA-256; images: width, height, DPI, EXIF (camera, date taken, GPS); Excel: sheets, row/column counts, author, created/modified; Word/PDF: author, title, pages, created/modified; JSON/CSV: row count, columns.
+- [ ] Help text with examples in the step form, the step guide and docs.
