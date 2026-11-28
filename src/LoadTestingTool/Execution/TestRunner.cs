@@ -33,10 +33,20 @@ public sealed class TestRunner
     // the row (and step) being run on this async flow, stamped on every finished step so the dashboard can list steps in workbook order
     private static readonly AsyncLocal<(int Row, int Step)> Position = new();
 
+    private static void MaskSecrets(RequestResult r)
+    {
+        r.TargetUrl = Secrets.Mask(r.TargetUrl); r.RequestHeaders = Secrets.Mask(r.RequestHeaders); r.RequestBody = Secrets.Mask(r.RequestBody);
+        r.ResponseHeaders = Secrets.Mask(r.ResponseHeaders); r.ResponseBody = Secrets.Mask(r.ResponseBody); r.ErrorMessage = Secrets.Mask(r.ErrorMessage);
+        foreach (var c in r.Correlations) c.ExtractedValue = Secrets.Mask(c.ExtractedValue);
+        foreach (var a in r.Assertions) { a.ExpectedValue = Secrets.Mask(a.ExpectedValue); a.ActualValue = Secrets.Mask(a.ActualValue); }
+        if (r.Variables is Dictionary<string, string> variables) foreach (var key in variables.Keys.ToList()) variables[key] = Secrets.Mask(variables[key]);
+    }
+
     private void Publish(RequestResult result)
     {
         result.ExcelRowNumber = Position.Value.Row;
         result.StepOrder = Position.Value.Step;
+        if (Secrets.Any) MaskSecrets(result);   // a value that came from ${NAME} never reaches the history or the live events
         _requestCompleted?.Invoke(result);
     }
 

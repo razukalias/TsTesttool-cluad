@@ -112,3 +112,35 @@ public class CiReportTests : IDisposable
         Assert.Equal(code == 0, !output.ToString().Contains("[Error]"));
     }
 }
+
+public class CiMaskingTests
+{
+    [Fact]
+    public void A_secret_in_a_header_and_a_response_is_masked_in_the_published_result()
+    {
+        Secrets.ResetForTests();
+        Secrets.SetOverrides(new Dictionary<string, string> { ["TOKEN"] = "tok-98765-secret" });
+        var header = Secrets.Expand("Bearer ${TOKEN}");
+        var result = new RequestResult { RequestHeaders = "Authorization: " + header, ResponseBody = "{\"echo\":\"" + header + "\"}", ErrorMessage = "failed with " + header };
+        var method = typeof(TestRunner).GetMethod("MaskSecrets", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        method.Invoke(null, [result]);
+        Assert.DoesNotContain("tok-98765-secret", result.RequestHeaders + result.ResponseBody + result.ErrorMessage);
+        Assert.Contains("***", result.RequestHeaders);
+        Secrets.ResetForTests();
+    }
+}
+
+public class CiPathTests
+{
+    [Fact]
+    public void Settings_folders_without_an_instance_are_relative_to_the_settings_file()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "cip_" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "appsettings.json"), "{\"ResultsFolder\":\"Out/Results\",\"HistoryFolder\":\"H\"}");
+        var load = typeof(LoadTestingTool.Domain.AppConfig).Assembly.GetType("LoadTestingTool.Program")!.GetMethod("LoadConfig", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var config = (LoadTestingTool.Domain.AppConfig)load.Invoke(null, [Path.Combine(dir, "appsettings.json"), null])!;
+        Assert.Equal(Path.GetFullPath("Out/Results", dir), config.ResultsFolder);
+        Assert.Equal(Path.GetFullPath("H", dir), config.HistoryFolder);
+        Directory.Delete(dir, true);
+    }
+}

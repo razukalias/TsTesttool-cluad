@@ -363,7 +363,7 @@ public sealed class CorrelationRecord
     public string SourceStepName { get; init; } = string.Empty;
     public string ResponsePath { get; init; } = string.Empty;
     public string Variable { get; init; } = string.Empty;
-    public string ExtractedValue { get; init; } = string.Empty;
+    public string ExtractedValue { get; set; } = string.Empty;
     public string UsedByStepName { get; set; } = string.Empty;
 }
 
@@ -379,8 +379,8 @@ public sealed class AssertionResult
     public string AssertionVerb { get; init; } = "eq";
     public string AssertionType { get; init; } = "Value assertion";
     public string AssertionMeaning { get; init; } = string.Empty;
-    public string ExpectedValue { get; init; } = string.Empty;
-    public string ActualValue { get; init; } = string.Empty;
+    public string ExpectedValue { get; set; } = string.Empty;
+    public string ActualValue { get; set; } = string.Empty;
     /// <summary>PASS, FAIL, or KNOWN_BUG: the assertion failed, but its cell carries a &lt;bug: …&gt; tag for this environment, so it does not fail the test.</summary>
     public string Result { get; set; } = "FAIL";
     public string FailureMessage { get; init; } = string.Empty;

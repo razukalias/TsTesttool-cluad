@@ -561,6 +561,7 @@ public sealed partial class MainWindow
         _configurationPanel.Children.Add(generateResults);
         _configurationPanel.Children.Add(DashboardStyle.Text("When disabled, the Excel History files and live UI events remain available, but persistent Results run folders and metrics.json are not generated.", 11, false, DashboardStyle.Muted));
         _configurationPanel.Children.Add(DashboardStyle.Action("Save execution settings", () => SaveInstanceExecutionSettings(item, maxParallelRows.Text, iterations.Text, threadInterval.Text, iterationInterval.Text, generateResults.IsChecked == true, item.RowsExecutionMode, item.RunEnvironmentsParallel), "primary"));
+        _configurationPanel.Children.Add(DashboardStyle.Action("Pipeline help", () => { if (_hostWindow is Window helpOwner) ContextHelpWindow.Show(helpOwner, CiHelp.Title, CiHelp.Text(item.Name)); }));
         _configurationPanel.Children.Add(KeyValue("Data IDs", string.IsNullOrWhiteSpace(item.DataIdSelection) ? "All data rows" : item.DataIdSelection));
         _configurationPanel.Children.Add(DashboardStyle.Text("Workbook actions are available directly on the instance row: Add step, Edit step, Edit dataset, and Open workbook. The legacy editor is available in Handcraft.", 12, false, DashboardStyle.Muted));
     }

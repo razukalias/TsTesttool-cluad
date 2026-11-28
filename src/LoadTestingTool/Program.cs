@@ -410,7 +410,13 @@ internal static class Program
         // Migrate older central settings that used RunScenariosInParallel.
         if (root["RunEnvironmentsParallel"] is null && bool.TryParse(root["RunScenariosInParallel"], out var legacyParallel))
             config.RunEnvironmentsParallel = legacyParallel;
-        if (string.IsNullOrWhiteSpace(instanceKey)) return config;
+        if (string.IsNullOrWhiteSpace(instanceKey))
+        {
+            // without an instance the folders of the settings file are relative to that file, not to the folder the runner was started from
+            string Own(string folder) => string.IsNullOrWhiteSpace(folder) || Path.IsPathRooted(folder) ? folder : Path.GetFullPath(folder, baseDirectory);
+            config.TemplatesFolder = Own(config.TemplatesFolder); config.HistoryFolder = Own(config.HistoryFolder); config.LogsFolder = Own(config.LogsFolder); config.ResultsFolder = Own(config.ResultsFolder);
+            return config;
+        }
         if (!config.Instances.TryGetValue(instanceKey, out var instance)) throw new InvalidDataException($"Instance '{instanceKey}' was not found in central settings '{path}'.");
         var instancesRoot = ResolveCentralPath(baseDirectory, config.InstancesRoot, "Instances");
         var derivedFolder = Path.GetFullPath(instanceKey, instancesRoot);
