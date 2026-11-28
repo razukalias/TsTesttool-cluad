@@ -48,20 +48,43 @@ public sealed class SqlStepExecutor : IStepExecutor
             result.LogBody = commandText;
             result.LogDetails["connection"] = options.ConnectionProfile;
             result.LogDetails["parameters"] = JsonSerializer.Serialize(loggedParameters);
-            await using var reader = await command.ExecuteReaderAsync(request.CancellationToken);
-            var rows = new List<Dictionary<string, object?>>();
-            while (await reader.ReadAsync(request.CancellationToken))
+            // Every result set is read (a procedure or a batch can return several); the rows changed by insert/update/delete are counted.
+            var sets = new List<List<Dictionary<string, object?>>>();
+            int affected;
+            await using (var reader = await command.ExecuteReaderAsync(request.CancellationToken))
             {
-                var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-                for (var i = 0; i < reader.FieldCount; i++) row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-                rows.Add(row);
+                do
+                {
+                    if (reader.FieldCount == 0) continue;
+                    var set = new List<Dictionary<string, object?>>();
+                    while (await reader.ReadAsync(request.CancellationToken))
+                    {
+                        var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                        for (var i = 0; i < reader.FieldCount; i++) row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                        set.Add(row);
+                    }
+                    sets.Add(set);
+                } while (await reader.NextResultAsync(request.CancellationToken));
+                affected = Math.Max(0, reader.RecordsAffected);
             }
-            result.ResponseText = JsonSerializer.Serialize(rows);
-            result.Outputs["rows"] = rows;
-            if (rows.Count > 0) foreach (var mapping in options.Outputs)
+            var rows = sets.Count > 0 ? sets[0] : [];
+            // One result set: the rows as before. None (insert/update/delete only): the count of changed rows. Several: all of them.
+            result.ResponseText = sets.Count switch
             {
-                var value = rows[0].TryGetValue(mapping.Value, out var direct) ? direct : null;
-                result.Outputs[mapping.Key] = value;
+                0 => JsonSerializer.Serialize(new { rowsAffected = affected }),
+                1 => JsonSerializer.Serialize(rows),
+                _ => JsonSerializer.Serialize(new { resultSets = sets, rowsAffected = affected })
+            };
+            result.Outputs["rows"] = rows;
+            result.Outputs["rowsAffected"] = affected;
+            result.Outputs["resultSets"] = sets;
+            result.LogDetails["rowsAffected"] = affected.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            result.LogDetails["resultSets"] = sets.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            foreach (var mapping in options.Outputs)
+            {
+                if (rows.Count > 0 && rows[0].TryGetValue(mapping.Value, out var direct)) result.Outputs[mapping.Key] = direct;
+                else if (mapping.Value.Equals("rowsAffected", StringComparison.OrdinalIgnoreCase) || mapping.Value.Equals("#rowsAffected", StringComparison.OrdinalIgnoreCase)) result.Outputs[mapping.Key] = affected;
+                else if (rows.Count > 0) result.Outputs[mapping.Key] = null;
             }
             result.Succeeded = true;
         }

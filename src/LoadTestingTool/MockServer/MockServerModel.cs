@@ -12,8 +12,13 @@ public sealed class MockHeader
 }
 
 /// <summary>
-/// An extra rule a request must meet for a route to apply: Source is query, header, body (the whole body), json (a path such as
-/// order.lines[0].sku in a JSON body) graphql (Name: operation, type or field of a GraphQL request), soap (Name: operation, action or version of a SOAP request) or xml (a path such as GetOrder.Id in an XML or SOAP body); Op is equals, contains, regex, exists or notexists.
+/// An extra rule a request must meet for a route to apply. Source says where the value comes from:
+/// query, header, cookie (Name: the cookie), path (Name: a {value} of the path pattern), method (the HTTP verb), body (the whole body),
+/// json (a path such as order.lines[0].sku in a JSON body), xml (a path such as GetOrder.Id in an XML or SOAP body),
+/// graphql (Name: operation, type or field), soap (Name: operation, action or version) or state (Name: a scenario; its current state).
+/// Op compares it: equals, notequals, contains, notcontains, startswith, endswith, regex, gt, ge, lt, le (numbers or dates),
+/// between (Value "10..20"), in / notin (Value "A,B,C"), exists, notexists.
+/// Conditions with the same Group are alternatives (at least one must hold); conditions without a group must all hold.
 /// </summary>
 public sealed class MockCondition
 {
@@ -21,6 +26,32 @@ public sealed class MockCondition
     public string Name { get; set; } = "";
     public string Op { get; set; } = "equals";
     public string Value { get; set; } = "";
+    /// <summary>Compare text without regard to upper/lower case (contains always ignores case).</summary>
+    public bool IgnoreCase { get; set; }
+    /// <summary>Empty: this condition must hold. A name: one of the conditions with that name must hold ("or").</summary>
+    public string Group { get; set; } = "";
+}
+
+/// <summary>After a route answers, a scenario moves to a new state (for example "cart" → "has-items"); a "state" condition tests it.</summary>
+public sealed class MockStateChange
+{
+    public string Scenario { get; set; } = "";
+    public string State { get; set; } = "";
+}
+
+/// <summary>
+/// The route works with a SQLite database before it answers: Sql runs with Parameters (name → template, for example id → {{path.id}};
+/// every path value is also a parameter by its own name). Its rows fill {{row}}, {{row.column}}, {{rows}} and {{rowcount}};
+/// {{affected}} and {{lastid}} tell what an insert, update or delete did. Database is a file in the server's folder (Databases/shop.db).
+/// </summary>
+public sealed class MockDataAction
+{
+    public string Database { get; set; } = "";
+    public string Sql { get; set; } = "";
+    public Dictionary<string, string> Parameters { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Above 0: when the SQL finds or changes nothing, answer this status with <see cref="NotFoundBody"/> instead.</summary>
+    public int NotFoundStatus { get; set; }
+    public string NotFoundBody { get; set; } = "";
 }
 
 /// <summary>What the server sends back. Body and header values may use {{templates}}; BodyFile (inside the config folder) replaces Body.</summary>
@@ -52,6 +83,13 @@ public sealed class MockRoute
     public int FailurePercent { get; set; }
     /// <summary>A failure closes the connection instead of answering 500.</summary>
     public bool DropConnection { get; set; }
+    /// <summary>Answers for the 1st, 2nd, 3rd … request this route gets; after the last one, <see cref="Response"/> (or the list again with <see cref="SequenceLoop"/>).</summary>
+    public List<MockResponse> Sequence { get; set; } = [];
+    public bool SequenceLoop { get; set; }
+    /// <summary>Scenario states set after this route has answered.</summary>
+    public List<MockStateChange> SetState { get; set; } = [];
+    /// <summary>Optional SQL against a mock database, run before the answer is made.</summary>
+    public MockDataAction? Data { get; set; }
 
     public string Title => string.IsNullOrWhiteSpace(Name) ? $"{Method} {Path}" : Name;
 }
@@ -84,8 +122,10 @@ public sealed class MockServerConfig
     }
 
     private static readonly Regex Token = new("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$", RegexOptions.Compiled);
-    private static readonly string[] Sources = ["query", "header", "body", "json", "graphql", "soap", "xml"];
-    private static readonly string[] Ops = ["equals", "contains", "regex", "exists", "notexists"];
+    public static readonly string[] Sources = ["query", "header", "cookie", "path", "method", "body", "json", "xml", "graphql", "soap", "state"];
+    public static readonly string[] Ops = ["equals", "notequals", "contains", "notcontains", "startswith", "endswith", "regex", "gt", "ge", "lt", "le", "between", "in", "notin", "exists", "notexists"];
+    /// <summary>Operators that compare numbers (or dates) instead of text.</summary>
+    public static readonly string[] NumberOps = ["gt", "ge", "lt", "le", "between"];
 
     /// <summary>Everything wrong with the setup, in plain words; empty when the server can start.</summary>
     public List<string> Validate()
@@ -100,19 +140,38 @@ public sealed class MockServerConfig
             var route = Routes[i];
             var label = $"Route {i + 1} ({route.Title})";
             if (string.IsNullOrWhiteSpace(route.Method) || (!route.Method.Equals("ANY", StringComparison.OrdinalIgnoreCase) && !Token.IsMatch(route.Method))) problems.Add($"{label}: '{route.Method}' is not an HTTP method.");
+            var compiled = route.Path.StartsWith('/') ? MockPath.Compile(route.Path) : null;
             if (!route.Path.StartsWith('/')) problems.Add($"{label}: the path must start with /.");
-            else if (MockPath.Compile(route.Path) is null) problems.Add($"{label}: the path '{route.Path}' is not valid ({{name}} names may use letters, digits and _; ** only at the end).");
+            else if (compiled is null) problems.Add($"{label}: the path '{route.Path}' is not valid ({{name}} names may use letters, digits and _; ** only at the end).");
             if (route.FailurePercent is < 0 or > 100) problems.Add($"{label}: the failure chance must be 0-100.");
             foreach (var condition in route.Conditions)
             {
-                if (!Sources.Contains(condition.Source, StringComparer.OrdinalIgnoreCase)) problems.Add($"{label}: condition source '{condition.Source}' must be query, header, body, json, xml, graphql or soap.");
-                if (condition.Source.Equals("graphql", StringComparison.OrdinalIgnoreCase) && condition.Name.Trim().Length > 0 && !MockGraphQl.Parts.Contains(condition.Name.Trim(), StringComparer.OrdinalIgnoreCase)) problems.Add($"{label}: a graphql condition tests operation, type or field (not '{condition.Name}').");
-                if (condition.Source.Equals("soap", StringComparison.OrdinalIgnoreCase) && condition.Name.Trim().Length > 0 && !MockSoap.Parts.Contains(condition.Name.Trim(), StringComparer.OrdinalIgnoreCase)) problems.Add($"{label}: a soap condition tests operation, action or version (not '{condition.Name}').");
-                if (!Ops.Contains(condition.Op, StringComparer.OrdinalIgnoreCase)) problems.Add($"{label}: condition '{condition.Op}' must be equals, contains, regex, exists or notexists.");
-                else if (condition.Op.Equals("regex", StringComparison.OrdinalIgnoreCase))
+                var source = condition.Source.Trim().ToLowerInvariant();
+                var op = condition.Op.Trim().ToLowerInvariant();
+                if (!Sources.Contains(source)) { problems.Add($"{label}: condition source '{condition.Source}' must be one of {string.Join(", ", Sources)}."); continue; }
+                if (source == "graphql" && condition.Name.Trim().Length > 0 && !MockGraphQl.Parts.Contains(condition.Name.Trim(), StringComparer.OrdinalIgnoreCase)) problems.Add($"{label}: a graphql condition tests operation, type or field (not '{condition.Name}').");
+                if (source == "soap" && condition.Name.Trim().Length > 0 && !MockSoap.Parts.Contains(condition.Name.Trim(), StringComparer.OrdinalIgnoreCase)) problems.Add($"{label}: a soap condition tests operation, action or version (not '{condition.Name}').");
+                if (source is "query" or "header" or "cookie" or "path" or "json" or "xml" or "state" && condition.Name.Trim().Length == 0) problems.Add($"{label}: a {source} condition needs a name (which {(source == "state" ? "scenario" : source == "path" ? "path value" : source + " value")}).");
+                if (source == "path" && compiled is not null && condition.Name.Trim().Length > 0 && !compiled.GetGroupNames().Contains(condition.Name.Trim(), StringComparer.OrdinalIgnoreCase)) problems.Add($"{label}: the path '{route.Path}' has no {{{condition.Name.Trim()}}} value to test.");
+                if (!Ops.Contains(op)) { problems.Add($"{label}: condition '{condition.Op}' must be one of {string.Join(", ", Ops)}."); continue; }
+                if (op == "regex")
                 {
                     try { _ = new Regex(condition.Value); } catch (ArgumentException) { problems.Add($"{label}: '{condition.Value}' is not a valid regular expression."); }
                 }
+                else if (op == "between")
+                {
+                    if (MockCompare.Range(condition.Value) is null) problems.Add($"{label}: 'between' needs two numbers or dates such as 10..20 (got '{condition.Value}').");
+                }
+                else if (NumberOps.Contains(op) && !MockCompare.IsComparable(condition.Value)) problems.Add($"{label}: '{condition.Op}' compares numbers or dates; '{condition.Value}' is neither.");
+                else if (op is "in" or "notin" && MockCompare.List(condition.Value).Count == 0) problems.Add($"{label}: '{condition.Op}' needs a list such as A,B,C.");
+            }
+            for (var n = 0; n < route.Sequence.Count; n++) CheckResponse(route.Sequence[n], $"{label}, answer {n + 1} of the sequence", problems);
+            foreach (var change in route.SetState) if (string.IsNullOrWhiteSpace(change.Scenario)) problems.Add($"{label}: a state change has no scenario name.");
+            if (route.Data is { } data)
+            {
+                if (string.IsNullOrWhiteSpace(data.Database)) problems.Add($"{label}: the database action has no database file.");
+                if (string.IsNullOrWhiteSpace(data.Sql)) problems.Add($"{label}: the database action has no SQL.");
+                if (data.NotFoundStatus != 0 && data.NotFoundStatus is < 100 or > 599) problems.Add($"{label}: the not-found status {data.NotFoundStatus} must be 100-599 (or 0 for none).");
             }
             CheckResponse(route.Response, label, problems);
         }
